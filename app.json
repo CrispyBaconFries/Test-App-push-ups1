@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Liegestütz Coach",
+    "slug": "Test-App-push-ups1",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pushupcoach.app"
+    },
+    "android": {
+      "package": "com.pushupcoach.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Diese App benötigt Zugriff auf die Kamera, um deine Liegestütz-Form in Echtzeit zu analysieren.",
+          "enableMicrophonePermission": false,
+          "enableCodeScanner": false
+        }
+      ],
+      "./plugins/withPoseLandmarkerModel.js"
+    ]
+  }
+}
