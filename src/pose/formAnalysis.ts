@@ -5,6 +5,7 @@ import {
   pickMoreVisibleSide,
   sideIndices,
   signedPerpendicularDeviation2D,
+  type BodySide,
   type Pose,
 } from './landmarks';
 
@@ -109,6 +110,14 @@ export class PushUpAnalyzer {
   private phase: RepPhase = 'up';
   private repIndex = 0;
   private acc: RepAccumulator | null = null;
+  /**
+   * The body side used for angle math, locked for the duration of a rep. Without this,
+   * `pickMoreVisibleSide` re-evaluates every frame and, when left/right visibility
+   * scores are close, can flip mid-rep on nothing more than tracking noise - mixing
+   * left- and right-side angle readings into the same min/max accumulators and
+   * corrupting the rep's score. Only re-picked once the analyzer is idle (`'up'`).
+   */
+  private lockedSide: BodySide | null = null;
   private readonly thresholds: PushUpThresholds;
 
   constructor(thresholds: Partial<PushUpThresholds> = {}) {
@@ -119,6 +128,7 @@ export class PushUpAnalyzer {
     this.phase = 'up';
     this.repIndex = 0;
     this.acc = null;
+    this.lockedSide = null;
   }
 
   getPhase(): RepPhase {
@@ -133,7 +143,7 @@ export class PushUpAnalyzer {
    */
   processFrame(pose: Pose, timestampMs: number): { live: LiveFeedback; completedRep: RepResult | null } {
     const t = this.thresholds;
-    const side = pickMoreVisibleSide(pose);
+    const side = this.lockedSide ?? pickMoreVisibleSide(pose);
     const idx = sideIndices(side);
 
     if (!allVisible(pose, [idx.ear, idx.shoulder, idx.elbow, idx.wrist, idx.hip, idx.ankle], t.minVisibility)) {
@@ -162,6 +172,7 @@ export class PushUpAnalyzer {
       case 'up':
         if (elbowAngleDeg < t.elbowUpDeg) {
           this.phase = 'descending';
+          this.lockedSide = side;
           this.acc = freshAccumulator(timestampMs);
         }
         break;
@@ -173,6 +184,7 @@ export class PushUpAnalyzer {
           // Went back up without ever committing to a real attempt: noise near lockout, discard.
           this.phase = 'up';
           this.acc = null;
+          this.lockedSide = null;
         }
         break;
 
@@ -188,6 +200,7 @@ export class PushUpAnalyzer {
         } else if (elbowAngleDeg >= t.elbowUpDeg) {
           completedRep = this.finishRep(timestampMs);
           this.phase = 'up';
+          this.lockedSide = null;
         }
         break;
     }

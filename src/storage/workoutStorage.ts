@@ -15,8 +15,18 @@ export interface WorkoutSession {
 
 const SESSIONS_KEY = '@pushup/workoutSessions';
 
-function dayKey(iso: string): string {
-  return iso.slice(0, 10); // YYYY-MM-DD
+/**
+ * The user's local calendar day (YYYY-MM-DD), not the UTC day `date.toISOString()`
+ * would give. Session timestamps are stored as UTC ISO strings; slicing those directly
+ * shifts anything near midnight onto the wrong day for anyone outside UTC (a workout at
+ * 23:30 local time in Berlin, for example, is still "today" for the user, but is
+ * already "tomorrow" in UTC) - which would silently break the streak count.
+ */
+function localDayKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function buildSession(reps: RepResult[], startedAtIso: string, finishedAtIso: string): WorkoutSession {
@@ -80,12 +90,11 @@ export function computeStats(sessions: WorkoutSession[]): WorkoutStats {
     }
   }
 
-  const workoutDays = new Set(sessions.map((s) => dayKey(s.finishedAtIso)));
+  const workoutDays = new Set(sessions.map((s) => localDayKey(new Date(s.finishedAtIso))));
   let currentStreakDays = 0;
   const cursor = new Date();
   for (;;) {
-    const key = cursor.toISOString().slice(0, 10);
-    if (!workoutDays.has(key)) break;
+    if (!workoutDays.has(localDayKey(cursor))) break;
     currentStreakDays += 1;
     cursor.setDate(cursor.getDate() - 1);
   }

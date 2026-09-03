@@ -1,5 +1,5 @@
 import { PushUpAnalyzer } from '../formAnalysis';
-import { buildFrame } from '../testing/poseBuilder';
+import { buildFrame, mergePoses } from '../testing/poseBuilder';
 
 describe('PushUpAnalyzer', () => {
   it('counts a clean, deep rep with a perfect form score', () => {
@@ -86,5 +86,32 @@ describe('PushUpAnalyzer', () => {
     expect(live.trackingOk).toBe(false);
     expect(completedRep).toBeNull();
     expect(analyzer.getPhase()).toBe('up');
+  });
+
+  it('keeps using the side it locked onto at rep start, even if the other side becomes more visible mid-rep', () => {
+    const analyzer = new PushUpAnalyzer();
+    // Same elbow bend on both sides (a real push-up moves symmetrically), but the left
+    // side is good form (tucked) while the right side is bad form (heavily flared).
+    const bothSides = (elbowAngleDeg: number, leftVisibility: number, rightVisibility: number) =>
+      mergePoses(
+        buildFrame({ elbowAngleDeg, flareDeg: 30, side: 'left', visibility: leftVisibility }),
+        buildFrame({ elbowAngleDeg, flareDeg: 95, side: 'right', visibility: rightVisibility })
+      );
+
+    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+
+    // Left is more visible when the rep starts, so it gets locked in...
+    lastResult = analyzer.processFrame(bothSides(180, 0.9, 0.6), 0);
+    lastResult = analyzer.processFrame(bothSides(150, 0.9, 0.6), 33);
+    // ...then right becomes *more* visible than left for the rest of the rep. Without
+    // side-locking, `pickMoreVisibleSide` would switch to right's flared-elbow data here.
+    lastResult = analyzer.processFrame(bothSides(90, 0.9, 0.95), 66);
+    lastResult = analyzer.processFrame(bothSides(90, 0.9, 0.95), 99);
+    lastResult = analyzer.processFrame(bothSides(150, 0.9, 0.95), 132);
+    lastResult = analyzer.processFrame(bothSides(165, 0.9, 0.95), 165);
+
+    expect(lastResult!.completedRep).not.toBeNull();
+    expect(lastResult!.completedRep!.issues).not.toContain('ELBOWS_FLARED');
+    expect(lastResult!.completedRep!.formScore).toBe(100);
   });
 });

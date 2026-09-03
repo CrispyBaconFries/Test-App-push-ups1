@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -12,19 +12,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export function HomeScreen({ navigation }: Props) {
   const [stats, setStats] = useState<WorkoutStats | null>(null);
 
-  const refresh = useCallback(async () => {
-    const sessions = await loadSessions();
-    setStats(computeStats(sessions));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
+  // useFocusEffect already fires on initial mount (the screen is "focused" as soon as
+  // it appears), so a separate mount-time useEffect here would just fetch twice.
   useFocusEffect(
     useCallback(() => {
-      refresh();
-    }, [refresh])
+      loadSessions().then((sessions) => setStats(computeStats(sessions)));
+    }, [])
   );
 
   const level = levelForPoints(stats?.totalPoints ?? 0);

@@ -77,7 +77,9 @@ export function SkeletonOverlay({ width, height, points, activeIssue }: Skeleton
       {HEAD_BONES.map(([a, b], i) => (
         <BoneLine key={`head-${i}`} points={points} a={a} b={b} color={boneColor} strokeWidth={4} />
       ))}
-      {[...CORE_BONES.flat(), ...HEAD_BONES.flat()].map((index) => {
+      {/* Dedupe: shoulders appear in both CORE_BONES and HEAD_BONES, and mapping them
+          twice would render two overlapping <Circle>s with the same React key. */}
+      {[...new Set([...CORE_BONES.flat(), ...HEAD_BONES.flat()])].map((index) => {
         const p = points[index];
         if (!p) return null;
         const isWarn = highlightedJoints.has(index);

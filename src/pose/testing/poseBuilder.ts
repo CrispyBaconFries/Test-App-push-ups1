@@ -1,5 +1,5 @@
 import { PoseLandmarkIndex, type PoseLandmark } from '../blazePoseLandmarks';
-import type { Pose } from '../landmarks';
+import type { BodySide, Pose } from '../landmarks';
 
 function deg2rad(deg: number): number {
   return (deg * Math.PI) / 180;
@@ -31,16 +31,18 @@ export interface SyntheticFrameParams {
   hipOffsetY?: number;
   /** Landmark visibility for the tracked side; set low to simulate the user stepping out of frame. */
   visibility?: number;
+  /** Which side of the body to populate. Defaults to 'right' (pickMoreVisibleSide will pick it, since the other side is left at 0 visibility). */
+  side?: BodySide;
 }
 
 /**
- * Builds a synthetic 33-point pose (only the right side populated - `pickMoreVisibleSide`
- * will therefore always pick "right") that produces *exactly* the requested elbow, flare
- * and neck angles by construction, so tests can assert on precise thresholds without
- * having to reverse-engineer real body coordinates.
+ * Builds a synthetic 33-point pose (only one side populated, 'right' by default -
+ * `pickMoreVisibleSide` will therefore always pick that side) that produces *exactly*
+ * the requested elbow, flare and neck angles by construction, so tests can assert on
+ * precise thresholds without having to reverse-engineer real body coordinates.
  */
 export function buildFrame(params: SyntheticFrameParams): Pose {
-  const { elbowAngleDeg, flareDeg = 30, neckAngleDeg = 175, hipOffsetY = 0, visibility = 1 } = params;
+  const { elbowAngleDeg, flareDeg = 30, neckAngleDeg = 175, hipOffsetY = 0, visibility = 1, side = 'right' } = params;
 
   const shoulder: Vec2 = { x: 0, y: 0 };
   const hipDir: Vec2 = { x: 1, y: 0 };
@@ -60,13 +62,42 @@ export function buildFrame(params: SyntheticFrameParams): Pose {
   const set = (index: number, p: Vec2) => {
     pose[index] = { x: p.x, y: p.y, z: 0, visibility };
   };
-  set(PoseLandmarkIndex.rightEar, ear);
-  set(PoseLandmarkIndex.rightShoulder, shoulder);
-  set(PoseLandmarkIndex.rightElbow, elbow);
-  set(PoseLandmarkIndex.rightWrist, wrist);
-  set(PoseLandmarkIndex.rightHip, hip);
-  set(PoseLandmarkIndex.rightAnkle, ankle);
-  set(PoseLandmarkIndex.rightKnee, { x: 1.5, y: 0 });
+  const i = side === 'left'
+    ? {
+        ear: PoseLandmarkIndex.leftEar,
+        shoulder: PoseLandmarkIndex.leftShoulder,
+        elbow: PoseLandmarkIndex.leftElbow,
+        wrist: PoseLandmarkIndex.leftWrist,
+        hip: PoseLandmarkIndex.leftHip,
+        ankle: PoseLandmarkIndex.leftAnkle,
+        knee: PoseLandmarkIndex.leftKnee,
+      }
+    : {
+        ear: PoseLandmarkIndex.rightEar,
+        shoulder: PoseLandmarkIndex.rightShoulder,
+        elbow: PoseLandmarkIndex.rightElbow,
+        wrist: PoseLandmarkIndex.rightWrist,
+        hip: PoseLandmarkIndex.rightHip,
+        ankle: PoseLandmarkIndex.rightAnkle,
+        knee: PoseLandmarkIndex.rightKnee,
+      };
+  set(i.ear, ear);
+  set(i.shoulder, shoulder);
+  set(i.elbow, elbow);
+  set(i.wrist, wrist);
+  set(i.hip, hip);
+  set(i.ankle, ankle);
+  set(i.knee, { x: 1.5, y: 0 });
 
   return pose;
+}
+
+/**
+ * Overlays `overrides`'s populated landmarks onto `base`, keeping everything else from
+ * `base`. Used to build a single frame with *both* sides present at once (e.g. one side
+ * visible-but-bad-form, the other visible-but-good-form), for tests that need to prove
+ * side selection doesn't flip-flop mid-rep.
+ */
+export function mergePoses(base: Pose, overrides: Pose): Pose {
+  return base.map((landmark, i) => (overrides[i] && overrides[i].visibility ? overrides[i] : landmark));
 }

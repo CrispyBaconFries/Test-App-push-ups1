@@ -48,6 +48,7 @@
       "/node_modules/",
       "/android/",
       "/ios/"
-    ]
+    ],
+    "globalSetup": "<rootDir>/jest.global-setup.js"
   }
 }
