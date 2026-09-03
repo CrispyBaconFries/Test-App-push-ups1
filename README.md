@@ -10,26 +10,65 @@ Liegestütze machen — die App zählt Wiederholungen, erkennt typische Fehler (
 durch, zu wenig Tiefe, Ellenbogen zu weit abgespreizt, Kopf/Nacken nicht neutral) und gibt
 sofortiges visuelles Feedback plus einen Form-Score pro Wiederholung.
 
+## Aktueller Stand: zwei Entwicklungsstufen
+
+**Stufe 1 (aktuell aktiv, in `RootNavigator`/`CameraScreen`):** Start-Button → Kamera
+öffnet sich → zwischen Front- und Rückkamera wechseln → Zurück-Button. Nutzt
+`expo-camera` und läuft **direkt in der normalen Expo-Go-App**, ohne eigenen nativen
+Build — das ist bewusst so gewählt, damit du die App sofort auf deinem Handy starten und
+bei jeder Änderung live sehen kannst (siehe "Lokal starten" unten).
+
+**Stufe 2 (bereits fertig implementiert, aber noch nicht eingehängt, in
+`WorkoutScreen.tsx`):** die volle Pose-Erkennung mit Skelett-Overlay, automatischer
+Wiederholungs-Zählung und Form-Bewertung (Details weiter unten). Sie nutzt
+`react-native-vision-camera` + MediaPipe, also *native* Module, die es in Expo Go nicht
+gibt — dafür ist ein **Custom Dev Client** nötig (einmaliger nativer Build, siehe
+"Stufe 2 aktivieren" unten). Der Code ist unverändert vorhanden und komplett unit-getestet,
+nur aktuell nicht in `RootNavigator.tsx` verdrahtet.
+
+## Lokal starten (Handy + PC-Vorschau)
+
+> **Wichtig:** Dieses Projekt wurde von Claude in einer Cloud-Sandbox entwickelt, die
+> keinen Tunnel zu deinem Handy oder eine grafische Vorschau auf deinem PC aufbauen kann
+> (ausgehende Verbindungen zu ngrok/Expo-Cloud-Diensten sind dort blockiert). Die
+> folgenden Befehle führst du deshalb **bei dir lokal** aus (Terminal auf deinem
+> Rechner, im Projektordner) — dort funktioniert der komplette Live-Reload-Workflow
+> normal.
+
+```bash
+npm install
+npm run start        # startet den Metro-Server im Expo-Go-Modus, zeigt einen QR-Code
+```
+
+- **Auf dem Handy:** [Expo Go](https://expo.dev/go) aus dem App/Play Store installieren,
+  QR-Code aus dem Terminal scannen (gleiches WLAN wie dein PC). Die App öffnet sich sofort
+  — jede gespeicherte Codeänderung aktualisiert sie automatisch (Fast Refresh), ohne
+  Neuinstallation.
+- **Virtuelles Handy am PC:** im laufenden `npm run start`-Terminal `w` drücken (öffnet
+  die App im Browser über `react-native-web`) oder `a`/`i` für einen Android-Emulator
+  bzw. iOS-Simulator, falls du Android Studio/Xcode installiert hast. Alternativ direkt:
+  `npm run web`.
+
+Sobald du mir sagst, welche Befehle das bei dir ausgibt (bzw. was du im Browser/Handy
+siehst), kann ich von hier aus weitere Anpassungen machen — die Datei-Änderungen kommen
+dann bei deinem nächsten `git pull` an, der lokale Metro-Server lädt sie automatisch neu,
+sobald du den Branch aktualisiert hast.
+
 ## Architektur
 
 | Layer | Tech |
 |---|---|
-| App-Framework | Expo (React Native, TypeScript), Custom Dev Client |
-| Kamera | `react-native-vision-camera` (Frame Processors) |
-| Pose-Erkennung | `react-native-mediapipe` → Google MediaPipe **Pose Landmarker** (33 BlazePose-Punkte, on-device, GPU-delegiert) |
+| App-Framework | Expo (React Native, TypeScript) |
+| Kamera (Stufe 1, aktiv) | `expo-camera` — läuft in Expo Go |
+| Kamera (Stufe 2, geparkt) | `react-native-vision-camera` (Frame Processors) — braucht Custom Dev Client |
+| Pose-Erkennung (Stufe 2) | `react-native-mediapipe` → Google MediaPipe **Pose Landmarker** (33 BlazePose-Punkte, on-device, GPU-delegiert) |
 | Skelett-Overlay | `react-native-svg`, gezeichnet über `ViewCoordinator.convertPoint` (korrekte Zuordnung Kamera-Frame → Bildschirm, inkl. Spiegelung/Rotation/Crop) |
 | Formanalyse | reines TypeScript, kein UI-/Native-Code (`src/pose/formAnalysis.ts`) — dadurch mit Jest unit-testbar |
 | Persistenz | `@react-native-async-storage/async-storage` (lokal, gerätespezifisch) |
 | Navigation | `@react-navigation/native-stack` |
 | Gamification | Punkte/Level jetzt, Grundgerüst für Challenges/Matches (siehe Roadmap) |
 
-### Wichtig: kein Expo Go
-
-Diese App nutzt native Module (Kamera-Frame-Processors, MediaPipe), die in **Expo Go
-nicht laufen**. Es wird ein **Custom Dev Client** benötigt (`expo-dev-client`,
-`expo prebuild` + nativer Build). Siehe Setup unten.
-
-## Wie die Formanalyse funktioniert
+## Wie die Formanalyse funktioniert (Stufe 2)
 
 `src/pose/formAnalysis.ts` (`PushUpAnalyzer`) bekommt pro Kamera-Frame die von MediaPipe
 gelieferten **`worldLandmarks`** (metrische 3D-Koordinaten, hüft-zentriert — deutlich
@@ -58,16 +97,20 @@ Der Form-Score (0–100) startet bei 100 und wird für jeden erkannten Fehler an
 reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS` und lassen sich
 leicht anpassen/kalibrieren.
 
-## Setup
+## Stufe 2 aktivieren (Pose-Erkennung, Custom Dev Client)
+
+Sobald du die volle MediaPipe-Version testen willst:
 
 ```bash
-npm install
 npm run model:download   # lädt das MediaPipe-Modell (~5.7 MB, wird nicht committed)
 npm run prebuild          # erzeugt ios/ und android/ (Expo Prebuild)
 npm run android            # oder: npm run ios (braucht macOS + Xcode)
 ```
 
-Für den täglichen Metro-Server danach: `npm run start` (startet mit `--dev-client`).
+Danach in `src/navigation/RootNavigator.tsx` den `WorkoutScreen`-Import und
+`<Stack.Screen name="Workout" component={WorkoutScreen} />` wieder einkommentieren/
+hinzufügen (siehe Kommentar dort) und z. B. den Home-Button darauf verlinken. Für den
+täglichen Metro-Server danach: `npm run start:dev-client` statt `npm run start`.
 
 Das Pose-Landmarker-Modell (`pose_landmarker_lite.task`, Google/MediaPipe) wird **nicht**
 im Repo mitgeführt (Binärdatei, ~5.7 MB) und stattdessen per Skript geladen
@@ -92,13 +135,20 @@ UI- und Native-Code-frei gehalten, damit sie ganz ohne Gerät/Simulator getestet
 kann. Ein synthetischer Pose-Builder (`src/pose/testing/poseBuilder.ts`) erzeugt dafür
 33-Punkt-Skelette mit exakt kontrollierten Winkeln.
 
-**Hinweis zur Verifikation:** Dieses Projekt wurde in einer Cloud-Sandbox ohne
-Kamera/Simulator/echtes Gerät entwickelt. TypeScript-Kompilierung und alle Unit-Tests
-laufen grün und die Integration wurde sorgfältig gegen den tatsächlich installierten
-Quellcode von `react-native-vision-camera` und `react-native-mediapipe` abgeglichen
-(Native-API-Kompatibilität, `ViewCoordinator`-Koordinatentransformation,
-Modell-Asset-Auflösung). Ein echter On-Device-Testlauf (Kamera-Permission-Flow, Tracking-
-Qualität, Performance) steht noch aus und sollte vor einem Release erfolgen.
+**Hinweis zur Verifikation:** Stufe 1 (Start/Kamera/Umschalten/Zurück) wurde in dieser
+Cloud-Sandbox tatsächlich lauffähig verifiziert — `expo start --web` gestartet und per
+Headless-Chromium durchgeklickt (Start → Kamera aktiviert sich, Front-/Rückkamera-Toggle
+funktioniert, Zurück-Button funktioniert, keine Konsolenfehler). Ein echter Test auf einem
+physischen Handy über Expo Go steht noch aus, da diese Sandbox keine Verbindung zu deinem
+Handy aufbauen kann — das übernimmst du mit den Befehlen oben.
+
+Stufe 2 (MediaPipe) konnte mangels Kamera/Gerät in dieser Sandbox nicht live getestet
+werden. TypeScript-Kompilierung und alle Unit-Tests laufen grün, die Integration wurde
+sorgfältig gegen den tatsächlich installierten Quellcode von `react-native-vision-camera`
+und `react-native-mediapipe` abgeglichen (Native-API-Kompatibilität,
+`ViewCoordinator`-Koordinatentransformation, Modell-Asset-Auflösung — ein echter
+`expo prebuild`-Lauf hat das Modell korrekt in ein generiertes Xcode-Projekt eingebettet).
+Ein echter On-Device-Testlauf steht noch aus.
 
 ## Projektstruktur
 
@@ -107,19 +157,22 @@ src/
   pose/
     blazePoseLandmarks.ts   33-Punkt-Indizes (BlazePose-Standard, kein Native-Import)
     landmarks.ts             Winkel-/Sichtbarkeits-Hilfsfunktionen
-    formAnalysis.ts           Zustandsmaschine + Form-Scoring (PushUpAnalyzer)
+    formAnalysis.ts           Zustandsmaschine + Form-Scoring (PushUpAnalyzer, Stufe 2)
     feedbackText.ts            deutsche Texte für Form-Hinweise
     testing/poseBuilder.ts     synthetischer Pose-Generator für Tests
   components/
-    SkeletonOverlay.tsx        SVG-Strichmodell über der Kamera
-    RepHud.tsx                  Rep-Zähler, Score, Live-Hinweis
+    SkeletonOverlay.tsx        SVG-Strichmodell über der Kamera (Stufe 2)
+    RepHud.tsx                  Rep-Zähler, Score, Live-Hinweis (Stufe 2)
   screens/
-    HomeScreen.tsx, WorkoutScreen.tsx, SummaryScreen.tsx, HistoryScreen.tsx
+    HomeScreen.tsx      Start-Button, Punkte/Level-Übersicht
+    CameraScreen.tsx     Stufe 1: Kamera, Front-/Rückkamera-Toggle, Zurück (expo-camera)
+    WorkoutScreen.tsx    Stufe 2: volle Pose-Erkennung (aktuell nicht verdrahtet)
+    SummaryScreen.tsx, HistoryScreen.tsx
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage)
   gamification/points.ts        Punkte-/Level-Berechnung
   navigation/RootNavigator.tsx
-plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
-scripts/download-pose-model.js        lädt das Modell herunter
+plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ (Stufe 2)
+scripts/download-pose-model.js        lädt das Modell herunter (Stufe 2)
 ```
 
 ## Roadmap (spielerische Weiterentwicklung)

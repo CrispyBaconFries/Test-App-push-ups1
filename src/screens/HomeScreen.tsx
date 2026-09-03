@@ -41,8 +41,8 @@ export function HomeScreen({ navigation }: Props) {
         <StatRow label="Streak" value={`${stats?.currentStreakDays ?? 0} Tage`} />
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('Workout')}>
-        <Text style={styles.primaryButtonText}>Workout starten</Text>
+      <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('Camera')}>
+        <Text style={styles.primaryButtonText}>Start</Text>
       </Pressable>
 
       <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
