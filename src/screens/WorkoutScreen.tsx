@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View, Pressable } from 'react-native';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { useCameraPermission } from 'react-native-vision-camera';
 import {
   usePoseDetection,
@@ -95,6 +95,11 @@ export function WorkoutScreen({ navigation }: Props) {
   const finishWorkout = useCallback(async () => {
     if (finishingRef.current) return;
     finishingRef.current = true;
+    if (repsRef.current.length === 0) {
+      // Nothing done yet - don't clutter the Trainingsverlauf with an empty session.
+      navigation.goBack();
+      return;
+    }
     setFinishing(true);
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
     await saveSession(session);
@@ -102,23 +107,17 @@ export function WorkoutScreen({ navigation }: Props) {
   }, [navigation]);
 
   // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
-  // both dispatch the same navigation event) previously discarded any reps done so far
-  // without saving or asking. Intercept every way off this screen uniformly and confirm
-  // first if there's actually something to lose. Skipped once finishWorkout is already
-  // under way (its own navigation.replace() re-triggers this same listener).
+  // both dispatch the same navigation event) used to discard any reps done so far
+  // without saving. Results should never be thrown away, so any exit with at least one
+  // completed rep now saves and finishes the workout instead of just backing out -
+  // "Zurück" mid-session behaves exactly like tapping "Workout beenden". Skipped once
+  // finishWorkout is already under way (its own navigation.replace() re-triggers this
+  // same listener) and when there's nothing yet to save.
   useEffect(() => {
     return navigation.addListener('beforeRemove', (e) => {
       if (finishingRef.current || repsRef.current.length === 0) return;
       e.preventDefault();
-      Alert.alert(
-        'Workout verwerfen?',
-        `Du hast ${repsRef.current.length} Wiederholung(en) gemacht, die noch nicht gespeichert sind.`,
-        [
-          { text: 'Weitermachen', style: 'cancel' },
-          { text: 'Verwerfen', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
-          { text: 'Speichern & beenden', onPress: () => finishWorkout() },
-        ]
-      );
+      finishWorkout();
     });
   }, [navigation, finishWorkout]);
 

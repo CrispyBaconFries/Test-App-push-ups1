@@ -19,7 +19,7 @@ export function HistoryScreen(_props: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verlauf</Text>
+      <Text style={styles.title}>Trainingsverlauf</Text>
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -33,10 +33,14 @@ export function HistoryScreen(_props: Props) {
 
 function SessionRow({ session }: { session: WorkoutSession }) {
   const date = new Date(session.finishedAtIso);
+  const dateLabel = date.toLocaleDateString('de-DE');
+  const timeLabel = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   return (
     <View style={styles.row}>
       <View>
-        <Text style={styles.rowDate}>{date.toLocaleDateString('de-DE')}</Text>
+        <Text style={styles.rowDate}>
+          {dateLabel} · {timeLabel} Uhr
+        </Text>
         <Text style={styles.rowSub}>
           {session.totalReps} Liegestütze · Ø {session.averageFormScore} Punkte Form
         </Text>

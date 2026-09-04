@@ -25,8 +25,8 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     key: 'History',
-    title: 'Verlauf',
-    subtitle: 'Vergangene Workouts, Punkte, Streak',
+    title: 'Trainingsverlauf',
+    subtitle: 'Alle Workouts mit Wiederholungen, Datum und Uhrzeit',
   },
   {
     key: 'Camera',
