@@ -4,21 +4,21 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { WorkoutSession } from '../storage/workoutStorage';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CameraScreen } from '../screens/CameraScreen';
+import { WorkoutScreen } from '../screens/WorkoutScreen';
 import { SummaryScreen } from '../screens/SummaryScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 
-// NOTE: `WorkoutScreen` (the MediaPipe pose-detection screen) is intentionally not
-// wired in here yet. It imports `react-native-mediapipe`, which touches native camera
-// modules at import time - that only exists once a custom dev client is built (EAS or
-// a local Xcode/Android Studio build), and crashes immediately in plain Expo Go. Wiring
-// it back in is a matter of restoring the "Workout" screen/route below once that build
-// exists (see README.md).
+// `WorkoutScreen` (MediaPipe pose detection) needs native modules that only exist in a
+// custom-built app (a local Android Studio / Xcode build, or an EAS dev client) - it
+// crashes immediately in plain Expo Go. Since this build is meant to be compiled
+// locally with Android Studio (see README.md "Auf dem Handy installieren"), it's wired
+// in here as usual. If you ever go back to testing via plain Expo Go, unregister the
+// "Workout" screen below again (react-native-mediapipe touches native APIs at import
+// time), and point HomeScreen's "Training starten" entry at "Camera" instead.
 
 export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
-  // Not registered as a <Stack.Screen> below yet (see note above) - kept in the type
-  // so WorkoutScreen.tsx keeps compiling and wiring it back in later is a one-line change.
   Workout: undefined;
   Summary: { session: WorkoutSession };
   History: undefined;
@@ -31,6 +31,7 @@ export function RootNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Workout" component={WorkoutScreen} />
         <Stack.Screen name="Camera" component={CameraScreen} />
         <Stack.Screen name="Summary" component={SummaryScreen} />
         <Stack.Screen name="History" component={HistoryScreen} />

@@ -9,6 +9,32 @@ import { colors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
+type MenuItem = {
+  key: 'Workout' | 'History' | 'Camera';
+  title: string;
+  subtitle: string;
+  emphasis?: boolean;
+};
+
+const MENU_ITEMS: MenuItem[] = [
+  {
+    key: 'Workout',
+    title: 'Training starten',
+    subtitle: 'Kamera + Skelett-Overlay, zählt deine Liegestütze automatisch',
+    emphasis: true,
+  },
+  {
+    key: 'History',
+    title: 'Verlauf',
+    subtitle: 'Vergangene Workouts, Punkte, Streak',
+  },
+  {
+    key: 'Camera',
+    title: 'Kamera-Test',
+    subtitle: 'Nur Kamera ohne Auswertung – zum Prüfen, falls „Training starten“ Probleme macht',
+  },
+];
+
 export function HomeScreen({ navigation }: Props) {
   const [stats, setStats] = useState<WorkoutStats | null>(null);
 
@@ -34,13 +60,20 @@ export function HomeScreen({ navigation }: Props) {
         <StatRow label="Streak" value={`${stats?.currentStreakDays ?? 0} Tage`} />
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('Camera')}>
-        <Text style={styles.primaryButtonText}>Start</Text>
-      </Pressable>
-
-      <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
-        <Text style={styles.secondaryButtonText}>Verlauf ansehen</Text>
-      </Pressable>
+      <View style={styles.menu}>
+        {MENU_ITEMS.map((item) => (
+          <Pressable
+            key={item.key}
+            style={[styles.menuItem, item.emphasis && styles.menuItemEmphasis]}
+            onPress={() => navigation.navigate(item.key)}
+          >
+            <Text style={[styles.menuItemTitle, item.emphasis && styles.menuItemTitleEmphasis]}>{item.title}</Text>
+            <Text style={[styles.menuItemSubtitle, item.emphasis && styles.menuItemSubtitleEmphasis]}>
+              {item.subtitle}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -70,14 +103,14 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     color: colors.textSecondary,
-    marginBottom: 32,
+    marginBottom: 24,
     lineHeight: 21,
   },
   statsCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
-    marginBottom: 32,
+    marginBottom: 24,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -95,28 +128,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginBottom: 12,
+  menu: {
+    gap: 12,
   },
-  primaryButtonText: {
-    color: '#0B0F14',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  secondaryButton: {
+  menuItem: {
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  secondaryButtonText: {
+  menuItemEmphasis: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  menuItemTitle: {
     color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  menuItemTitleEmphasis: {
+    color: '#0B0F14',
+  },
+  menuItemSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  menuItemSubtitleEmphasis: {
+    color: 'rgba(11,15,20,0.7)',
   },
 });

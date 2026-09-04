@@ -1,82 +1,155 @@
 # Liegestütz Coach
 
 Eine React-Native/Expo-App, die über die **Frontkamera** die Liegestütz-Form in Echtzeit
-analysiert: ein Strichlinien-Skelett (Kopf, Torso, Arme, Ellenbogen, Hüfte) wird über das
-Kamerabild gelegt, live mitbewegt, und jede Wiederholung wird automatisch gezählt und
-bezüglich sauberer Ausführung bewertet.
+analysiert: ein Strichmännchen-Skelett (Kopf, Torso, Arme, Ellenbogen, Beine) wird live
+über das Kamerabild gelegt, jede Wiederholung wird automatisch gezählt und bezüglich
+sauberer Ausführung bewertet.
 
-Aufbau: Handy vor sich auf den Boden stellen (Frontkamera zeigt zum Nutzer), App starten,
-Liegestütze machen — die App zählt Wiederholungen, erkennt typische Fehler (Hüfte sackt
-durch, zu wenig Tiefe, Ellenbogen zu weit abgespreizt, Kopf/Nacken nicht neutral) und gibt
-sofortiges visuelles Feedback plus einen Form-Score pro Wiederholung.
+Aufbau: Handy vor sich auf den Boden stellen (Frontkamera zeigt zum Nutzer), im Menü
+**„Training starten"** wählen, Liegestütze machen — die App zählt Wiederholungen, erkennt
+typische Fehler (Hüfte sackt durch, zu wenig Tiefe, Ellenbogen zu weit abgespreizt,
+Kopf/Nacken nicht neutral) und gibt sofortiges visuelles Feedback plus einen Form-Score
+pro Wiederholung.
 
-## Aktueller Stand: zwei Entwicklungsstufen
+## App-Struktur
 
-**Stufe 1 (aktuell aktiv, in `RootNavigator`/`CameraScreen`):** Start-Button → Kamera
-öffnet sich → zwischen Front- und Rückkamera wechseln → Zurück-Button. Nutzt
-`expo-camera` und läuft **direkt in der normalen Expo-Go-App**, ohne eigenen nativen
-Build — das ist bewusst so gewählt, damit du die App sofort auf deinem Handy starten und
-bei jeder Änderung live sehen kannst (siehe "Lokal starten" unten).
+Die Startseite ist ein Menü mit mehreren Punkten, aus denen man jeweils wieder zurück
+navigieren kann (Android-Zurück-Taste/-Geste funktioniert überall, zusätzlich hat jeder
+Screen einen sichtbaren „Zurück"-Button):
 
-**Stufe 2 (bereits fertig implementiert, aber noch nicht eingehängt, in
-`WorkoutScreen.tsx`):** die volle Pose-Erkennung mit Skelett-Overlay, automatischer
-Wiederholungs-Zählung und Form-Bewertung (Details weiter unten). Sie nutzt
-`react-native-vision-camera` + MediaPipe, also *native* Module, die es in Expo Go nicht
-gibt — dafür ist ein **Custom Dev Client** nötig (einmaliger nativer Build, siehe
-"Stufe 2 aktivieren" unten). Der Code ist unverändert vorhanden und komplett unit-getestet,
-nur aktuell nicht in `RootNavigator.tsx` verdrahtet.
+- **Training starten** — Kamera + Skelett-Overlay + automatische Wiederholungs-Zählung
+  und Formbewertung. Der eigentliche Kern der App (`WorkoutScreen.tsx`).
+- **Verlauf** — vergangene Workouts, Punkte, Streak (`HistoryScreen.tsx`).
+- **Kamera-Test** — nur die Kamera ohne Auswertung, zum schnellen Prüfen, falls
+  „Training starten" auf einem Gerät Probleme macht (`CameraScreen.tsx`, nutzt
+  `expo-camera` statt der MediaPipe-Pipeline — dient als einfacher Diagnose-Fallback).
 
-## Lokal starten (Handy + PC-Vorschau)
+## Auf dem Handy installieren (lokaler Android-Build mit Android Studio)
 
-> **Wichtig:** Dieses Projekt wurde von Claude in einer Cloud-Sandbox entwickelt, die
-> keinen Tunnel zu deinem Handy oder eine grafische Vorschau auf deinem PC aufbauen kann
-> (ausgehende Verbindungen zu ngrok/Expo-Cloud-Diensten sind dort blockiert). Die
-> folgenden Befehle führst du deshalb **bei dir lokal** aus (Terminal auf deinem
-> Rechner, im Projektordner) — dort funktioniert der komplette Live-Reload-Workflow
-> normal.
+Die App nutzt native Kamera-/ML-Module (`react-native-vision-camera`, Google MediaPipe),
+die es **nicht** in der normalen Expo-Go-App gibt. Es gibt keine fertige APK zum simplen
+Herunterladen, weil es dafür einen Signing-Key und einen Play-Store- oder
+EAS-Cloud-Build bräuchte — beides bewusst nicht Teil dieses Projekts. Stattdessen baust
+du dir die Installationsdatei einmalig **selbst lokal** mit Android Studio; das dauert
+beim ersten Mal ca. 20–40 Minuten (SDK-Download), ist danach aber ein einzeiliger Befehl.
+
+### 1. Voraussetzungen installieren
+
+1. **[Android Studio](https://developer.android.com/studio)** herunterladen und
+   installieren (bringt das Android SDK, die Build-Tools und ein passendes JDK mit —
+   du musst nichts davon einzeln installieren).
+2. Android Studio einmal öffnen, dem Setup-Assistenten folgen ("Standard"-Installation
+   reicht). Das lädt beim ersten Start automatisch das Android SDK herunter (mehrere GB,
+   kann dauern).
+3. **[Node.js](https://nodejs.org/)** (LTS-Version) installieren, falls noch nicht
+   vorhanden — `node -v` im Terminal sollte etwas wie `v20.x` oder `v22.x` zeigen.
+4. Dein Handy vorbereiten:
+   - **Einstellungen → Über das Telefon** → 7× auf „Build-Nummer" tippen, um die
+     „Entwickleroptionen" freizuschalten.
+   - **Einstellungen → Entwickleroptionen → USB-Debugging** aktivieren.
+   - Handy per USB-Kabel an den PC anschließen, am Handy den Hinweis „USB-Debugging
+     zulassen?" mit **Zulassen** bestätigen (Häkchen bei „immer von diesem Computer
+     zulassen" optional).
+
+### 2. Projekt einrichten
+
+Im Terminal, im Projektordner:
 
 ```bash
+git pull
 npm install
-npm run start        # startet den Metro-Server im Expo-Go-Modus, zeigt einen QR-Code
+npm run model:download
 ```
 
-- **Auf dem Handy:** [Expo Go](https://expo.dev/go) aus dem App/Play Store installieren,
-  QR-Code aus dem Terminal scannen (gleiches WLAN wie dein PC). Die App öffnet sich sofort
-  — jede gespeicherte Codeänderung aktualisiert sie automatisch (Fast Refresh), ohne
-  Neuinstallation.
-- **Virtuelles Handy am PC:** im laufenden `npm run start`-Terminal `w` drücken (öffnet
-  die App im Browser über `react-native-web`) oder `a`/`i` für einen Android-Emulator
-  bzw. iOS-Simulator, falls du Android Studio/Xcode installiert hast. Alternativ direkt:
-  `npm run web`.
+`model:download` lädt das MediaPipe-Pose-Modell (`pose_landmarker_lite.task`, ~5,7 MB,
+offizielle Google-URL) herunter — es liegt nicht im Repo, wird aber für die
+Pose-Erkennung gebraucht. Ohne diesen Schritt bricht der nächste Befehl mit einer
+klaren Fehlermeldung ab.
 
-Sobald du mir sagst, welche Befehle das bei dir ausgibt (bzw. was du im Browser/Handy
-siehst), kann ich von hier aus weitere Anpassungen machen — die Datei-Änderungen kommen
-dann bei deinem nächsten `git pull` an, der lokale Metro-Server lädt sie automatisch neu,
-sobald du den Branch aktualisiert hast.
+```bash
+npm run prebuild
+```
+
+Das erzeugt die Ordner `android/` und `ios/` (native Projekte) und bündelt dabei
+automatisch das Modell in beide hinein.
+
+### 3. APK bauen und installieren
+
+**Variante A — am schnellsten, für tägliches Testen (empfohlen):**
+
+```bash
+npm run android
+```
+
+Baut die App, installiert sie automatisch auf dem per USB verbundenen Handy und startet
+sie. Danach läuft im Hintergrund ein lokaler Metro-Server: Wenn du (oder ich) Code
+änderst, wird die App **automatisch neu geladen**, ohne dass du neu bauen musst
+(„Fast Refresh") — genau das automatische Update-Verhalten, das du wolltest. Metro läuft
+dabei auf deinem eigenen Rechner, das Handy ist per Kabel verbunden — kein Tunnel, kein
+Cloud-Dienst nötig. Zum erneuten Starten des Servers ohne Neubau: `npm run start`.
+
+**Variante B — eine echte, verschickbare APK-Datei:**
+
+```bash
+cd android
+./gradlew assembleDebug          # Windows: gradlew.bat assembleDebug
+```
+
+Die fertige Datei liegt danach unter:
+
+```
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Das ist eine ganz normale APK-Datei, die du z. B. per Kabel, Cloud-Speicher oder Messenger
+aufs Handy bekommst. Dort antippen → **Installieren**. Falls das System das erste Mal
+blockiert: **Einstellungen → Apps → [Datei-App, z. B. "Dateien"] → Unbekannte Apps
+installieren** → erlauben, dann erneut versuchen. Das ist normal für Apps außerhalb des
+Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing nötig).
+
+### Worauf zu achten ist
+
+- **Physisches Handy statt Emulator** für den eigentlichen Test — ein Android-Emulator
+  hat keine echte Kamera, die Pose-Erkennung liefert dort nur Test-/Fake-Bilder.
+- **Kamera-Berechtigung**: Beim ersten Öffnen von „Training starten" oder „Kamera-Test"
+  fragt die App nach Kamerazugriff — unbedingt erlauben, sonst bleibt der Screen leer.
+  Versehentlich abgelehnt? **Einstellungen → Apps → Liegestütz Coach → Berechtigungen →
+  Kamera** manuell erlauben.
+- **Erster Gradle-Build dauert lange** (Android SDK/Build-Tools/Dependencies werden
+  heruntergeladen) — das ist normal, spätere Builds sind deutlich schneller.
+- **Debug-Build**: `assembleDebug` erzeugt bewusst eine ungesignte Debug-Version (kein
+  Schlüssel-Setup nötig) — perfekt zum eigenen Testen, aber nicht für den Play Store
+  gedacht. Das kommt erst, falls die App später wirklich veröffentlicht werden soll.
+- **Wenn `npm run prebuild` oder der Gradle-Build fehlschlägt**: Fehlermeldung
+  komplett kopieren und mir schicken — das ist der erste echte native Build dieses
+  Projekts (in meiner Cloud-Sandbox konnte ich mangels Android SDK nur bis kurz davor
+  testen, siehe „Hinweis zur Verifikation" unten), Startprobleme sind also nicht
+  ausgeschlossen und meist schnell behoben.
+- Änderungen, die *neue native Pakete* hinzufügen, brauchen einen erneuten
+  `npm run android` (nicht nur Fast Refresh); reine JS/TS-Änderungen (z. B. an
+  Bewertungslogik oder Texten) laden automatisch nach.
 
 ## Architektur
 
 | Layer | Tech |
 |---|---|
-| App-Framework | Expo (React Native, TypeScript) |
-| Kamera (Stufe 1, aktiv) | `expo-camera` — läuft in Expo Go |
-| Kamera (Stufe 2, geparkt) | `react-native-vision-camera` (Frame Processors) — braucht Custom Dev Client |
-| Pose-Erkennung (Stufe 2) | `react-native-mediapipe` → Google MediaPipe **Pose Landmarker** (33 BlazePose-Punkte, on-device, GPU-delegiert) |
-| Skelett-Overlay | `react-native-svg`, gezeichnet über `ViewCoordinator.convertPoint` (korrekte Zuordnung Kamera-Frame → Bildschirm, inkl. Spiegelung/Rotation/Crop) |
+| App-Framework | Expo (React Native, TypeScript), Custom Dev Client (lokaler nativer Build) |
+| Kamera + Pose-Erkennung | `react-native-vision-camera` (Frame Processors) + `react-native-mediapipe` → Google MediaPipe **Pose Landmarker** (33 BlazePose-Punkte, on-device, GPU-delegiert) |
+| Kamera-Test-Screen | `expo-camera` (einfacher, ohne Pose-Erkennung — Diagnose-Fallback) |
+| Skelett-Overlay | `react-native-svg`, gezeichnet über `ViewCoordinator.convertPoint` (korrekte Zuordnung Kamera-Frame → Bildschirm, inkl. Spiegelung/Rotation/Crop/Perspektive) |
 | Formanalyse | reines TypeScript, kein UI-/Native-Code (`src/pose/formAnalysis.ts`) — dadurch mit Jest unit-testbar |
 | Persistenz | `@react-native-async-storage/async-storage` (lokal, gerätespezifisch) |
 | Navigation | `@react-navigation/native-stack` |
 | Gamification | Punkte/Level jetzt, Grundgerüst für Challenges/Matches (siehe Roadmap) |
 
-## Wie die Formanalyse funktioniert (Stufe 2)
+## Wie die Formanalyse funktioniert
 
 `src/pose/formAnalysis.ts` (`PushUpAnalyzer`) bekommt pro Kamera-Frame die von MediaPipe
 gelieferten **`worldLandmarks`** (metrische 3D-Koordinaten, hüft-zentriert — deutlich
-robuster gegenüber Kameraperspektive als die 2D-Bildkoordinaten, die nur fürs Zeichnen des
-Overlays verwendet werden).
+robuster gegenüber Kameraperspektive als reine 2D-Bildkoordinaten).
 
 Daraus werden pro Frame vier Winkel berechnet (jeweils für die Körperseite, die MediaPipe
-gerade zuverlässiger sieht):
+gerade zuverlässiger sieht, für die Dauer einer Wiederholung fest — siehe unten):
 
 - **Ellenbogenwinkel** (Schulter–Ellenbogen–Handgelenk) → steuert die Zustandsmaschine
   `up → descending → down → ascending → up`, die eine Wiederholung erkennt.
@@ -86,69 +159,63 @@ gerade zuverlässiger sieht):
   abgespreizte Ellenbogen.
 - **Nacken-/Kopfhaltung** (Ohr–Schulter–Hüfte) → erkennt eine nicht neutrale Kopfhaltung.
 
-Eine Wiederholung wird gezählt, sobald der Arm die Abwärtsbewegung wirklich begonnen hat
+**Zur Zähllogik** (bewusste Design-Entscheidung, gerne nach dem ersten Test anpassen):
+angefragt war sinngemäß „Kopf überschreitet die Parallele der Ellenbogen und kehrt zur
+Ausgangsposition zurück". Umgesetzt ist das funktional gleichwertig, aber über den
+**Ellenbogenwinkel** statt über einen reinen Bildschirm-Höhenvergleich Kopf/Ellenbogen:
+Eine Wiederholung zählt, sobald der Arm die Abwärtsbewegung wirklich begonnen hat
 (Ellenbogenwinkel unter `elbowAttemptDeg`, Standard 140°) und danach wieder vollständig
-gestreckt wird (`elbowUpDeg`, Standard 160°) — bewusst **unabhängig davon, wie tief** die
-Wiederholung war. Auch eine zu flache Wiederholung zählt also als Versuch, wird aber mit
-niedrigem Form-Score und der Rückmeldung "Tiefer gehen" bewertet. Nur eine winzige
-Bewegung, die nie über die Attempt-Schwelle hinauskommt, wird als Rauschen verworfen.
+gestreckt wird (`elbowUpDeg`, Standard 160°) — **unabhängig davon, wie tief** genau. Auch
+eine zu flache Wiederholung zählt also als Versuch (nicht zu streng), wird aber mit
+niedrigem Form-Score und der Rückmeldung "Tiefer gehen" bewertet (kein Falsch-Zählen).
+Nur eine winzige Bewegung, die nie über die Attempt-Schwelle hinauskommt, wird als
+Rauschen verworfen. Der Grund für den Ellenbogenwinkel statt Kopf/Ellenbogen-Bildhöhe:
+Winkel aus den 3D-`worldLandmarks` bleiben stabil, egal wie das Handy genau steht oder
+gekippt ist — ein reiner Bildschirm-Höhenvergleich würde sich mit der Kameraperspektive
+verschieben. Nach dem ersten echten Test lässt sich das jederzeit umstellen oder
+nachschärfen — das ist der Sinn der „Kamera-Test" + „Training starten"-Trennung im Menü.
 
 Der Form-Score (0–100) startet bei 100 und wird für jeden erkannten Fehler anteilig
-reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS` und lassen sich
-leicht anpassen/kalibrieren.
+reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS`
+(`src/pose/formAnalysis.ts`) und lassen sich leicht anpassen/kalibrieren, sobald du
+gesehen hast, wie sich die App bei dir anfühlt.
 
-## Stufe 2 aktivieren (Pose-Erkennung, Custom Dev Client)
-
-Sobald du die volle MediaPipe-Version testen willst:
-
-```bash
-npm run model:download   # lädt das MediaPipe-Modell (~5.7 MB, wird nicht committed)
-npm run prebuild          # erzeugt ios/ und android/ (Expo Prebuild)
-npm run android            # oder: npm run ios (braucht macOS + Xcode)
-```
-
-Danach in `src/navigation/RootNavigator.tsx` den `WorkoutScreen`-Import und
-`<Stack.Screen name="Workout" component={WorkoutScreen} />` wieder einkommentieren/
-hinzufügen (siehe Kommentar dort) und z. B. den Home-Button darauf verlinken. Für den
-täglichen Metro-Server danach: `npm run start:dev-client` statt `npm run start`.
-
-Das Pose-Landmarker-Modell (`pose_landmarker_lite.task`, Google/MediaPipe) wird **nicht**
-im Repo mitgeführt (Binärdatei, ~5.7 MB) und stattdessen per Skript geladen
-(`scripts/download-pose-model.js`, offizielle Google-Storage-URL). Der Expo-Config-Plugin
-`plugins/withPoseLandmarkerModel.js` bündelt die Datei beim `expo prebuild` automatisch in
-die iOS- und Android-Projekte (Xcode "Copy Bundle Resources" bzw.
-`android/app/src/main/assets/`) — bricht mit einer klaren Fehlermeldung ab, falls die Datei
-vorher nicht heruntergeladen wurde.
-
-Vor einem Store-Release `app.json` anpassen: `ios.bundleIdentifier` /
-`android.package` sind aktuell Platzhalter (`com.pushupcoach.app`).
-
-### Tests & Typecheck
+## Tests & Typecheck
 
 ```bash
-npm test          # Jest — Unit-Tests für Rep-Zählung, Form-Scoring, Punkte/Level
+npm test          # Jest — Unit-Tests für Rep-Zählung, Form-Scoring, Punkte/Level, Streak
 npm run typecheck # tsc --noEmit
 ```
 
-Die Kernlogik (`src/pose/formAnalysis.ts`, `src/gamification/points.ts`) ist bewusst
-UI- und Native-Code-frei gehalten, damit sie ganz ohne Gerät/Simulator getestet werden
-kann. Ein synthetischer Pose-Builder (`src/pose/testing/poseBuilder.ts`) erzeugt dafür
-33-Punkt-Skelette mit exakt kontrollierten Winkeln.
+Die Kernlogik (`src/pose/formAnalysis.ts`, `src/gamification/points.ts`,
+`src/storage/workoutStorage.ts`) ist bewusst UI- und Native-Code-frei gehalten, damit sie
+ganz ohne Gerät/Simulator getestet werden kann. Ein synthetischer Pose-Builder
+(`src/pose/testing/poseBuilder.ts`) erzeugt dafür 33-Punkt-Skelette mit exakt
+kontrollierten Winkeln.
 
-**Hinweis zur Verifikation:** Stufe 1 (Start/Kamera/Umschalten/Zurück) wurde in dieser
-Cloud-Sandbox tatsächlich lauffähig verifiziert — `expo start --web` gestartet und per
-Headless-Chromium durchgeklickt (Start → Kamera aktiviert sich, Front-/Rückkamera-Toggle
-funktioniert, Zurück-Button funktioniert, keine Konsolenfehler). Ein echter Test auf einem
-physischen Handy über Expo Go steht noch aus, da diese Sandbox keine Verbindung zu deinem
-Handy aufbauen kann — das übernimmst du mit den Befehlen oben.
+**Hinweis zur Verifikation:** Diese Cloud-Sandbox hat kein Android SDK und keine
+Kamera/kein physisches Gerät, daher konnte der eigentliche native Android-Build hier
+nicht bis zum Ende durchlaufen werden — dein `npm run android` bei dir ist der erste
+echte End-to-End-Test. Was hier tatsächlich verifiziert wurde:
 
-Stufe 2 (MediaPipe) konnte mangels Kamera/Gerät in dieser Sandbox nicht live getestet
-werden. TypeScript-Kompilierung und alle Unit-Tests laufen grün, die Integration wurde
-sorgfältig gegen den tatsächlich installierten Quellcode von `react-native-vision-camera`
-und `react-native-mediapipe` abgeglichen (Native-API-Kompatibilität,
-`ViewCoordinator`-Koordinatentransformation, Modell-Asset-Auflösung — ein echter
-`expo prebuild`-Lauf hat das Modell korrekt in ein generiertes Xcode-Projekt eingebettet).
-Ein echter On-Device-Testlauf steht noch aus.
+- `tsc --noEmit` und alle Unit-Tests laufen grün.
+- `expo prebuild` wurde real ausgeführt: das generierte `android/`-Projekt hat die
+  richtige Kamera-Berechtigung im Manifest, die richtige `applicationId`, und das
+  MediaPipe-Modell korrekt unter `android/app/src/main/assets/` gebündelt.
+- Der komplette Metro/Babel-Bundling-Schritt (der auch beim nativen Build läuft, nicht
+  nur im Browser) wurde real durchlaufen — dabei kamen **fünf fehlende
+  `@babel/plugin-*`-Pakete** zum Vorschein, die `react-native-worklets-core`s
+  Kamera-Frame-Prozessor-Transform braucht, aber die nicht automatisch mitinstalliert
+  wurden. Alle fünf sind jetzt in `package.json` als `devDependencies` ergänzt — ohne
+  diesen Fund hätte vermutlich dein erster `npm run android` mit einer kryptischen
+  "Cannot find module '@babel/plugin-transform-...'"-Fehlermeldung abgebrochen.
+- Eine Browser-Vorschau (`expo start --web`) ist mit MediaPipe **nicht mehr möglich**
+  (`react-native-vision-camera` verweigert bewusst die Web-Plattform) — das ist normales,
+  erwartetes Verhalten der Bibliothek und betrifft den echten Android-Build nicht.
+
+Was noch aussteht: der eigentliche native Gradle-Compile-Schritt, echtes
+Kamera-Tracking, und ob die Zähl-/Bewertungslogik sich auf einem echten Körper richtig
+anfühlt (Kalibrierung).
 
 ## Projektstruktur
 
@@ -157,22 +224,22 @@ src/
   pose/
     blazePoseLandmarks.ts   33-Punkt-Indizes (BlazePose-Standard, kein Native-Import)
     landmarks.ts             Winkel-/Sichtbarkeits-Hilfsfunktionen
-    formAnalysis.ts           Zustandsmaschine + Form-Scoring (PushUpAnalyzer, Stufe 2)
+    formAnalysis.ts           Zustandsmaschine + Form-Scoring (PushUpAnalyzer)
     feedbackText.ts            deutsche Texte für Form-Hinweise
     testing/poseBuilder.ts     synthetischer Pose-Generator für Tests
   components/
-    SkeletonOverlay.tsx        SVG-Strichmodell über der Kamera (Stufe 2)
-    RepHud.tsx                  Rep-Zähler, Score, Live-Hinweis (Stufe 2)
+    SkeletonOverlay.tsx        SVG-Strichmännchen über der Kamera
+    RepHud.tsx                  Rep-Zähler, Score, Live-Hinweis
   screens/
-    HomeScreen.tsx      Start-Button, Punkte/Level-Übersicht
-    CameraScreen.tsx     Stufe 1: Kamera, Front-/Rückkamera-Toggle, Zurück (expo-camera)
-    WorkoutScreen.tsx    Stufe 2: volle Pose-Erkennung (aktuell nicht verdrahtet)
+    HomeScreen.tsx      Menü: Training starten / Verlauf / Kamera-Test
+    WorkoutScreen.tsx    Kamera + Skelett-Overlay + Zähl-/Bewertungslogik (Kernscreen)
+    CameraScreen.tsx     einfacher Kamera-Test ohne Auswertung (expo-camera)
     SummaryScreen.tsx, HistoryScreen.tsx
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage)
   gamification/points.ts        Punkte-/Level-Berechnung
   navigation/RootNavigator.tsx
-plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ (Stufe 2)
-scripts/download-pose-model.js        lädt das Modell herunter (Stufe 2)
+plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
+scripts/download-pose-model.js        lädt das Modell herunter
 ```
 
 ## Roadmap (spielerische Weiterentwicklung)
@@ -192,8 +259,8 @@ ist die Grundlage für alles Folgende:
    wer schafft mehr saubere Liegestütze") — braucht einen Realtime-Layer (z. B. Firebase,
    Supabase Realtime oder ein eigenes WebSocket-Backend) statt der aktuell rein lokalen
    `AsyncStorage`-Persistenz, plus Nutzerkonten/Matchmaking.
-5. **Bagger/Leaderboards**: setzt eine Backend-Anbindung für Konten + serverseitig
-   validierte Scores voraus (client-seitige Scores sind manipulierbar).
+5. **Leaderboards**: setzt eine Backend-Anbindung für Konten + serverseitig validierte
+   Scores voraus (client-seitige Scores sind manipulierbar).
 
 Schritte 2–3 lassen sich rein lokal umsetzen; Schritte 4–5 brauchen ein Backend und damit
 eine bewusste Folgeentscheidung (Anbieter, Datenmodell, Authentifizierung).

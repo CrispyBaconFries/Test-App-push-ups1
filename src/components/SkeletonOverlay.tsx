@@ -36,8 +36,11 @@ const HEAD_BONES: [number, number][] = [
 
 const COLOR_OK = '#37E27C';
 const COLOR_WARN = '#FF5A5F';
-const COLOR_LEG = 'rgba(255,255,255,0.35)';
+const COLOR_LEG = 'rgba(255,255,255,0.55)';
 const COLOR_JOINT = '#FFFFFF';
+
+/** Joints drawn as small circles - every bone endpoint except the head (drawn separately, bigger). */
+const BODY_JOINTS = [leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist, leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
 
 const ISSUE_JOINTS: Record<FormIssue, number[]> = {
   INSUFFICIENT_DEPTH: [leftElbow, rightElbow],
@@ -65,21 +68,25 @@ export function SkeletonOverlay({ width, height, points, activeIssue }: Skeleton
   }
 
   const boneColor = activeIssue ? COLOR_WARN : COLOR_OK;
+  const headPoint = points[nose];
+  const headIsWarn = highlightedJoints.has(nose);
 
   return (
     <Svg width={width} height={height} style={{ position: 'absolute', top: 0, left: 0 }} pointerEvents="none">
+      {/* Legs - drawn first so the torso/arms sit visually on top where lines cross. */}
       {LEG_BONES.map(([a, b], i) => (
-        <BoneLine key={`leg-${i}`} points={points} a={a} b={b} color={COLOR_LEG} strokeWidth={3} />
+        <BoneLine key={`leg-${i}`} points={points} a={a} b={b} color={COLOR_LEG} strokeWidth={4} />
       ))}
+      {/* Torso and arms - the limbs form scoring actually cares about. */}
       {CORE_BONES.map(([a, b], i) => (
         <BoneLine key={`core-${i}`} points={points} a={a} b={b} color={boneColor} strokeWidth={5} />
       ))}
+      {/* Neck: connects the head down to the torso so the figure reads as one connected body. */}
       {HEAD_BONES.map(([a, b], i) => (
         <BoneLine key={`head-${i}`} points={points} a={a} b={b} color={boneColor} strokeWidth={4} />
       ))}
-      {/* Dedupe: shoulders appear in both CORE_BONES and HEAD_BONES, and mapping them
-          twice would render two overlapping <Circle>s with the same React key. */}
-      {[...new Set([...CORE_BONES.flat(), ...HEAD_BONES.flat()])].map((index) => {
+      {/* Every joint (elbows, wrists, hips, knees, ankles) as a small circle. */}
+      {BODY_JOINTS.map((index) => {
         const p = points[index];
         if (!p) return null;
         const isWarn = highlightedJoints.has(index);
@@ -93,6 +100,18 @@ export function SkeletonOverlay({ width, height, points, activeIssue }: Skeleton
           />
         );
       })}
+      {/* Head: one noticeably bigger circle at the nose, so the figure reads as human
+          rather than another joint dot - matches how a stick figure is normally drawn. */}
+      {headPoint && (
+        <Circle
+          cx={headPoint.x}
+          cy={headPoint.y}
+          r={headIsWarn ? 16 : 13}
+          fill="none"
+          stroke={headIsWarn ? COLOR_WARN : boneColor}
+          strokeWidth={3}
+        />
+      )}
     </Svg>
   );
 }

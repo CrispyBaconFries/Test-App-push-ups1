@@ -126,6 +126,10 @@ export function WorkoutScreen({ navigation }: Props) {
 
       <RepHud repCount={repCount} live={live} lastRep={lastRep} trackingOk={live?.trackingOk ?? true} />
 
+      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Text style={styles.iconButtonText}>Zurück</Text>
+      </Pressable>
+
       <Pressable style={styles.finishButton} onPress={finishWorkout} disabled={finishing}>
         <Text style={styles.primaryButtonText}>Workout beenden</Text>
       </Pressable>
@@ -180,5 +184,19 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     paddingVertical: 14,
     paddingHorizontal: 32,
+  },
+  backButton: {
+    position: 'absolute',
+    bottom: 44,
+    left: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  iconButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
