@@ -21,18 +21,20 @@ export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
 
   return (
     <View style={styles.container} pointerEvents="none">
-      <View style={styles.topRow}>
-        <View style={styles.repBadge}>
-          <Text style={styles.repCount}>{repCount}</Text>
-          <Text style={styles.repLabel}>Wiederholungen</Text>
+      {/* Rep counter: centered top, the one number a user glances at mid-set. */}
+      <View style={styles.repCounterRow}>
+        <View style={styles.repCounterBadge}>
+          <Text style={styles.repCountText}>{repCount}</Text>
+          <Text style={styles.repCountLabel}>Wiederholungen</Text>
         </View>
-        {lastRep && (
-          <View style={styles.scoreBadge}>
-            <Text style={styles.scoreValue}>{lastRep.formScore}</Text>
-            <Text style={styles.repLabel}>Form-Score</Text>
-          </View>
-        )}
       </View>
+
+      {lastRep && (
+        <View style={styles.scoreBadge}>
+          <Text style={styles.scoreValue}>{lastRep.formScore}</Text>
+          <Text style={styles.scoreLabel}>Form-Score</Text>
+        </View>
+      )}
 
       {!trackingOk && (
         <View style={styles.cueBar}>
@@ -56,53 +58,72 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'space-between',
-    padding: 20,
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  repBadge: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+  // A full-width, transparent row so `alignItems: 'center'` centers the badge on the
+  // screen regardless of the (variable-width) score badge sitting in the top-right corner.
+  repCounterRow: {
+    position: 'absolute',
+    top: 20,
+    left: 0,
+    right: 0,
     alignItems: 'center',
   },
-  scoreBadge: {
+  repCounterBadge: {
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     alignItems: 'center',
   },
-  repCount: {
-    fontSize: 34,
+  repCountText: {
+    fontSize: 28,
     fontWeight: '800',
     color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+  },
+  repCountLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scoreBadge: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
   },
   scoreValue: {
-    fontSize: 34,
+    fontSize: 20,
     fontWeight: '800',
     color: '#37E27C',
   },
-  repLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
+  scoreLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.75)',
+    marginTop: 1,
   },
   cueBar: {
-    alignSelf: 'center',
+    position: 'absolute',
+    bottom: 108,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+  },
+  cueText: {
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    marginBottom: 12,
-  },
-  cueText: {
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+    overflow: 'hidden',
   },
 });
