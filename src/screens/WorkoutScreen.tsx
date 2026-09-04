@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { Alert, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useCameraPermission } from 'react-native-vision-camera';
 import {
   usePoseDetection,
@@ -37,6 +37,11 @@ export function WorkoutScreen({ navigation }: Props) {
   const [live, setLive] = useState<LiveFeedback | null>(null);
   const [skeletonPoints, setSkeletonPoints] = useState<ViewPoint[] | null>(null);
   const [finishing, setFinishing] = useState(false);
+  // Mirrors `finishing`, but read synchronously inside the `beforeRemove` listener
+  // below: state updates aren't visible in already-created closures until React
+  // re-renders and the effect re-subscribes, which isn't guaranteed to happen before
+  // `finishWorkout`'s own `navigation.replace()` call re-triggers that same listener.
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     if (!hasPermission) {
@@ -88,12 +93,34 @@ export function WorkoutScreen({ navigation }: Props) {
   });
 
   const finishWorkout = useCallback(async () => {
-    if (finishing) return;
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setFinishing(true);
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
     await saveSession(session);
     navigation.replace('Summary', { session });
-  }, [finishing, navigation]);
+  }, [navigation]);
+
+  // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
+  // both dispatch the same navigation event) previously discarded any reps done so far
+  // without saving or asking. Intercept every way off this screen uniformly and confirm
+  // first if there's actually something to lose. Skipped once finishWorkout is already
+  // under way (its own navigation.replace() re-triggers this same listener).
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e) => {
+      if (finishingRef.current || repsRef.current.length === 0) return;
+      e.preventDefault();
+      Alert.alert(
+        'Workout verwerfen?',
+        `Du hast ${repsRef.current.length} Wiederholung(en) gemacht, die noch nicht gespeichert sind.`,
+        [
+          { text: 'Weitermachen', style: 'cancel' },
+          { text: 'Verwerfen', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+          { text: 'Speichern & beenden', onPress: () => finishWorkout() },
+        ]
+      );
+    });
+  }, [navigation, finishWorkout]);
 
   if (!hasPermission) {
     return (

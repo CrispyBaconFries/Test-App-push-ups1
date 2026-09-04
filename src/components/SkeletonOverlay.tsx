@@ -42,12 +42,14 @@ const COLOR_JOINT = '#FFFFFF';
 /** Joints drawn as small circles - every bone endpoint except the head (drawn separately, bigger). */
 const BODY_JOINTS = [leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist, leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle];
 
+/** Which joints turn red for a given form issue. Only landmarks actually drawn as
+ * circles have any effect here - ears aren't (the head is one circle at the nose). */
 const ISSUE_JOINTS: Record<FormIssue, number[]> = {
   INSUFFICIENT_DEPTH: [leftElbow, rightElbow],
   HIPS_SAGGING: [leftHip, rightHip],
   HIPS_PIKING: [leftHip, rightHip],
   ELBOWS_FLARED: [leftElbow, rightElbow],
-  HEAD_MISALIGNED: [nose, leftEar, rightEar],
+  HEAD_MISALIGNED: [nose],
 };
 
 export interface SkeletonOverlayProps {
