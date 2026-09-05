@@ -22,7 +22,7 @@ export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Workout: undefined;
-  Summary: { session: WorkoutSession; newBadges: BadgeDefinition[] };
+  Summary: { session: WorkoutSession; newBadges: BadgeDefinition[]; newBestReps: boolean; newBestFormScore: boolean };
   History: undefined;
   Achievements: undefined;
 };

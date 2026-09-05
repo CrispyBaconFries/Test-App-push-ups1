@@ -11,7 +11,12 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Summary'>;
 
 export function SummaryScreen({ route, navigation }: Props) {
-  const { session, newBadges } = route.params;
+  const { session, newBadges, newBestReps, newBestFormScore } = route.params;
+
+  const recordLabels = [
+    newBestReps && 'meiste Wiederholungen in einer Session',
+    newBestFormScore && 'höchster Ø Form-Score',
+  ].filter((label): label is string => Boolean(label));
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -21,6 +26,16 @@ export function SummaryScreen({ route, navigation }: Props) {
         </View>
         <Text style={styles.title}>Workout abgeschlossen</Text>
       </View>
+
+      {recordLabels.length > 0 && (
+        <View style={styles.recordCard}>
+          <Ionicons name="trending-up" size={20} color="#0B0F14" />
+          <View style={styles.newBadgeTextWrap}>
+            <Text style={styles.newBadgeTitle}>Neue Bestleistung!</Text>
+            <Text style={styles.recordNames}>{recordLabels.join(' · ')}</Text>
+          </View>
+        </View>
+      )}
 
       {newBadges.length > 0 && (
         <View style={styles.newBadgeCard}>
@@ -110,6 +125,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
     fontSize: 22,
     color: colors.textPrimary,
+  },
+  recordCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  recordNames: {
+    fontFamily: fonts.regular,
+    color: 'rgba(11,15,20,0.75)',
+    fontSize: 12,
+    marginTop: 2,
   },
   newBadgeCard: {
     flexDirection: 'row',

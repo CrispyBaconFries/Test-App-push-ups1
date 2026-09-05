@@ -109,7 +109,8 @@ export function WorkoutScreen({ navigation }: Props) {
     }
     setFinishing(true);
     const previousSessions = await loadSessions();
-    const badgesBefore = computeBadgeStatuses(computeStats(previousSessions), previousSessions);
+    const previousStats = computeStats(previousSessions);
+    const badgesBefore = computeBadgeStatuses(previousStats, previousSessions);
 
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
     await saveSession(session);
@@ -118,7 +119,13 @@ export function WorkoutScreen({ navigation }: Props) {
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
     const newBadges = newlyUnlockedBadges(badgesBefore, badgesAfter);
 
-    navigation.replace('Summary', { session, newBadges });
+    // Only a "record" if there was a previous best to actually beat - on the very first
+    // session ever, trivially "beating" a baseline of 0 isn't a meaningful record.
+    const hasHistory = previousSessions.length > 0;
+    const newBestReps = hasHistory && session.totalReps > previousStats.bestSessionReps;
+    const newBestFormScore = hasHistory && session.averageFormScore > previousStats.bestAverageFormScore;
+
+    navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore });
   }, [navigation]);
 
   // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
