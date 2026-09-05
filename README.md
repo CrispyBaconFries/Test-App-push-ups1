@@ -154,6 +154,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Sound-Feedback | `expo-audio` — zwei kurze, synthetisch erzeugte Töne (`assets/sounds/`, erzeugt via `scripts/generate-rep-sounds.js`), kein Vibrieren |
 | Erinnerungen | `expo-notifications` — optionale tägliche lokale Benachrichtigung, nur nach expliziter Erlaubnis |
 | Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
+| Anmeldung | `@react-native-google-signin/google-signin` (optional, „Mit Google anmelden" auf dem Home-Screen) + `expo-secure-store` für die verschlüsselte lokale Ablage des Profils — kein eigenes Backend, siehe „Google-Anmeldung einrichten" |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -231,6 +232,121 @@ Was noch aussteht: der eigentliche native Gradle-Compile-Schritt, echtes
 Kamera-Tracking, und ob die Zähl-/Bewertungslogik sich auf einem echten Körper richtig
 anfühlt (Kalibrierung).
 
+## Google-Anmeldung einrichten
+
+Die App bietet jetzt optional „Mit Google anmelden" auf dem Home-Screen (Profilbild,
+Name, E-Mail) — zur Personalisierung und als Grundlage für das später geplante
+Online-Ranking (siehe Roadmap). Es gibt noch kein eigenes Backend, also auch keinen
+echten Account und keine Cloud-Synchronisierung: Das Profil wird nur lokal und
+**verschlüsselt** (`expo-secure-store`, also Android Keystore / iOS Keychain — nicht die
+unverschlüsselte `AsyncStorage`, die sonst für die Trainingshistorie genutzt wird) auf
+dem Gerät gespeichert. Anmelden ist komplett optional, die App funktioniert ohne genauso.
+
+Die im Code hinterlegten Platzhalter-IDs gehören zu keinem echten Google-Projekt — damit
+„Mit Google anmelden" bei dir funktioniert, brauchst du einmalig eigene OAuth-Client-IDs:
+
+1. **Google Cloud Console öffnen**: https://console.cloud.google.com/ → neues Projekt
+   anlegen (oder ein bestehendes wählen).
+2. **OAuth-Zustimmungsbildschirm** einrichten (APIs & Dienste →
+   OAuth-Zustimmungsbildschirm): externen Nutzertyp wählen, App-Namen/Support-E-Mail
+   ausfüllen. Für eigene Tests reicht der „Testing"-Modus mit deiner E-Mail als
+   Testnutzer — für die Play-Store-Veröffentlichung muss er später auf „In Produktion"
+   gestellt und von Google verifiziert werden.
+3. **Android-OAuth-Client anlegen** (APIs & Dienste → Anmeldedaten → + Anmeldedaten
+   erstellen → OAuth-Client-ID → Android):
+   - Paketname: `com.pushupcoach.app` (`app.json` → `android.package` — das ist aktuell
+     ein Platzhalter, siehe „Play-Store-Veröffentlichung" unten, warum er sich später
+     nicht mehr ändern lässt).
+   - SHA-1-Fingerabdruck deines Debug-Keystores (zum lokalen Testen):
+     ```bash
+     keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+     ```
+     (Android Studio legt diesen Debug-Keystore beim ersten Build automatisch mit
+     Standard-Passwort `android` an.)
+   - Für den späteren Play-Store-Release brauchst du zusätzlich einen **zweiten**
+     Android-Client mit dem SHA-1 deines Release-Keystores (siehe unten) — unterschiedliche
+     Keystores haben unterschiedliche SHA-1-Werte, das ist der häufigste
+     Google-Sign-In-Stolperstein beim Wechsel von Debug- zu Release-Build.
+4. **Web-OAuth-Client anlegen** (gleicher Dialog, Typ „Web-Anwendung", kein Redirect-URI
+   nötig): Das ist die ID, die `@react-native-google-signin/google-signin` intern als
+   `webClientId` braucht — auch auf Android, zusätzlich zum Android-Client aus Schritt 3
+   (ein Google-Detail, keine Fehlkonfiguration deinerseits). Trag sie in `app.json` unter
+   `expo.extra.googleSignInWebClientId` ein (ersetzt
+   `REPLACE_WITH_YOUR_WEB_CLIENT_ID...`).
+5. **(nur falls du auch für iOS baust) iOS-OAuth-Client anlegen**: Bundle-ID
+   `com.pushupcoach.app`, liefert eine Client-ID der Form
+   `123-abc.apps.googleusercontent.com`. Die „umgedrehte" Form davon
+   (`com.googleusercontent.apps.123-abc`) trägst du in `app.json` unter
+   `expo.plugins` → `@react-native-google-signin/google-signin` → `iosUrlScheme` ein
+   (ersetzt `com.googleusercontent.apps.REPLACE_WITH_YOUR_IOS_CLIENT_ID`).
+6. Danach `npm run prebuild` (bzw. `npm run android`/`npm run ios`) erneut ausführen,
+   damit die neuen Werte in den nativen Build einfließen.
+
+Solange die Platzhalter noch drinstehen, bricht „Mit Google anmelden" mit einem Fehler
+ab — das ist erwartet und kein Bug.
+
+## Play-Store-Veröffentlichung
+
+Ziel ist ein signiertes `.aab` (Android App Bundle — der Play Store verlangt zwingend
+dieses Format, nicht die `.apk`, die du bisher zum Testen genutzt hast). Das lässt sich
+nicht vollständig automatisieren, weil dabei ein privater Schlüssel entsteht, den nur du
+besitzen darfst — ich kann und darf ihn nicht für dich erzeugen oder aufbewahren.
+
+1. **Paketname/Bundle-ID final festlegen**: `com.pushupcoach.app` (`app.json` →
+   `android.package`/`ios.bundleIdentifier`) ist aktuell nur ein Platzhalter. Einmal im
+   Play Store veröffentlicht, lässt sich der Android-Paketname **nicht mehr ändern** —
+   vorher final entscheiden.
+2. **Release-Keystore erzeugen** (einmalig; Verlust bedeutet, dass die App nie wieder
+   aktualisiert werden kann):
+   ```bash
+   keytool -genkeypair -v -keystore release.keystore -alias pushup-coach \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   `release.keystore` **niemals committen** (liegt bereits in `.gitignore` via
+   `*.jks`/`*.keystore`) — zusätzlich an einem zweiten, sicheren Ort aufbewahren
+   (Passwort-Manager, externes Backup).
+3. **Signing in Gradle hinterlegen**: Keystore-Pfad/Passwörter in
+   `android/gradle.properties` (ebenfalls nicht committen) und einen
+   `signingConfigs.release`-Block in `android/app/build.gradle` — Standard-Android-
+   Doku, ich helfe gerne konkret weiter, sobald der Keystore existiert und du an dem
+   Schritt bist.
+4. **SHA-1 des Release-Keystores ermitteln** (`keytool -list -v -keystore
+   release.keystore -alias pushup-coach`) und wie oben beschrieben einen zweiten
+   Android-OAuth-Client dafür in der Google Cloud Console anlegen, sonst funktioniert
+   „Mit Google anmelden" im signierten Release-Build nicht.
+5. **Bundle bauen**: `cd android && ./gradlew bundleRelease` → Ergebnis unter
+   `android/app/build/outputs/bundle/release/app-release.aab`.
+6. **Play Console**: Datenschutzerklärung (URL, siehe unten), Data-Safety-Formular
+   (siehe unten), Store-Eintrag (Screenshots/Beschreibung), interner Test →
+   geschlossener Test → Produktion.
+
+### Datenschutzerklärung (Privacy Policy)
+
+Pflicht für jede Play-Store-App, sobald Berechtigungen wie Kamera oder eine
+Google-Anmeldung genutzt werden. Ich kann den Text entwerfen, aber **nicht hosten** —
+die Play Console verlangt eine öffentlich erreichbare URL (z. B. eine einfache
+GitHub-Pages-Seite oder ein Google Doc mit Freigabe „Jeder mit Link"). Inhaltlich gehört
+rein (Stand der App):
+
+- **Kamerabilder**: werden ausschließlich lokal auf dem Gerät verarbeitet
+  (MediaPipe-Posenerkennung on-device), verlassen das Gerät nie, werden nicht
+  gespeichert oder hochgeladen.
+- **Trainingsdaten** (Wiederholungen, Datum/Uhrzeit, Form-Score, Punkte): nur lokal auf
+  dem Gerät gespeichert (`AsyncStorage`) — kein Server, keine Übertragung an Dritte.
+- **Google-Kontodaten** (Name, E-Mail, Profilbild) bei optionaler Anmeldung: nur lokal
+  und verschlüsselt gespeichert (`expo-secure-store`), keine Übertragung an einen
+  eigenen Server (existiert noch nicht) und keine Weitergabe an Dritte.
+- **Benachrichtigungen**: nur lokal geplante Erinnerungen, kein Push-Server.
+- Keine Werbung, kein Tracking, keine Analytics-SDKs.
+
+### Data-Safety-Formular (Play Console)
+
+Passend zur obigen Liste: „Kamera" und „Name/E-Mail-Adresse/Profilbild" jeweils als
+gesammelte Datenkategorie mit Zweck „App-Funktionalität" angeben, jeweils **nicht**
+geteilt; bei der Kamera zusätzlich angeben, dass die Verarbeitung ausschließlich
+on-device erfolgt. Keine Kategorie für Werbung/Analytics ankreuzen, solange kein
+entsprechendes SDK eingebaut ist.
+
 ## Projektstruktur
 
 ```
@@ -247,6 +363,12 @@ src/
     ProgressBar.tsx, LevelProgressBar.tsx   animierte Fortschrittsbalken
   audio/repSounds.ts            zwei Bestätigungstöne (expo-audio), siehe oben
   notifications/dailyReminder.ts  optionale tägliche Erinnerung (expo-notifications)
+  auth/
+    types.ts                 lokales Profil-Datenmodell (id/name/email/photoUrl)
+    mapGoogleUser.ts           reine Mapping-Funktion Google-User → lokales Profil (testbar)
+    profileStorage.ts           verschlüsselte Ablage/Lesen/Löschen (expo-secure-store)
+    googleSignInConfig.ts       einmaliges GoogleSignin.configure() (webClientId aus app.json)
+    AuthContext.tsx              React-Context: signIn/signOut/Status, für HomeScreen
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
     WorkoutScreen.tsx    Kamera + Skelett-Overlay + Zähl-/Bewertungslogik (Kernscreen)

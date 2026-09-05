@@ -13,10 +13,16 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+
+# Google / Firebase config (not used yet - the Google Sign-In config plugin runs
+# without Firebase - but ignored defensively in case that ever changes)
+google-services.json
+GoogleService-Info.plist
 
 # Metro
 .metro-health-check*

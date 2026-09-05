@@ -56,7 +56,22 @@
         {
           "color": "#37E27C"
         }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_YOUR_IOS_CLIENT_ID"
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "googleSignInWebClientId": "REPLACE_WITH_YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
+    }
   }
 }

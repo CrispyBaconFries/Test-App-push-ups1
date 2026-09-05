@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView, Alert } from 'react-native';
+import { StyleSheet, Text, View, Pressable, ScrollView, Alert, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { computeStats, loadSessions, type WorkoutSession, type WorkoutStats } from '../storage/workoutStorage';
@@ -10,6 +11,7 @@ import { levelForPoints } from '../gamification/points';
 import { computeBadgeStatuses } from '../gamification/badges';
 import { computeChallengeProgress } from '../gamification/challenges';
 import { isDailyReminderEnabled, enableDailyReminder, disableDailyReminder } from '../notifications/dailyReminder';
+import { useAuth } from '../auth/AuthContext';
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
 import { colors } from '../theme/colors';
@@ -56,6 +58,7 @@ const MENU_ITEMS: MenuItem[] = [
 export function HomeScreen({ navigation }: Props) {
   const [sessions, setSessions] = useState<WorkoutSession[] | null>(null);
   const [reminderEnabled, setReminderEnabled] = useState<boolean | null>(null);
+  const auth = useAuth();
 
   // useFocusEffect already fires on initial mount (the screen is "focused" as soon as
   // it appears), so a separate mount-time useEffect here would just fetch twice.
@@ -106,6 +109,49 @@ export function HomeScreen({ navigation }: Props) {
             </Text>
             <Text style={styles.subtitle}>Handy vor dir auf dem Boden – die Frontkamera prüft deine Form live.</Text>
           </View>
+        </View>
+
+        <View style={styles.accountCard}>
+          {auth.status === 'signedIn' && auth.profile ? (
+            <View style={styles.accountRow}>
+              {auth.profile.photoUrl ? (
+                <Image source={{ uri: auth.profile.photoUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>
+                    {(auth.profile.name ?? auth.profile.email).charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.accountTextWrap}>
+                <Text style={styles.accountName} numberOfLines={1}>
+                  {auth.profile.name ?? auth.profile.email}
+                </Text>
+                <Text style={styles.accountEmail} numberOfLines={1}>
+                  {auth.profile.email}
+                </Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+                onPress={auth.signOut}
+              >
+                <Text style={styles.signOutButtonText}>Abmelden</Text>
+              </Pressable>
+            </View>
+          ) : auth.status === 'signedOut' ? (
+            <View style={styles.accountRow}>
+              <View style={styles.accountTextWrap}>
+                <Text style={styles.accountName}>Fortschritt sichern</Text>
+                <Text style={styles.accountEmail}>Optional mit Google anmelden</Text>
+              </View>
+              <GoogleSigninButton
+                size={GoogleSigninButton.Size.Wide}
+                color={GoogleSigninButton.Color.Dark}
+                onPress={auth.signIn}
+              />
+            </View>
+          ) : null}
+          {auth.error && <Text style={styles.accountError}>{auth.error}</Text>}
         </View>
 
         <View style={styles.statsCard}>
@@ -261,6 +307,70 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 18,
+  },
+  accountCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  avatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarFallbackText: {
+    fontFamily: fonts.extraBold,
+    fontSize: 16,
+    color: '#0B0F14',
+  },
+  accountTextWrap: {
+    flex: 1,
+    marginRight: 8,
+  },
+  accountName: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  accountEmail: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  signOutButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  signOutButtonText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  accountError: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.danger,
+    marginTop: 10,
   },
   statsCard: {
     backgroundColor: colors.surface,
