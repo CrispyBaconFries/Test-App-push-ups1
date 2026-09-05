@@ -11,7 +11,7 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Summary'>;
 
 export function SummaryScreen({ route, navigation }: Props) {
-  const { session } = route.params;
+  const { session, newBadges } = route.params;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -21,6 +21,18 @@ export function SummaryScreen({ route, navigation }: Props) {
         </View>
         <Text style={styles.title}>Workout abgeschlossen</Text>
       </View>
+
+      {newBadges.length > 0 && (
+        <View style={styles.newBadgeCard}>
+          <Ionicons name="sparkles" size={20} color="#0B0F14" />
+          <View style={styles.newBadgeTextWrap}>
+            <Text style={styles.newBadgeTitle}>
+              {newBadges.length === 1 ? 'Neue Auszeichnung freigeschaltet!' : `${newBadges.length} neue Auszeichnungen freigeschaltet!`}
+            </Text>
+            <Text style={styles.newBadgeNames}>{newBadges.map((b) => b.title).join(' · ')}</Text>
+          </View>
+        </View>
+      )}
 
       <LinearGradient colors={['#1C3A29', colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroRow}>
         <HeroStat value={`${session.totalReps}`} label="Liegestütze" />
@@ -98,6 +110,29 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
     fontSize: 22,
     color: colors.textPrimary,
+  },
+  newBadgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 12,
+  },
+  newBadgeTextWrap: {
+    flex: 1,
+  },
+  newBadgeTitle: {
+    fontFamily: fonts.bold,
+    color: '#0B0F14',
+    fontSize: 15,
+  },
+  newBadgeNames: {
+    fontFamily: fonts.regular,
+    color: 'rgba(11,15,20,0.75)',
+    fontSize: 12,
+    marginTop: 2,
   },
   heroRow: {
     flexDirection: 'row',

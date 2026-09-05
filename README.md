@@ -18,11 +18,22 @@ navigieren kann (Android-Zurück-Taste/-Geste funktioniert überall, zusätzlich
 Screen einen sichtbaren „Zurück"-Button):
 
 - **Training starten** — Kamera + Skelett-Overlay + automatische Wiederholungs-Zählung
-  und Formbewertung. Der eigentliche Kern der App (`WorkoutScreen.tsx`).
-- **Verlauf** — vergangene Workouts, Punkte, Streak (`HistoryScreen.tsx`).
+  und Formbewertung. Der eigentliche Kern der App (`WorkoutScreen.tsx`). Bei jeder
+  Wiederholung gibt es einen kurzen Bestätigungston statt Vibration (siehe unten).
+- **Trainingsverlauf** — vergangene Workouts mit Wiederholungen, Datum und Uhrzeit
+  (`HistoryScreen.tsx`).
+- **Auszeichnungen** — freischaltbare Abzeichen für Meilensteine (`AchievementsScreen.tsx`,
+  Logik in `src/gamification/badges.ts`); ein neu freigeschaltetes Abzeichen wird direkt
+  nach dem Workout auf dem Zusammenfassungs-Screen gefeiert.
 - **Kamera-Test** — nur die Kamera ohne Auswertung, zum schnellen Prüfen, falls
   „Training starten" auf einem Gerät Probleme macht (`CameraScreen.tsx`, nutzt
   `expo-camera` statt der MediaPipe-Pipeline — dient als einfacher Diagnose-Fallback).
+
+Auf der Startseite außerdem: ein Level-Fortschrittsbalken, Tages-/Wochenziel
+(„Herausforderungen", Standard 30 Liegestütze/Tag bzw. 150/Woche,
+`src/gamification/challenges.ts`) mit optionaler täglicher Erinnerung (lokale
+Push-Benachrichtigung um 18 Uhr, `src/notifications/dailyReminder.ts`) und eine
+Bestleistungen-Übersicht (beste Session, bester Form-Score, längste Streak jemals).
 
 ## Auf dem Handy installieren (lokaler Android-Build mit Android Studio)
 
@@ -140,7 +151,9 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Formanalyse | reines TypeScript, kein UI-/Native-Code (`src/pose/formAnalysis.ts`) — dadurch mit Jest unit-testbar |
 | Persistenz | `@react-native-async-storage/async-storage` (lokal, gerätespezifisch) |
 | Navigation | `@react-navigation/native-stack` |
-| Gamification | Punkte/Level jetzt, Grundgerüst für Challenges/Matches (siehe Roadmap) |
+| Sound-Feedback | `expo-audio` — zwei kurze, synthetisch erzeugte Töne (`assets/sounds/`, erzeugt via `scripts/generate-rep-sounds.js`), kein Vibrieren |
+| Erinnerungen | `expo-notifications` — optionale tägliche lokale Benachrichtigung, nur nach expliziter Erlaubnis |
+| Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -231,16 +244,25 @@ src/
   components/
     SkeletonOverlay.tsx        SVG-Strichmännchen über der Kamera
     RepHud.tsx                  Rep-Zähler, Score, Live-Hinweis
+    ProgressBar.tsx, LevelProgressBar.tsx   animierte Fortschrittsbalken
+  audio/repSounds.ts            zwei Bestätigungstöne (expo-audio), siehe oben
+  notifications/dailyReminder.ts  optionale tägliche Erinnerung (expo-notifications)
   screens/
-    HomeScreen.tsx      Menü: Training starten / Verlauf / Kamera-Test
+    HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
     WorkoutScreen.tsx    Kamera + Skelett-Overlay + Zähl-/Bewertungslogik (Kernscreen)
     CameraScreen.tsx     einfacher Kamera-Test ohne Auswertung (expo-camera)
+    AchievementsScreen.tsx  Abzeichen-Liste (freigeschaltet/gesperrt + Fortschritt)
     SummaryScreen.tsx, HistoryScreen.tsx
-  storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage)
-  gamification/points.ts        Punkte-/Level-Berechnung
+  storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
+  gamification/
+    points.ts       Punkte-/Level-Berechnung
+    badges.ts         Abzeichen-Definitionen + Freischalt-Logik (reine Funktionen, testbar)
+    challenges.ts      Tages-/Wochenziel-Fortschritt (reine Funktionen, testbar)
   navigation/RootNavigator.tsx
 plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
-scripts/download-pose-model.js        lädt das Modell herunter
+scripts/
+  download-pose-model.js        lädt das MediaPipe-Modell herunter
+  generate-rep-sounds.js          erzeugt assets/sounds/*.wav (synthetische Töne)
 ```
 
 ## Roadmap (spielerische Weiterentwicklung)
@@ -249,19 +271,26 @@ Die App ist bewusst so gebaut, dass jede Wiederholung als `RepResult` (Form-Scor
 konkrete Fehler) vorliegt und in `WorkoutSession`s gebündelt lokal gespeichert wird — das
 ist die Grundlage für alles Folgende:
 
-1. **Punkte & Level** (bereits umgesetzt, `src/gamification/points.ts`): Form-Score
-   bestimmt Punkte pro Wiederholung, mit Bonus für perfekte Ausführung.
-2. **Tägliche/wöchentliche Challenges**: z. B. "Heute 30 saubere Liegestütze" — braucht
-   ein Challenge-Datenmodell (Ziel, Zeitraum, Fortschritt) und eine
-   Benachrichtigungs-/Erinnerungs-Komponente (`expo-notifications`).
-3. **Badges/Auszeichnungen**: Meilensteine (erste 100 Liegestütze, 7-Tage-Streak,
-   perfekte Session) — Regelwerk über die bereits vorhandene `WorkoutStats`-Auswertung.
-4. **Duelle/Matches gegen andere**: zeitlich begrenzter Wettkampf (z. B. "60 Sekunden,
-   wer schafft mehr saubere Liegestütze") — braucht einen Realtime-Layer (z. B. Firebase,
-   Supabase Realtime oder ein eigenes WebSocket-Backend) statt der aktuell rein lokalen
-   `AsyncStorage`-Persistenz, plus Nutzerkonten/Matchmaking.
-5. **Leaderboards**: setzt eine Backend-Anbindung für Konten + serverseitig validierte
-   Scores voraus (client-seitige Scores sind manipulierbar).
+1. **Punkte & Level** ✅ umgesetzt (`src/gamification/points.ts`): Form-Score bestimmt
+   Punkte pro Wiederholung, mit Bonus für perfekte Ausführung.
+2. **Tägliche/wöchentliche Challenges** ✅ umgesetzt (`src/gamification/challenges.ts`):
+   Tagesziel (30 Liegestütze) und Wochenziel (150) mit Fortschrittsbalken auf dem
+   Home-Screen, dazu eine optionale tägliche Erinnerung um 18 Uhr (lokale
+   Push-Benachrichtigung, `expo-notifications`, nur nach expliziter Erlaubnis).
+3. **Badges/Auszeichnungen** ✅ umgesetzt (`src/gamification/badges.ts`,
+   `AchievementsScreen.tsx`): 6 Meilensteine (10/100/500 Liegestütze, 3-/7-Tage-Streak,
+   perfekte Session) — ein neu freigeschaltetes Abzeichen wird direkt nach dem Workout
+   auf dem Zusammenfassungs-Screen gefeiert.
+4. **Online-Ranking-Modus (geplant, noch nicht begonnen)**: ein 60-Sekunden-Kopf-an-Kopf-
+   Duell — wer schafft in der Zeit mehr (saubere) Liegestütze. Braucht zwingend ein
+   Backend: Nutzerkonten, Matchmaking (zwei Spieler gleichzeitig finden), einen
+   Realtime-Layer für den Live-Punktestand (z. B. Firebase, Supabase Realtime oder ein
+   eigenes WebSocket-Backend) und serverseitig validierte Ergebnisse (ein Rep-Count, der
+   nur lokal auf dem Gerät entsteht, ist sonst leicht zu manipulieren). Das ist ein
+   eigenes Architektur-Thema (Anbieter, Datenmodell, Authentifizierung,
+   Anti-Cheat/Validierung der Wiederholungszählung) und sollte in einem eigenen Gespräch
+   geplant werden, bevor loscodiert wird.
+5. **Leaderboards**: baut auf Punkt 4 auf (braucht dieselbe Backend-Anbindung mit
+   serverseitig validierten Scores).
 
-Schritte 2–3 lassen sich rein lokal umsetzen; Schritte 4–5 brauchen ein Backend und damit
-eine bewusste Folgeentscheidung (Anbieter, Datenmodell, Authentifizierung).
+Punkte 1–3 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins.

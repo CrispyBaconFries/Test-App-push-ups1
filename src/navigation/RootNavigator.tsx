@@ -2,11 +2,13 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { WorkoutSession } from '../storage/workoutStorage';
+import type { BadgeDefinition } from '../gamification/badges';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CameraScreen } from '../screens/CameraScreen';
 import { WorkoutScreen } from '../screens/WorkoutScreen';
 import { SummaryScreen } from '../screens/SummaryScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
+import { AchievementsScreen } from '../screens/AchievementsScreen';
 
 // `WorkoutScreen` (MediaPipe pose detection) needs native modules that only exist in a
 // custom-built app (a local Android Studio / Xcode build, or an EAS dev client) - it
@@ -20,8 +22,9 @@ export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Workout: undefined;
-  Summary: { session: WorkoutSession };
+  Summary: { session: WorkoutSession; newBadges: BadgeDefinition[] };
   History: undefined;
+  Achievements: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,6 +38,7 @@ export function RootNavigator() {
         <Stack.Screen name="Camera" component={CameraScreen} />
         <Stack.Screen name="Summary" component={SummaryScreen} />
         <Stack.Screen name="History" component={HistoryScreen} />
+        <Stack.Screen name="Achievements" component={AchievementsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

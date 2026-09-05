@@ -26,6 +26,14 @@
     "plugins": [
       "expo-dev-client",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Diese App benötigt Zugriff auf die Kamera, um deine Liegestütz-Form zu analysieren.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "react-native-vision-camera",
         {
           "cameraPermissionText": "Diese App benötigt Zugriff auf die Kamera, um deine Liegestütz-Form in Echtzeit zu analysieren.",
@@ -33,7 +41,22 @@
           "enableCodeScanner": false
         }
       ],
-      "./plugins/withPoseLandmarkerModel.js"
+      "./plugins/withPoseLandmarkerModel.js",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#37E27C"
+        }
+      ]
     ]
   }
 }

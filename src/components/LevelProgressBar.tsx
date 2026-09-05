@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { ProgressBar } from './ProgressBar';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -11,17 +12,6 @@ export interface LevelProgressBarProps {
 
 export function LevelProgressBar({ level, pointsIntoLevel, pointsForNextLevel }: LevelProgressBarProps) {
   const progress = pointsForNextLevel > 0 ? pointsIntoLevel / pointsForNextLevel : 0;
-  const widthAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(widthAnim, {
-      toValue: progress,
-      duration: 700,
-      useNativeDriver: false, // animating `width` isn't supported by the native driver
-    }).start();
-  }, [progress, widthAnim]);
-
-  const width = widthAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
     <View>
@@ -31,9 +21,7 @@ export function LevelProgressBar({ level, pointsIntoLevel, pointsForNextLevel }:
           {pointsIntoLevel} / {pointsForNextLevel}
         </Text>
       </View>
-      <View style={styles.track}>
-        <Animated.View style={[styles.fill, { width }]} />
-      </View>
+      <ProgressBar progress={progress} />
     </View>
   );
 }
@@ -53,16 +41,5 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.textSecondary,
-  },
-  track: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.primary,
   },
 });

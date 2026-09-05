@@ -11,13 +11,14 @@ import {
   type ViewCoordinator,
   type DetectionError,
 } from 'react-native-mediapipe';
-import * as Haptics from 'expo-haptics';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RepHud } from '../components/RepHud';
-import { buildSession, saveSession } from '../storage/workoutStorage';
+import { useRepSounds } from '../audio/repSounds';
+import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
+import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badges';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -44,6 +45,12 @@ export function WorkoutScreen({ navigation }: Props) {
   // re-renders and the effect re-subscribes, which isn't guaranteed to happen before
   // `finishWorkout`'s own `navigation.replace()` call re-triggers that same listener.
   const finishingRef = useRef(false);
+  // Sound only, deliberately no vibration (see README) - kept in a ref so `onResults`
+  // (a stable-identity useCallback below) always calls the latest player instances
+  // without needing them in its dependency array.
+  const playRepSound = useRepSounds();
+  const playRepSoundRef = useRef(playRepSound);
+  playRepSoundRef.current = playRepSound;
 
   useEffect(() => {
     if (!hasPermission) {
@@ -69,9 +76,7 @@ export function WorkoutScreen({ navigation }: Props) {
       repsRef.current = [...repsRef.current, completedRep];
       setLastRep(completedRep);
       setRepCount(repsRef.current.length);
-      Haptics.impactAsync(
-        completedRep.issues.length === 0 ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light
-      ).catch(() => {});
+      playRepSoundRef.current(completedRep.issues.length === 0);
     }
 
     frameCounterRef.current += 1;
@@ -103,9 +108,17 @@ export function WorkoutScreen({ navigation }: Props) {
       return;
     }
     setFinishing(true);
+    const previousSessions = await loadSessions();
+    const badgesBefore = computeBadgeStatuses(computeStats(previousSessions), previousSessions);
+
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
     await saveSession(session);
-    navigation.replace('Summary', { session });
+
+    const allSessions = [session, ...previousSessions];
+    const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
+    const newBadges = newlyUnlockedBadges(badgesBefore, badgesAfter);
+
+    navigation.replace('Summary', { session, newBadges });
   }, [navigation]);
 
   // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
