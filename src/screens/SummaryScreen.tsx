@@ -1,9 +1,12 @@
 import React from 'react';
 import { StyleSheet, Text, View, Pressable, ScrollView } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { ISSUE_SHORT_LABELS_DE } from '../pose/feedbackText';
 import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Summary'>;
 
@@ -12,31 +15,47 @@ export function SummaryScreen({ route, navigation }: Props) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Workout abgeschlossen</Text>
+      <View style={styles.titleRow}>
+        <View style={styles.trophyBadge}>
+          <Ionicons name="trophy" size={22} color="#0B0F14" />
+        </View>
+        <Text style={styles.title}>Workout abgeschlossen</Text>
+      </View>
 
-      <View style={styles.heroRow}>
+      <LinearGradient colors={['#1C3A29', colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroRow}>
         <HeroStat value={`${session.totalReps}`} label="Liegestütze" />
         <HeroStat value={`${session.averageFormScore}`} label="Ø Form-Score" />
         <HeroStat value={`+${session.points}`} label="Punkte" accent />
-      </View>
+      </LinearGradient>
 
       <Text style={styles.sectionTitle}>Wiederholungen im Detail</Text>
-      {session.reps.map((rep) => (
-        <View key={rep.index} style={styles.repRow}>
-          <View style={styles.repIndexBadge}>
-            <Text style={styles.repIndexText}>{rep.index + 1}</Text>
+      {session.reps.map((rep) => {
+        const clean = rep.issues.length === 0;
+        return (
+          <View key={rep.index} style={styles.repRow}>
+            <Ionicons
+              name={clean ? 'checkmark-circle' : 'alert-circle'}
+              size={26}
+              color={clean ? colors.primary : colors.warning}
+              style={styles.repIcon}
+            />
+            <View style={styles.repInfo}>
+              <Text style={styles.repScore}>
+                Wiederholung {rep.index + 1} · {rep.formScore} / 100
+              </Text>
+              <Text style={styles.repIssues}>
+                {clean ? 'Saubere Ausführung' : rep.issues.map((i) => ISSUE_SHORT_LABELS_DE[i]).join(', ')}
+              </Text>
+            </View>
           </View>
-          <View style={styles.repInfo}>
-            <Text style={styles.repScore}>{rep.formScore} / 100</Text>
-            <Text style={styles.repIssues}>
-              {rep.issues.length === 0 ? 'Saubere Ausführung' : rep.issues.map((i) => ISSUE_SHORT_LABELS_DE[i]).join(', ')}
-            </Text>
-          </View>
-        </View>
-      ))}
+        );
+      })}
       {session.reps.length === 0 && <Text style={styles.repIssues}>Keine Wiederholungen erkannt.</Text>}
 
-      <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}>
+      <Pressable
+        style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+        onPress={() => navigation.popToTop()}
+      >
         <Text style={styles.primaryButtonText}>Fertig</Text>
       </Pressable>
     </ScrollView>
@@ -61,17 +80,29 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 48,
   },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.textPrimary,
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 24,
+  },
+  trophyBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  title: {
+    fontFamily: fonts.extraBold,
+    fontSize: 22,
+    color: colors.textPrimary,
   },
   heroRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     marginBottom: 28,
     borderWidth: 1,
@@ -81,18 +112,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heroValue: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontFamily: fonts.extraBold,
+    fontSize: 26,
     color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
   heroLabel: {
+    fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.textSecondary,
     marginTop: 4,
   },
   sectionTitle: {
+    fontFamily: fonts.bold,
     fontSize: 16,
-    fontWeight: '700',
     color: colors.textPrimary,
     marginBottom: 12,
   },
@@ -103,29 +136,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  repIndexBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+  repIcon: {
     marginRight: 12,
-  },
-  repIndexText: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
   },
   repInfo: {
     flex: 1,
   },
   repScore: {
+    fontFamily: fonts.semiBold,
     color: colors.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
   },
   repIssues: {
+    fontFamily: fonts.regular,
     color: colors.textSecondary,
     fontSize: 13,
     marginTop: 2,
@@ -138,8 +161,12 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
   primaryButtonText: {
+    fontFamily: fonts.bold,
     color: '#0B0F14',
     fontSize: 16,
-    fontWeight: '800',
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.98 }],
   },
 });

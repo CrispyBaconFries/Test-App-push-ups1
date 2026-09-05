@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useCameraPermission } from 'react-native-vision-camera';
 import {
   usePoseDetection,
@@ -18,6 +19,7 @@ import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RepHud } from '../components/RepHud';
 import { buildSession, saveSession } from '../storage/workoutStorage';
 import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
 
 const POSE_MODEL = 'pose_landmarker_lite.task';
 /** Only rebuild the on-screen skeleton every Nth pose result; the rep/form logic still runs every frame. */
@@ -127,10 +129,13 @@ export function WorkoutScreen({ navigation }: Props) {
         <Text style={styles.permissionText}>
           Diese App benötigt Zugriff auf die Frontkamera, um deine Liegestütz-Form live zu analysieren.
         </Text>
-        <Pressable style={styles.primaryButton} onPress={requestPermission}>
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          onPress={requestPermission}
+        >
           <Text style={styles.primaryButtonText}>Kamerazugriff erlauben</Text>
         </Pressable>
-        <Pressable style={styles.linkButton} onPress={() => navigation.goBack()}>
+        <Pressable style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]} onPress={() => navigation.goBack()}>
           <Text style={styles.linkButtonText}>Zurück</Text>
         </Pressable>
       </View>
@@ -152,11 +157,20 @@ export function WorkoutScreen({ navigation }: Props) {
 
       <RepHud repCount={repCount} live={live} lastRep={lastRep} trackingOk={live?.trackingOk ?? true} />
 
-      <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+      <Pressable
+        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        onPress={() => navigation.goBack()}
+      >
+        <Ionicons name="chevron-back" size={16} color={colors.textPrimary} />
         <Text style={styles.iconButtonText}>Zurück</Text>
       </Pressable>
 
-      <Pressable style={styles.finishButton} onPress={finishWorkout} disabled={finishing}>
+      <Pressable
+        style={({ pressed }) => [styles.finishButton, pressed && styles.pressed]}
+        onPress={finishWorkout}
+        disabled={finishing}
+      >
+        <Ionicons name="checkmark-circle" size={18} color="#0B0F14" />
         <Text style={styles.primaryButtonText}>Workout beenden</Text>
       </Pressable>
     </View>
@@ -176,6 +190,7 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   permissionText: {
+    fontFamily: fonts.regular,
     color: colors.textPrimary,
     fontSize: 16,
     textAlign: 'center',
@@ -190,15 +205,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
+    fontFamily: fonts.bold,
     color: '#0B0F14',
     fontSize: 16,
-    fontWeight: '800',
   },
   linkButton: {
     marginTop: 16,
     padding: 8,
   },
   linkButtonText: {
+    fontFamily: fonts.regular,
     color: colors.textSecondary,
     fontSize: 14,
   },
@@ -206,23 +222,33 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 36,
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     backgroundColor: colors.primary,
     borderRadius: 28,
     paddingVertical: 14,
-    paddingHorizontal: 32,
+    paddingHorizontal: 28,
   },
   backButton: {
     position: 'absolute',
     bottom: 44,
     left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 24,
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
   },
   iconButtonText: {
+    fontFamily: fonts.bold,
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
   },
 });

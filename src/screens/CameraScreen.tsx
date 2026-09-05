@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Camera'>;
 
@@ -19,10 +21,13 @@ export function CameraScreen({ navigation }: Props) {
     return (
       <View style={styles.centered}>
         <Text style={styles.permissionText}>Diese App benötigt Zugriff auf die Kamera.</Text>
-        <Pressable style={styles.primaryButton} onPress={requestPermission}>
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          onPress={requestPermission}
+        >
           <Text style={styles.primaryButtonText}>Kamerazugriff erlauben</Text>
         </Pressable>
-        <Pressable style={styles.linkButton} onPress={() => navigation.goBack()}>
+        <Pressable style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]} onPress={() => navigation.goBack()}>
           <Text style={styles.linkButtonText}>Zurück</Text>
         </Pressable>
       </View>
@@ -34,16 +39,21 @@ export function CameraScreen({ navigation }: Props) {
       <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
       <View style={styles.topBar}>
-        <Pressable style={styles.iconButton} onPress={() => navigation.goBack()}>
+        <Pressable
+          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={16} color={colors.textPrimary} />
           <Text style={styles.iconButtonText}>Zurück</Text>
         </Pressable>
       </View>
 
       <View style={styles.bottomBar}>
         <Pressable
-          style={styles.iconButton}
+          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           onPress={() => setFacing((current) => (current === 'front' ? 'back' : 'front'))}
         >
+          <Ionicons name="camera-reverse-outline" size={18} color={colors.textPrimary} />
           <Text style={styles.iconButtonText}>{facing === 'front' ? 'Zur Rückkamera' : 'Zur Frontkamera'}</Text>
         </Pressable>
       </View>
@@ -64,6 +74,7 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   permissionText: {
+    fontFamily: fonts.regular,
     color: colors.textPrimary,
     fontSize: 16,
     textAlign: 'center',
@@ -78,15 +89,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
+    fontFamily: fonts.bold,
     color: '#0B0F14',
     fontSize: 16,
-    fontWeight: '800',
   },
   linkButton: {
     marginTop: 16,
     padding: 8,
   },
   linkButtonText: {
+    fontFamily: fonts.regular,
     color: colors.textSecondary,
     fontSize: 14,
   },
@@ -101,14 +113,21 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   iconButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 24,
     paddingVertical: 12,
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
   },
   iconButtonText: {
+    fontFamily: fonts.bold,
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
   },
 });

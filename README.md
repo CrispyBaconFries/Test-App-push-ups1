@@ -141,6 +141,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Persistenz | `@react-native-async-storage/async-storage` (lokal, gerätespezifisch) |
 | Navigation | `@react-navigation/native-stack` |
 | Gamification | Punkte/Level jetzt, Grundgerüst für Challenges/Matches (siehe Roadmap) |
+| Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
 

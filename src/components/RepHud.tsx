@@ -1,7 +1,9 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { LiveFeedback, RepResult } from '../pose/formAnalysis';
 import { liveCueLabelDe } from '../pose/feedbackText';
+import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
 
 export interface RepHudProps {
   repCount: number;
@@ -11,22 +13,33 @@ export interface RepHudProps {
 }
 
 const CUE_COLORS: Record<string, string> = {
-  GOOD_FORM: '#37E27C',
-  DEFAULT: '#FF5A5F',
+  GOOD_FORM: colors.primary,
+  DEFAULT: colors.danger,
 };
 
 export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
   const cueColor = live?.cue === 'GOOD_FORM' ? CUE_COLORS.GOOD_FORM : CUE_COLORS.DEFAULT;
 
+  // A small pop on every new rep - the one moment of tactile feedback a user gets mid-set.
+  const scale = useRef(new Animated.Value(1)).current;
+  const previousCount = useRef(repCount);
+  useEffect(() => {
+    if (repCount !== previousCount.current) {
+      previousCount.current = repCount;
+      scale.setValue(1.3);
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }).start();
+    }
+  }, [repCount, scale]);
+
   return (
     <View style={styles.container} pointerEvents="none">
       {/* Rep counter: centered top, the one number a user glances at mid-set. */}
       <View style={styles.repCounterRow}>
-        <View style={styles.repCounterBadge}>
+        <Animated.View style={[styles.repCounterBadge, { transform: [{ scale }] }]}>
           <Text style={styles.repCountText}>{repCount}</Text>
           <Text style={styles.repCountLabel}>Wiederholungen</Text>
-        </View>
+        </Animated.View>
       </View>
 
       {lastRep && (
@@ -38,7 +51,7 @@ export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
 
       {!trackingOk && (
         <View style={styles.cueBar}>
-          <Text style={[styles.cueText, { color: '#FFC24B' }]}>Nicht vollständig im Bild – bitte zurücktreten</Text>
+          <Text style={[styles.cueText, { color: colors.warning }]}>Nicht vollständig im Bild – bitte zurücktreten</Text>
         </View>
       )}
 
@@ -76,14 +89,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   repCountText: {
+    fontFamily: fonts.extraBold,
     fontSize: 28,
-    fontWeight: '800',
     color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
   },
   repCountLabel: {
+    fontFamily: fonts.semiBold,
     fontSize: 11,
-    fontWeight: '600',
     color: 'rgba(255,255,255,0.75)',
     marginTop: 1,
     textTransform: 'uppercase',
@@ -100,11 +113,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scoreValue: {
+    fontFamily: fonts.extraBold,
     fontSize: 20,
-    fontWeight: '800',
-    color: '#37E27C',
+    color: colors.primary,
   },
   scoreLabel: {
+    fontFamily: fonts.regular,
     fontSize: 10,
     color: 'rgba(255,255,255,0.75)',
     marginTop: 1,
@@ -121,8 +135,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
+    fontFamily: fonts.bold,
     fontSize: 16,
-    fontWeight: '700',
     textAlign: 'center',
     overflow: 'hidden',
   },
