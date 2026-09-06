@@ -155,7 +155,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Erinnerungen | `expo-notifications` — optionale tägliche lokale Benachrichtigung, nur nach expliziter Erlaubnis |
 | Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
 | Anmeldung | `@react-native-google-signin/google-signin` (optional, „Mit Google anmelden" auf dem Home-Screen) + `expo-secure-store` für die verschlüsselte lokale Ablage des Profils — kein eigenes Backend, siehe „Google-Anmeldung einrichten" |
-| Ranking-System (Freundschaftsspiel fertig, Ranked in Arbeit) | `@react-native-firebase` (app/auth/firestore/database) als Backend; LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen und das komplette Freundschaftsspiel-Duell (Lobby/Kamera-Duell/Ergebnis) bereits fertig — siehe „Ranking-System einrichten" |
+| Ranking-System | `@react-native-firebase` (app/auth/firestore/database) als Backend; LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen, Freundschaftsspiel (Einladungscode) und Ranked (Skill-based Matchmaking) — beide spielbar, sobald Firebase eingerichtet ist, siehe „Ranking-System einrichten" |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -293,14 +293,13 @@ ab — das ist erwartet und kein Bug.
 
 ## Ranking-System einrichten
 
-**Status: Freundschaftsspiel-Duell spielbar (sobald Firebase eingerichtet ist),
-Ranked-Matchmaking folgt als Nächstes.** Fertig und getestet: das LP-/Rang-
-Punktesystem, der Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen, und jetzt auch
-der komplette Duell-Ablauf über einen Einladungscode: Home-Screen → „Freundschaftsspiel"
-→ Duell erstellen/beitreten (`DuelLobbyScreen`) → synchronisierter 60-Sekunden-Kampf
-mit Kamera + Live-Gegner-Zähler (`DuelScreen`) → Ergebnis (`DuelResultScreen`). Noch
-offen: die Skill-based-Matchmaking-Warteschlange für den „Ranked"-Modus (der eigentliche
-Duell-Screen ist bereits so gebaut, dass er beides bedient, siehe `isRanked`-Parameter).
+**Status: Freundschaftsspiel *und* Ranked spielbar, sobald Firebase eingerichtet ist.**
+Fertig und getestet: LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen,
+der komplette Duell-Ablauf (Home-Screen → „Freundschaftsspiel" per Einladungscode oder
+„Ranked" per Skill-based Matchmaking → synchronisierter 60-Sekunden-Kampf mit Kamera +
+Live-Gegner-Zähler → Ergebnis inkl. LP-Änderung bei Ranked). Beide Modi teilen sich
+denselben `DuelScreen`/`DuelResultScreen` (Parameter `isRanked` steuert nur, ob am Ende
+LP verrechnet wird).
 
 ### Spieler-Avatare & Rang-Rahmen
 
@@ -338,14 +337,39 @@ Icons/Fotos gibt, ändert sich nur `AvatarContent` in `RankFrame.tsx`, der Rahme
   oben links, **nur der Punktestand** (keine Kamera!) des Gegners oben rechts, dazu ein
   synchronisierter Countdown und 60-Sekunden-Timer.
 - **`DuelResultScreen`**: wartet, bis beide Spieler fertig sind, zeigt den Vergleich;
-  bei einem Ranked-Duell (aktuell noch nicht erreichbar, siehe „Noch offen" oben) auch
-  die LP-Änderung.
+  bei einem Ranked-Duell zusätzlich die LP-Änderung.
 - **Google-Anmeldung ↔ Firebase-Anmeldung verknüpft**: `AuthContext` meldet nach dem
   Google-Login jetzt zusätzlich bei Firebase Auth an (`firebaseAuthBridge.ts`,
   `signInWithCredential` mit dem Google-ID-Token) - nötig, damit die
   Security Rules (`request.auth`) überhaupt greifen. Wichtig: die Firebase-uid ist
   *nicht* dieselbe ID wie die lokale Google-Profil-ID - für alles Ranking-Bezogene
   zählt ausschließlich die Firebase-uid.
+- **`useDuelIdentity()`** (`src/ranking/useDuelIdentity.ts`): die gemeinsame
+  Voraussetzung jedes Ranking-Screens (Firebase eingerichtet? Google angemeldet? mit
+  Firebase verknüpft? Spielerprofil geladen/angelegt?) an einer Stelle gebündelt -
+  sowohl `DuelLobbyScreen` als auch `RankedMatchmakingScreen` nutzen ihn.
+
+### Ranked-Matchmaking (bereits implementiert)
+
+Wie im README-Abschnitt weiter unten skizziert: rein client-seitig, kein Cloud
+Function nötig, bleibt im kostenlosen Firebase-Tarif.
+
+- **`src/ranking/matchmaking.ts`**: reine Suchradius-Logik, getestet - Radius startet
+  bei ±100 LP, wächst alle 5 Sekunden um 50, deckelt bei ±600.
+- **`src/ranking/matchmakingQueue.ts`**: Firestore-Warteschlange (`rankedQueue/{uid}`).
+  Jeder wartende Spieler sucht *gleichzeitig* selbst nach anderen wartenden Spielern
+  innerhalb seines aktuellen Radius (`findCandidates`, Query über `status`+`lp`+
+  `queuedAtMs` - Composite-Index dafür liegt fertig in `firestore.indexes.json`) und
+  versucht, den ältesten Wartenden per Firestore-Transaktion zu "claimen"
+  (`tryClaimCandidate` - falls zwei Spieler gleichzeitig denselben Kandidaten
+  beanspruchen, gewinnt nur eine Transaktion, die andere merkt das und sucht weiter).
+  Wer erfolgreich claimt, erstellt das eigentliche Duell (dieselbe
+  `duelSession.ts`-Logik wie beim Freundschaftsspiel) und ist damit fertig; wer
+  geclaimt *wurde*, bemerkt das über einen Listener auf die eigene Warteschlangen-
+  Position und tritt dem erzeugten Duell bei.
+- **`RankedMatchmakingScreen`**: „Gegner suchen" → wartet (mit Abbrechen-Möglichkeit) →
+  navigiert automatisch zum `DuelScreen`, sobald ein Gegner gefunden wurde (durch
+  eigenes Claimen oder weil man selbst geclaimt wurde).
 
 ### Architekturentscheidungen (mit Begründung)
 
@@ -461,9 +485,12 @@ bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen
    `ios.bundleIdentifier`) → `GoogleService-Info.plist` herunterladen → ebenfalls ins
    Projekt-Wurzelverzeichnis (auch bereits gitignored).
 4. **Firestore aktivieren** (Build → Firestore Database → Datenbank erstellen,
-   Produktionsmodus) und die Regeln aus `firestore.rules` deployen — entweder per
-   Firebase-CLI (`firebase deploy --only firestore:rules`, braucht einmalig
-   `firebase init`) oder die Datei einfach im Firebase-Console-Regel-Editor einfügen.
+   Produktionsmodus) und Regeln + Index deployen — entweder per Firebase-CLI
+   (`firebase deploy --only firestore:rules,firestore:indexes`, braucht einmalig
+   `firebase init`) oder `firestore.rules` im Firebase-Console-Regel-Editor einfügen
+   und den Composite-Index aus `firestore.indexes.json` manuell im Firestore-Tab
+   „Indexe" anlegen (Collection `rankedQueue`, Felder `status` ASC, `lp` ASC,
+   `queuedAtMs` ASC - nötig für die Ranked-Matchmaking-Suche).
 5. **Realtime Database aktivieren** (Build → Realtime Database → Datenbank erstellen)
    und `database.rules.json` genauso deployen/einfügen.
 6. Danach `npm run prebuild` (bzw. `npm run android`) erneut ausführen — ab jetzt sind
@@ -577,6 +604,9 @@ src/
     avatar.ts                     Avatar-Datenmodell (Icon-Auswahl oder eigenes Foto)
     playerProfile.ts               Firestore-Dokumenttyp players/{uid} + Default-Erstellung
     playerProfileStore.ts           Firestore-Lesen/Schreiben inkl. LP-Anwendung nach einem Duell
+    matchmaking.ts                  Suchradius-Logik fürs Ranked-Matchmaking, testbar
+    matchmakingQueue.ts               Firestore-Warteschlange: beitreten/suchen/claimen
+    useDuelIdentity.ts                gemeinsamer Hook: Firebase/Anmeldung/Spielerprofil-Voraussetzung
   duel/
     duelCode.ts                   6-stelliger Einladungscode fürs Freundschaftsspiel, testbar
     duelSession.ts                  Realtime-Database-Logik: erstellen/beitreten/bereit/Live-Zähler
@@ -591,6 +621,7 @@ src/
     AchievementsScreen.tsx  Abzeichen-Liste (freigeschaltet/gesperrt + Fortschritt)
     SummaryScreen.tsx, HistoryScreen.tsx
     DuelLobbyScreen.tsx      Freundschaftsspiel: Duell erstellen (Code zeigen) oder beitreten
+    RankedMatchmakingScreen.tsx  Ranked: Gegner suchen (Skill-based Matchmaking)
     DuelScreen.tsx             Kamera-Duell: eigener Zähler + Gegner-Punktestand, synced Countdown/Timer
     DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
@@ -604,7 +635,7 @@ plugins/
   withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
   withFirebaseConfig.js            Config-Plugin: bindet Firebase nur ein, wenn google-services.json/GoogleService-Info.plist existieren
 keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)
-firestore.rules, database.rules.json  Security-Rules-Entwürfe fürs Ranking-System, deploybereit
+firestore.rules, firestore.indexes.json, database.rules.json  Security-Rules + Composite-Index fürs Ranking-System, deploybereit
 docs/
   index.html                     Datenschutzerklärung, fertig zum Hosten via GitHub Pages
   terms.html                       Nutzungsbedingungen, selbes Hosting
@@ -630,15 +661,14 @@ ist die Grundlage für alles Folgende:
    `AchievementsScreen.tsx`): 6 Meilensteine (10/100/500 Liegestütze, 3-/7-Tage-Streak,
    perfekte Session) — ein neu freigeschaltetes Abzeichen wird direkt nach dem Workout
    auf dem Zusammenfassungs-Screen gefeiert.
-4. **Online-Ranking-Modus** — Freundschaftsspiel ✅ umgesetzt, Ranked 🚧 in Arbeit: ein
+4. **Online-Ranking-Modus** ✅ umgesetzt (Freundschaftsspiel *und* Ranked): ein
    60-Sekunden-Kopf-an-Kopf-Duell — wer schafft in der Zeit mehr (saubere) Liegestütze,
    jeder sieht sein eigenes Kamerabild + Zähler oben links, **nur den Punktestand** (kein
-   Kamerabild) des Gegners oben rechts. Per Einladungscode gegen einen Freund spielbar
-   ist bereits fertig (`DuelLobbyScreen` → `DuelScreen` → `DuelResultScreen`,
-   Spieler-Avatare mit Rang-Rahmen inklusive) — siehe „Ranking-System einrichten" für
-   alle Details. Noch offen: die Skill-based-Matchmaking-Warteschlange für den
-   „Ranked"-Modus (der Duell-Screen selbst unterstützt beide Modi bereits, nur die
-   Gegner-Suche für Ranked fehlt noch).
+   Kamerabild) des Gegners oben rechts. Per Einladungscode gegen einen Freund
+   (`DuelLobbyScreen`) oder per Skill-based Matchmaking gegen einen ähnlich starken
+   Gegner (`RankedMatchmakingScreen`) — beide münden in denselben `DuelScreen` →
+   `DuelResultScreen` (inkl. LP-Änderung bei Ranked), Spieler-Avatare mit Rang-Rahmen
+   inklusive — siehe „Ranking-System einrichten" für alle Details.
 5. **Leaderboards**: baut auf Punkt 4 auf (dieselbe Backend-Anbindung, serverseitig
    validierte Scores).
 

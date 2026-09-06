@@ -11,6 +11,7 @@ import { SummaryScreen } from '../screens/SummaryScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { AchievementsScreen } from '../screens/AchievementsScreen';
 import { DuelLobbyScreen } from '../screens/DuelLobbyScreen';
+import { RankedMatchmakingScreen } from '../screens/RankedMatchmakingScreen';
 import { DuelScreen } from '../screens/DuelScreen';
 import { DuelResultScreen } from '../screens/DuelResultScreen';
 
@@ -30,6 +31,7 @@ export type RootStackParamList = {
   History: undefined;
   Achievements: undefined;
   DuelLobby: undefined;
+  RankedMatchmaking: undefined;
   Duel: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
   DuelResult: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
 };
@@ -47,6 +49,7 @@ export function RootNavigator() {
         <Stack.Screen name="History" component={HistoryScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
         <Stack.Screen name="DuelLobby" component={DuelLobbyScreen} />
+        <Stack.Screen name="RankedMatchmaking" component={RankedMatchmakingScreen} />
         <Stack.Screen name="Duel" component={DuelScreen} />
         <Stack.Screen name="DuelResult" component={DuelResultScreen} />
       </Stack.Navigator>

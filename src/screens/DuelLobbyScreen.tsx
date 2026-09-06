@@ -1,89 +1,39 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { useAuth } from '../auth/AuthContext';
-import { isFirebaseConfigured } from '../firebase/firebaseConfig';
-import { ensureFirebaseBridged } from '../firebase/firebaseAuthBridge';
-import { loadOrCreatePlayerProfile } from '../ranking/playerProfileStore';
-import { tierForLp } from '../ranking/ranks';
+import { useDuelIdentity } from '../ranking/useDuelIdentity';
 import { generateDuelCode, isValidDuelCodeFormat, normalizeDuelCode } from '../duel/duelCode';
-import { createDuel, joinDuel, leaveDuel, listenToDuel, type DuelPlayerInfo } from '../duel/duelSession';
+import { createDuel, joinDuel, leaveDuel, listenToDuel } from '../duel/duelSession';
 import { RankFrame } from '../components/RankFrame';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DuelLobby'>;
 
-type Mode = 'loading' | 'notConfigured' | 'needsReauth' | 'menu' | 'creating' | 'waiting' | 'joiningForm' | 'joining' | 'error';
+type FlowMode = 'menu' | 'creating' | 'waiting' | 'joiningForm' | 'joining' | 'error';
 
 export function DuelLobbyScreen({ navigation }: Props) {
-  const auth = useAuth();
-  const [mode, setMode] = useState<Mode>('loading');
-  const [me, setMe] = useState<DuelPlayerInfo | null>(null);
+  const identity = useDuelIdentity();
+  const me = identity.me;
+  const [flow, setFlow] = useState<FlowMode>('menu');
   const [code, setCode] = useState<string>('');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [errorText, setErrorText] = useState<string | null>(null);
   const createdCodeRef = useRef<string | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function setup() {
-      if (!isFirebaseConfigured()) {
-        setMode('notConfigured');
-        return;
-      }
-      if (auth.status !== 'signedIn' || !auth.profile) {
-        setMode('needsReauth');
-        return;
-      }
-      const uid = await ensureFirebaseBridged();
-      if (!uid) {
-        setMode('needsReauth');
-        return;
-      }
-      const profile = await loadOrCreatePlayerProfile(uid, auth.profile.name ?? auth.profile.email, auth.profile.photoUrl);
-      if (cancelled) return;
-      setMe({
-        uid,
-        displayName: profile.displayName,
-        avatar: profile.avatar,
-        tier: tierForLp(profile.lp).tier,
-        lp: profile.lp,
-      });
-      setMode('menu');
-    }
-
-    setup().catch(() => {
-      if (!cancelled) setMode('error');
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribeRef.current?.();
-      // Best-effort Aufräumen: wenn man ein Duell erstellt und noch niemand
-      // beigetreten ist, den eigenen Eintrag wieder entfernen, statt eine leere
-      // Warteschlangen-Leiche in der Datenbank zu hinterlassen.
-      if (createdCodeRef.current && me) {
-        leaveDuel(createdCodeRef.current, me.uid).catch(() => {});
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const startCreate = useCallback(async () => {
     if (!me) return;
-    setMode('creating');
+    setFlow('creating');
     setErrorText(null);
     const newCode = generateDuelCode();
     try {
       await createDuel(newCode, me);
       createdCodeRef.current = newCode;
       setCode(newCode);
-      setMode('waiting');
+      setFlow('waiting');
       unsubscribeRef.current = listenToDuel(newCode, (state) => {
         if (state && Object.keys(state.players).length === 2) {
           unsubscribeRef.current?.();
@@ -92,7 +42,7 @@ export function DuelLobbyScreen({ navigation }: Props) {
         }
       });
     } catch {
-      setMode('error');
+      setFlow('error');
     }
   }, [me, navigation]);
 
@@ -103,7 +53,7 @@ export function DuelLobbyScreen({ navigation }: Props) {
       setErrorText('Bitte den 6-stelligen Code prüfen.');
       return;
     }
-    setMode('joining');
+    setFlow('joining');
     setErrorText(null);
     try {
       const result = await joinDuel(normalized, me);
@@ -112,44 +62,52 @@ export function DuelLobbyScreen({ navigation }: Props) {
         return;
       }
       setErrorText(result === 'full' ? 'Dieses Duell ist bereits voll.' : 'Kein Duell mit diesem Code gefunden.');
-      setMode('joiningForm');
+      setFlow('joiningForm');
     } catch {
       setErrorText('Beitritt fehlgeschlagen. Bitte erneut versuchen.');
-      setMode('joiningForm');
+      setFlow('joiningForm');
     }
   }, [me, joinCodeInput, navigation]);
 
+  const goBack = useCallback(() => {
+    unsubscribeRef.current?.();
+    if (createdCodeRef.current && me) {
+      leaveDuel(createdCodeRef.current, me.uid).catch(() => {});
+    }
+    navigation.goBack();
+  }, [me, navigation]);
+
   return (
     <View style={styles.container}>
-      <Pressable style={({ pressed }) => [styles.backButton, pressed && styles.pressed]} onPress={() => navigation.goBack()}>
+      <Pressable style={({ pressed }) => [styles.backButton, pressed && styles.pressed]} onPress={goBack}>
         <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
       </Pressable>
 
       <Text style={styles.title}>Freundschaftsspiel</Text>
       <Text style={styles.subtitle}>60 Sekunden Liegestütze - wer schafft mehr?</Text>
 
-      {mode === 'loading' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
+      {identity.status === 'loading' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
 
-      {mode === 'notConfigured' && (
+      {identity.status === 'notConfigured' && (
         <Text style={styles.infoText}>
           Das Ranking-System ist noch nicht eingerichtet (siehe README „Ranking-System einrichten").
         </Text>
       )}
 
-      {mode === 'needsReauth' && (
+      {identity.status === 'needsReauth' && (
         <Text style={styles.infoText}>Bitte melde dich auf dem Home-Screen zuerst mit Google an.</Text>
       )}
 
-      {mode === 'error' && <Text style={styles.infoText}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</Text>}
+      {identity.status === 'error' && <Text style={styles.infoText}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</Text>}
 
-      {me && (mode === 'menu' || mode === 'creating' || mode === 'joiningForm' || mode === 'joining') && (
+      {me && (
         <View style={styles.avatarPreview}>
           <RankFrame avatar={me.avatar} tier={me.tier} lp={me.lp} size={64} />
           <Text style={styles.avatarName}>{me.displayName}</Text>
         </View>
       )}
 
-      {mode === 'menu' && (
+      {me && flow === 'menu' && (
         <View style={styles.menu}>
           <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={startCreate}>
             <Ionicons name="add-circle-outline" size={20} color="#0B0F14" />
@@ -157,7 +115,7 @@ export function DuelLobbyScreen({ navigation }: Props) {
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
-            onPress={() => setMode('joiningForm')}
+            onPress={() => setFlow('joiningForm')}
           >
             <Ionicons name="enter-outline" size={20} color={colors.textPrimary} />
             <Text style={styles.secondaryButtonText}>Mit Code beitreten</Text>
@@ -165,9 +123,11 @@ export function DuelLobbyScreen({ navigation }: Props) {
         </View>
       )}
 
-      {mode === 'creating' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
+      {flow === 'error' && <Text style={styles.infoText}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</Text>}
 
-      {mode === 'waiting' && (
+      {flow === 'creating' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
+
+      {flow === 'waiting' && (
         <View style={styles.waitingCard}>
           <Text style={styles.waitingLabel}>Dein Code - teile ihn mit deinem Gegner</Text>
           <Text style={styles.code}>{code}</Text>
@@ -176,7 +136,7 @@ export function DuelLobbyScreen({ navigation }: Props) {
         </View>
       )}
 
-      {(mode === 'joiningForm' || mode === 'joining') && (
+      {(flow === 'joiningForm' || flow === 'joining') && (
         <View style={styles.joinCard}>
           <Ionicons name="key-outline" size={22} color={colors.textSecondary} />
           <TextInput
@@ -188,15 +148,15 @@ export function DuelLobbyScreen({ navigation }: Props) {
             autoCapitalize="characters"
             autoCorrect={false}
             maxLength={6}
-            editable={mode === 'joiningForm'}
+            editable={flow === 'joiningForm'}
           />
           {errorText && <Text style={styles.errorText}>{errorText}</Text>}
           <Pressable
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, mode === 'joining' && styles.disabled]}
+            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, flow === 'joining' && styles.disabled]}
             onPress={submitJoin}
-            disabled={mode === 'joining'}
+            disabled={flow === 'joining'}
           >
-            {mode === 'joining' ? (
+            {flow === 'joining' ? (
               <ActivityIndicator color="#0B0F14" />
             ) : (
               <>
