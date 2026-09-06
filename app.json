@@ -26,6 +26,14 @@
     "plugins": [
       "expo-dev-client",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Diese App benötigt Zugriff auf die Kamera, um deine Liegestütz-Form zu analysieren.",

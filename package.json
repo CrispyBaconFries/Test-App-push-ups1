@@ -17,6 +17,7 @@
     "buffer": "^6.0.3",
     "expo": "~57.0.19",
     "expo-audio": "^57.0.4",
+    "expo-build-properties": "~57.0.4",
     "expo-camera": "^57.0.4",
     "expo-constants": "^57.0.17",
     "expo-dev-client": "^57.0.18",
