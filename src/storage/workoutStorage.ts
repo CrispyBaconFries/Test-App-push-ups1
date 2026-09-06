@@ -116,7 +116,14 @@ export interface WorkoutStats {
   mostCommonIssue: FormIssue | null;
 }
 
-export function computeStats(sessions: WorkoutSession[]): WorkoutStats {
+/**
+ * `frozenDayKeys` (aus `src/gamification/streakFreezeStore.ts`, per Münz-Shop
+ * "Streak-Rettung" gekauft) lässt einen Tag ohne Training trotzdem als "Streak lief
+ * weiter" zählen - nur für die *aktuelle* Streak, nicht für `longestStreakDays`
+ * (bewusst: ein Freeze soll die laufende Streak retten, nicht rückwirkend historische
+ * Rekorde umschreiben).
+ */
+export function computeStats(sessions: WorkoutSession[], frozenDayKeys: ReadonlySet<string> = new Set()): WorkoutStats {
   const totalPoints = sessions.reduce((s, session) => s + session.points, 0);
   const totalReps = sessions.reduce((s, session) => s + session.totalReps, 0);
   const bestSessionReps = sessions.reduce((best, session) => Math.max(best, session.totalReps), 0);
@@ -146,7 +153,8 @@ export function computeStats(sessions: WorkoutSession[]): WorkoutStats {
   let currentStreakDays = 0;
   const cursor = new Date();
   for (;;) {
-    if (!workoutDays.has(localDayKey(cursor))) break;
+    const key = localDayKey(cursor);
+    if (!workoutDays.has(key) && !frozenDayKeys.has(key)) break;
     currentStreakDays += 1;
     cursor.setDate(cursor.getDate() - 1);
   }

@@ -1,4 +1,4 @@
-import { levelForPoints, pointsForRep, totalPointsForReps } from '../points';
+import { levelForPoints, MAX_LEVEL, pointsForRep, totalPointsForReps } from '../points';
 import type { RepResult } from '../../pose/formAnalysis';
 
 function rep(formScore: number): RepResult {
@@ -40,12 +40,24 @@ describe('totalPointsForReps', () => {
 });
 
 describe('levelForPoints', () => {
-  it('starts at level 1 with 0 points', () => {
-    expect(levelForPoints(0)).toEqual({ level: 1, pointsIntoLevel: 0, pointsForNextLevel: 250 });
+  it('starts at level 1 with 0 points, needing 100 for level 2', () => {
+    expect(levelForPoints(0)).toEqual({ level: 1, pointsIntoLevel: 0, pointsForNextLevel: 100, isMaxLevel: false });
   });
 
-  it('advances a level every 250 points', () => {
-    expect(levelForPoints(250)).toEqual({ level: 2, pointsIntoLevel: 0, pointsForNextLevel: 250 });
-    expect(levelForPoints(499)).toEqual({ level: 2, pointsIntoLevel: 249, pointsForNextLevel: 250 });
+  it('advances to level 2 at exactly 100 points, level 3 needs more (the curve steepens)', () => {
+    expect(levelForPoints(100)).toEqual({ level: 2, pointsIntoLevel: 0, pointsForNextLevel: 125, isMaxLevel: false });
+    expect(levelForPoints(224)).toMatchObject({ level: 2, pointsIntoLevel: 124, pointsForNextLevel: 125 });
+    expect(levelForPoints(225)).toMatchObject({ level: 3, pointsIntoLevel: 0 });
+  });
+
+  it('never exceeds MAX_LEVEL and reports isMaxLevel with no further requirement', () => {
+    const farBeyond = levelForPoints(10_000_000);
+    expect(farBeyond.level).toBe(MAX_LEVEL);
+    expect(farBeyond.isMaxLevel).toBe(true);
+    expect(farBeyond.pointsForNextLevel).toBe(0);
+  });
+
+  it('clamps negative point totals to level 1', () => {
+    expect(levelForPoints(-50)).toEqual({ level: 1, pointsIntoLevel: 0, pointsForNextLevel: 100, isMaxLevel: false });
   });
 });

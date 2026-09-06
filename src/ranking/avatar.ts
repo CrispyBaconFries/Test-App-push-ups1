@@ -29,7 +29,10 @@ export const AVATAR_ICON_IDS = [
 
 export type AvatarIconId = (typeof AVATAR_ICON_IDS)[number];
 
-export const DEFAULT_AVATAR: PlayerAvatar = { type: 'icon', iconId: 'flame' };
+/** Eigene Konstante (statt nur `DEFAULT_AVATAR.iconId`), weil `DEFAULT_AVATAR` als `PlayerAvatar`-Union typisiert ist und `.iconId` sich darauf nicht ohne Typ-Verengung zugreifen lässt - siehe RankFrame.tsx's `AvatarContent` für den Vergleich "wurde bewusst ein anderes Icon gewählt?". */
+export const DEFAULT_AVATAR_ICON_ID: AvatarIconId = 'flame';
+
+export const DEFAULT_AVATAR: PlayerAvatar = { type: 'icon', iconId: DEFAULT_AVATAR_ICON_ID };
 
 /** Nutzt ein vorhandenes Google-Profilbild als Startpunkt, falls vorhanden. */
 export function avatarFromGooglePhoto(photoUrl: string | null): PlayerAvatar {

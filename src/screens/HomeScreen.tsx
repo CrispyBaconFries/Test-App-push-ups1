@@ -6,12 +6,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { computeStats, loadSessions, type WorkoutSession, type WorkoutStats } from '../storage/workoutStorage';
+import { computeStats, loadSessions, localDayKey, type WorkoutSession, type WorkoutStats } from '../storage/workoutStorage';
 import { levelForPoints } from '../gamification/points';
 import { computeBadgeStatuses } from '../gamification/badges';
 import { computeMissions, buildDailyReminderBody, type MissionProgress } from '../gamification/missions';
 import { claimCompletedMissions, getCoinBalance } from '../gamification/currencyStore';
+import { recordAppOpenAndGetStreak, coinsForLoginStreak } from '../gamification/loginStreak';
+import { reconcileStreakFreezes } from '../gamification/streakFreezeStore';
 import { loadDuelLog, type DuelLogEntry } from '../duel/duelLog';
+import { flushPendingLeaderboardSync } from '../ranking/leaderboardSync';
 import {
   isDailyReminderEnabled,
   enableDailyReminder,
@@ -27,7 +30,17 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type MenuItem = {
-  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby' | 'RankedMatchmaking' | 'BossFight' | 'Leaderboard';
+  key:
+    | 'Workout'
+    | 'History'
+    | 'Achievements'
+    | 'Camera'
+    | 'DuelLobby'
+    | 'RankedMatchmaking'
+    | 'BossFight'
+    | 'Leaderboard'
+    | 'Shop'
+    | 'Profile';
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -53,6 +66,18 @@ const MENU_ITEMS: MenuItem[] = [
     icon: 'podium-outline',
     title: 'Rangliste',
     subtitle: 'Gesamt, diese Woche und deine Liga im Vergleich',
+  },
+  {
+    key: 'Profile',
+    icon: 'person-circle-outline',
+    title: 'Mein Profil',
+    subtitle: 'Level, Gesamt-/Wochen-Liegestütze, Freundescode',
+  },
+  {
+    key: 'Shop',
+    icon: 'cash-outline',
+    title: 'Münz-Shop',
+    subtitle: 'Münzen gegen Streak-Rettung, Avatare und Rahmen-Themes eintauschen',
   },
   {
     key: 'RankedMatchmaking',
@@ -91,6 +116,10 @@ export function HomeScreen({ navigation }: Props) {
   const [duelLog, setDuelLog] = useState<DuelLogEntry[] | null>(null);
   const [reminderEnabled, setReminderEnabled] = useState<boolean | null>(null);
   const [coinBalance, setCoinBalance] = useState<number | null>(null);
+  const [loginStreakDays, setLoginStreakDays] = useState<number | null>(null);
+  const [frozenDayKeys, setFrozenDayKeys] = useState<Set<string>>(new Set());
+  const [heldStreakFreezes, setHeldStreakFreezes] = useState<number | null>(null);
+  const [streakJustSaved, setStreakJustSaved] = useState(false);
   const auth = useAuth();
 
   // useFocusEffect already fires on initial mount (the screen is "focused" as soon as
@@ -105,9 +134,30 @@ export function HomeScreen({ navigation }: Props) {
   useEffect(() => {
     isDailyReminderEnabled().then(setReminderEnabled);
     getCoinBalance().then(setCoinBalance);
+    recordAppOpenAndGetStreak().then(setLoginStreakDays);
   }, []);
 
-  const stats: WorkoutStats = useMemo(() => computeStats(sessions ?? []), [sessions]);
+  // Liegestütze, die mangels Internet nicht in die Online-Rangliste kamen, nachholen -
+  // beim App-Öffnen ist eine gute Gelegenheit dafür (siehe leaderboardSyncQueue.ts).
+  useEffect(() => {
+    flushPendingLeaderboardSync(auth.profile).catch(() => {});
+  }, [auth.profile]);
+
+  // Streak-Rettung aus dem Münz-Shop: prüft bei jedem Fokussieren, ob seit dem letzten
+  // Training eine Lücke entstanden ist, und verbraucht dafür automatisch einen
+  // gehaltenen Freeze (siehe streakFreezeStore.ts) - das Ergebnis fließt unten in
+  // computeStats ein, damit currentStreakDays die geschützte Streak zeigt.
+  useEffect(() => {
+    if (sessions == null) return;
+    const workoutDays = new Set(sessions.map((s) => localDayKey(new Date(s.finishedAtIso))));
+    reconcileStreakFreezes(workoutDays).then(({ frozenDayKeys: frozen, heldFreezesRemaining, justFrozen }) => {
+      setFrozenDayKeys(frozen);
+      setHeldStreakFreezes(heldFreezesRemaining);
+      if (justFrozen.length > 0) setStreakJustSaved(true);
+    });
+  }, [sessions]);
+
+  const stats: WorkoutStats = useMemo(() => computeStats(sessions ?? [], frozenDayKeys), [sessions, frozenDayKeys]);
   const level = levelForPoints(stats.totalPoints);
   // Being on this screen at all means the app is open right now - the "täglich
   // einloggen" mission just reflects that directly, no separate tracking needed.
@@ -121,11 +171,15 @@ export function HomeScreen({ navigation }: Props) {
   );
 
   // Idempotent per mission/day/week (see currencyStore.ts) - safe to run on every
-  // recompute, whether or not a mission actually just became complete.
+  // recompute, whether or not a mission actually just became complete. Der
+  // "Täglich dabei"-Betrag hängt vom Login-Streak ab (siehe loginStreak.ts), daher der
+  // Override statt der festen `rewardCoins` der Mission.
   useEffect(() => {
-    if (sessions == null || duelLog == null) return;
-    claimCompletedMissions(missions).then(({ balance }) => setCoinBalance(balance));
-  }, [missions, sessions, duelLog]);
+    if (sessions == null || duelLog == null || loginStreakDays == null) return;
+    claimCompletedMissions(missions, { daily_app_open: coinsForLoginStreak(loginStreakDays) }).then(({ balance }) =>
+      setCoinBalance(balance)
+    );
+  }, [missions, sessions, duelLog, loginStreakDays]);
 
   // Keeps tonight's reminder text pointed at whatever's still open, as of the last time
   // the app was opened (see dailyReminder.ts for why it can't be more "live" than that).
@@ -208,11 +262,24 @@ export function HomeScreen({ navigation }: Props) {
           {auth.error && <Text style={styles.accountError}>{auth.error}</Text>}
         </View>
 
+        {streakJustSaved && (
+          <View style={styles.streakSavedBanner}>
+            <Ionicons name="snow" size={18} color="#0B0F14" />
+            <Text style={styles.streakSavedText}>
+              Streak gerettet! Eine Streak-Rettung aus dem Münz-Shop wurde automatisch eingesetzt.
+            </Text>
+            <Pressable onPress={() => setStreakJustSaved(false)} hitSlop={8}>
+              <Ionicons name="close" size={16} color="rgba(11,15,20,0.6)" />
+            </Pressable>
+          </View>
+        )}
+
         <View style={styles.statsCard}>
           <LevelProgressBar
             level={level.level}
             pointsIntoLevel={level.pointsIntoLevel}
             pointsForNextLevel={level.pointsForNextLevel}
+            isMaxLevel={level.isMaxLevel}
           />
           <View style={styles.statsDivider} />
           <View style={styles.statsRow}>
@@ -221,6 +288,14 @@ export function HomeScreen({ navigation }: Props) {
             <StatTile icon="flame" value={`${stats.currentStreakDays}`} label="Tage Streak" iconColor={colors.accent} />
             <StatTile icon="ribbon-outline" value={`${unlockedBadgeCount}`} label="Abzeichen" />
           </View>
+          {!!heldStreakFreezes && (
+            <View style={styles.freezeHintRow}>
+              <Ionicons name="snow" size={12} color={colors.textSecondary} />
+              <Text style={styles.freezeHint}>
+                {heldStreakFreezes} Streak-Rettung{heldStreakFreezes === 1 ? '' : 'en'} im Vorrat
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -248,7 +323,15 @@ export function HomeScreen({ navigation }: Props) {
 
           <Text style={styles.missionSectionLabel}>Heute</Text>
           {missions.daily.map((mission) => (
-            <MissionRow key={mission.definition.id} mission={mission} />
+            <MissionRow
+              key={mission.definition.id}
+              mission={mission}
+              rewardOverride={
+                mission.definition.id === 'daily_app_open' && loginStreakDays != null
+                  ? coinsForLoginStreak(loginStreakDays)
+                  : undefined
+              }
+            />
           ))}
 
           <Text style={[styles.missionSectionLabel, { marginTop: 18 }]}>Diese Woche</Text>
@@ -299,7 +382,7 @@ export function HomeScreen({ navigation }: Props) {
   );
 }
 
-function MissionRow({ mission }: { mission: MissionProgress }) {
+function MissionRow({ mission, rewardOverride }: { mission: MissionProgress; rewardOverride?: number }) {
   const { definition, progress, complete } = mission;
   return (
     <View style={styles.missionRow}>
@@ -313,7 +396,7 @@ function MissionRow({ mission }: { mission: MissionProgress }) {
       <View style={styles.missionTextWrap}>
         <View style={styles.missionTitleRow}>
           <Text style={styles.missionTitle}>{definition.title}</Text>
-          <Text style={styles.missionReward}>+{definition.rewardCoins}</Text>
+          <Text style={styles.missionReward}>+{rewardOverride ?? definition.rewardCoins}</Text>
         </View>
         <Text style={styles.missionDescription}>
           {definition.description} · {progress}/{definition.target}
@@ -560,6 +643,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 6,
     fontVariant: ['tabular-nums'],
+  },
+  streakSavedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  streakSavedText: {
+    flex: 1,
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: '#0B0F14',
+  },
+  freezeHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 12,
+    justifyContent: 'center',
+  },
+  freezeHint: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   statsDivider: {
     height: 1,

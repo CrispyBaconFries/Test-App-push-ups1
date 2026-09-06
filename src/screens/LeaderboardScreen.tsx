@@ -1,15 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuth } from '../auth/AuthContext';
 import { useDuelIdentity } from '../ranking/useDuelIdentity';
 import {
   loadDivisionLeaderboard,
+  loadFriendsLeaderboard,
   loadTotalRepsLeaderboard,
   loadWeeklyLeaderboard,
   type LeaderboardEntry,
 } from '../ranking/leaderboardStore';
+import { addFriendByCode } from '../ranking/friendsStore';
+import { isFriendsFeatureEnabled, setFriendsFeatureEnabled } from '../ranking/friendsFeatureFlag';
+import { loadPlayerProfile } from '../ranking/playerProfileStore';
+import { flushPendingLeaderboardSync } from '../ranking/leaderboardSync';
+import { loadPendingSyncQueue } from '../ranking/leaderboardSyncQueue';
 import { RANK_TIERS, tierForLp } from '../ranking/ranks';
 import { weekKey } from '../gamification/missions';
 import { RankFrame } from '../components/RankFrame';
@@ -18,20 +25,45 @@ import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Leaderboard'>;
 
-type LeaderboardTab = 'total' | 'weekly' | 'division';
+type LeaderboardTab = 'total' | 'weekly' | 'division' | 'friends';
 
-const TABS: { key: LeaderboardTab; label: string; valueLabel: string }[] = [
+const BASE_TABS: { key: LeaderboardTab; label: string; valueLabel: string }[] = [
   { key: 'total', label: 'Gesamt', valueLabel: 'Liegestütze' },
   { key: 'weekly', label: 'Diese Woche', valueLabel: 'Liegestütze' },
   { key: 'division', label: 'Meine Liga', valueLabel: 'LP' },
+  { key: 'friends', label: 'Freunde', valueLabel: 'Liegestütze' },
 ];
 
 export function LeaderboardScreen({ navigation }: Props) {
+  const auth = useAuth();
   const identity = useDuelIdentity();
   const me = identity.me;
   const [tab, setTab] = useState<LeaderboardTab>('total');
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [friendsEnabled, setFriendsEnabled] = useState<boolean | null>(null);
+  const [myFriendCode, setMyFriendCode] = useState<string | null>(null);
+  const [addCodeInput, setAddCodeInput] = useState('');
+  const [addFriendBusy, setAddFriendBusy] = useState(false);
+  const [addFriendMessage, setAddFriendMessage] = useState<string | null>(null);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+
+  const tabs = BASE_TABS.filter((t) => t.key !== 'friends' || friendsEnabled);
+
+  useEffect(() => {
+    isFriendsFeatureEnabled().then(setFriendsEnabled);
+  }, []);
+
+  // Nachholen liegengebliebener Rangliste-Syncs (siehe leaderboardSyncQueue.ts) - beim
+  // Betreten dieses Screens ist Internet ohnehin gerade nötig, also eine gute
+  // Gelegenheit dafür.
+  useEffect(() => {
+    flushPendingLeaderboardSync(auth.profile)
+      .catch(() => {})
+      .finally(() => {
+        loadPendingSyncQueue().then((q) => setPendingSyncCount(q.length));
+      });
+  }, [auth.profile]);
 
   const myTier = me ? tierForLp(me.lp).tier : null;
   const myTierDefinition = RANK_TIERS.find((t) => t.tier === myTier) ?? null;
@@ -45,6 +77,8 @@ export function LeaderboardScreen({ navigation }: Props) {
         setEntries(await loadTotalRepsLeaderboard());
       } else if (tab === 'weekly') {
         setEntries(await loadWeeklyLeaderboard(weekKey(new Date())));
+      } else if (tab === 'friends') {
+        setEntries(await loadFriendsLeaderboard(me.uid));
       } else if (myTierDefinition) {
         setEntries(await loadDivisionLeaderboard(myTierDefinition));
       }
@@ -57,6 +91,41 @@ export function LeaderboardScreen({ navigation }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (tab === 'friends' && me) {
+      loadPlayerProfile(me.uid).then((p) => setMyFriendCode(p?.friendCode ?? null));
+    }
+  }, [tab, me]);
+
+  const toggleFriendsFeature = useCallback(async (value: boolean) => {
+    setFriendsEnabled(value);
+    await setFriendsFeatureEnabled(value);
+    if (!value) setTab((current) => (current === 'friends' ? 'total' : current));
+  }, []);
+
+  const submitAddFriend = useCallback(async () => {
+    if (!me || addCodeInput.trim().length === 0) return;
+    setAddFriendBusy(true);
+    setAddFriendMessage(null);
+    try {
+      const result = await addFriendByCode(me.uid, addCodeInput);
+      if (result === 'added') {
+        setAddFriendMessage('Hinzugefügt!');
+        setAddCodeInput('');
+        load();
+      } else if (result === 'already_friends') {
+        setAddFriendMessage('Hast du schon in deiner Liste.');
+      } else if (result === 'is_self') {
+        setAddFriendMessage('Das ist dein eigener Code.');
+      } else {
+        setAddFriendMessage('Code nicht gefunden.');
+      }
+    } catch {
+      setAddFriendMessage('Etwas ist schiefgelaufen.');
+    }
+    setAddFriendBusy(false);
+  }, [me, addCodeInput, load]);
 
   return (
     <View style={styles.container}>
@@ -73,8 +142,25 @@ export function LeaderboardScreen({ navigation }: Props) {
         </View>
       </View>
 
+      {pendingSyncCount > 0 && (
+        <Text style={styles.pendingHint}>
+          {pendingSyncCount} Session{pendingSyncCount === 1 ? '' : 's'} warte{pendingSyncCount === 1 ? 't' : 'n'} noch auf
+          Synchronisierung (kein Internet beim Trainieren) - wird automatisch nachgeholt.
+        </Text>
+      )}
+
+      <View style={styles.friendsToggleRow}>
+        <Ionicons name="people-outline" size={16} color={colors.textSecondary} />
+        <Text style={styles.friendsToggleLabel}>Freunde-Tab anzeigen</Text>
+        <Switch
+          value={friendsEnabled ?? false}
+          onValueChange={toggleFriendsFeature}
+          trackColor={{ true: colors.primary }}
+        />
+      </View>
+
       <View style={styles.tabRow}>
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <Pressable
             key={t.key}
             style={({ pressed }) => [styles.tabButton, tab === t.key && styles.tabButtonActive, pressed && styles.pressed]}
@@ -103,6 +189,35 @@ export function LeaderboardScreen({ navigation }: Props) {
         <Text style={styles.divisionHint}>Liga: {myTierDefinition.label}</Text>
       )}
 
+      {identity.status === 'ready' && tab === 'friends' && (
+        <View style={styles.addFriendCard}>
+          {myFriendCode && <Text style={styles.myCodeHint}>Dein Code zum Teilen: {myFriendCode}</Text>}
+          <View style={styles.addFriendRow}>
+            <TextInput
+              style={styles.addFriendInput}
+              value={addCodeInput}
+              onChangeText={setAddCodeInput}
+              placeholder="Freundescode eingeben"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="characters"
+              maxLength={6}
+            />
+            <Pressable
+              style={({ pressed }) => [styles.addFriendButton, pressed && styles.pressed]}
+              onPress={submitAddFriend}
+              disabled={addFriendBusy}
+            >
+              {addFriendBusy ? (
+                <ActivityIndicator color="#0B0F14" size="small" />
+              ) : (
+                <Text style={styles.addFriendButtonText}>Hinzufügen</Text>
+              )}
+            </Pressable>
+          </View>
+          {addFriendMessage && <Text style={styles.addFriendMessage}>{addFriendMessage}</Text>}
+        </View>
+      )}
+
       {identity.status === 'ready' && entries == null && !loadError && (
         <ActivityIndicator color={colors.primary} style={styles.spacingTop} />
       )}
@@ -125,7 +240,8 @@ export function LeaderboardScreen({ navigation }: Props) {
               rank={index + 1}
               entry={item}
               isMe={item.uid === me?.uid}
-              valueLabel={TABS.find((t) => t.key === tab)!.valueLabel}
+              valueLabel={tabs.find((t) => t.key === tab)?.valueLabel ?? BASE_TABS.find((t) => t.key === tab)!.valueLabel}
+              onPress={() => navigation.navigate('Profile', item.uid === me?.uid ? undefined : { uid: item.uid })}
             />
           )}
         />
@@ -139,16 +255,18 @@ function LeaderboardRow({
   entry,
   isMe,
   valueLabel,
+  onPress,
 }: {
   rank: number;
   entry: LeaderboardEntry;
   isMe: boolean;
   valueLabel: string;
+  onPress: () => void;
 }) {
   return (
-    <View style={[styles.row, isMe && styles.rowMe]}>
+    <Pressable style={({ pressed }) => [styles.row, isMe && styles.rowMe, pressed && styles.pressed]} onPress={onPress}>
       <Text style={styles.rank}>{rank}</Text>
-      <RankFrame avatar={entry.avatar} tier={tierForLp(entry.lp).tier} lp={entry.lp} size={36} />
+      <RankFrame avatar={entry.avatar} tier={tierForLp(entry.lp).tier} lp={entry.lp} size={36} frameThemeId={entry.frameThemeId} />
       <View style={styles.rowTextWrap}>
         <Text style={styles.rowName} numberOfLines={1}>
           {entry.displayName}
@@ -159,7 +277,7 @@ function LeaderboardRow({
         <Text style={styles.rowValue}>{entry.value}</Text>
         <Text style={styles.rowValueLabel}>{valueLabel}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -173,7 +291,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     gap: 12,
   },
   backButton: {
@@ -196,6 +314,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  pendingHint: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.warning,
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  friendsToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  friendsToggleLabel: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   tabRow: {
     flexDirection: 'row',
@@ -238,6 +375,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginBottom: 12,
+  },
+  addFriendCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  myCodeHint: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginBottom: 10,
+  },
+  addFriendRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addFriendInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: colors.textPrimary,
+    fontFamily: fonts.semiBold,
+    letterSpacing: 1,
+  },
+  addFriendButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  addFriendButtonText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#0B0F14',
+  },
+  addFriendMessage: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
   },
   listContent: {
     paddingBottom: 40,

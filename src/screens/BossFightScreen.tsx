@@ -130,7 +130,7 @@ export function BossFightScreen({ navigation }: Props) {
     await saveSession(session);
 
     // Siehe WorkoutScreen's finishWorkout - bewusst nicht awaited.
-    syncLeaderboardProgress(auth.profile, session.totalReps).catch(() => {});
+    syncLeaderboardProgress(auth.profile, session.totalReps, session.points, session.finishedAtIso).catch(() => {});
 
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
@@ -142,7 +142,8 @@ export function BossFightScreen({ navigation }: Props) {
 
     // See WorkoutScreen's finishWorkout for why this is safe to call unconditionally.
     const duelLog = await loadDuelLog();
-    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: true });
+    // Siehe WorkoutScreen's finishWorkout - appOpenedToday gehört dem Home-Screen.
+    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: false });
     const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
 
     navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });

@@ -63,7 +63,12 @@ export async function applyDuelResult(params: {
  * in einer neuen Woche synct, nicht durch eine zwischenzeitliche zweite Schreib-Anfrage
  * (z. B. ein zweites Gerät desselben Nutzers) einen inkonsistenten Zwischenstand sieht.
  */
-export async function syncTrainingProgress(uid: string, repsThisSession: number, now: number = Date.now()): Promise<void> {
+export async function syncTrainingProgress(
+  uid: string,
+  repsThisSession: number,
+  pointsThisSession: number,
+  now: number = Date.now()
+): Promise<void> {
   const currentWeekKey = weekKey(new Date(now));
   await runTransaction(getFirestore(), async (tx) => {
     const ref = playerDoc(uid);
@@ -75,7 +80,24 @@ export async function syncTrainingProgress(uid: string, repsThisSession: number,
       totalReps: (data.totalReps ?? 0) + repsThisSession,
       weeklyReps: priorWeeklyReps + repsThisSession,
       weeklyBucketKey: currentWeekKey,
+      totalPoints: (data.totalPoints ?? 0) + pointsThisSession,
       updatedAt: now,
     });
   });
+}
+
+/** Für den Münz-Shop (shop.ts/inventoryStore.ts): der Nutzer hat gerade ein Avatar-Icon gekauft/ausgerüstet. */
+export async function updateEquippedAvatar(uid: string, avatar: RankedPlayerProfile['avatar']): Promise<void> {
+  await updateDoc(playerDoc(uid), { avatar, updatedAt: Date.now() });
+}
+
+/** Für den Münz-Shop: der Nutzer hat gerade ein Rahmen-Theme gekauft/ausgerüstet. */
+export async function updateEquippedFrameTheme(uid: string, frameThemeId: RankedPlayerProfile['frameThemeId']): Promise<void> {
+  await updateDoc(playerDoc(uid), { frameThemeId, updatedAt: Date.now() });
+}
+
+/** Fürs (fremde) Profil ansehen - siehe ProfileScreen.tsx. Nichts Neues, nur eine benannte Lese-Funktion statt playerDoc()+getDoc() an mehreren Stellen zu wiederholen. */
+export async function loadPlayerProfile(uid: string): Promise<RankedPlayerProfile | null> {
+  const snapshot = await getDoc(playerDoc(uid));
+  return snapshot.exists() ? (snapshot.data() as RankedPlayerProfile) : null;
 }

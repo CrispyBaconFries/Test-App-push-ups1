@@ -1,6 +1,11 @@
 import { avatarFromGooglePhoto, type PlayerAvatar } from './avatar';
 import { STARTING_LP } from './ranks';
 import { weekKey } from '../gamification/missions';
+import type { FrameThemeId } from './frameThemes';
+// Derselbe generische 6-stellige Code wie für Freundschaftsspiel-Einladungen (kein
+// verwechselbares 0/O/1/I/L) - hier als dauerhafter "Freundescode" pro Spieler
+// wiederverwendet statt einen zweiten, fast identischen Generator zu bauen.
+import { generateDuelCode } from '../duel/duelCode';
 
 /** Firestore-Dokument `players/{uid}` (uid = Firebase-Auth-uid, siehe firebaseAuthBridge.ts). */
 export interface RankedPlayerProfile {
@@ -15,6 +20,12 @@ export interface RankedPlayerProfile {
   /** Liegestütze innerhalb der durch `weeklyBucketKey` benannten Woche - wird ohne Cloud Function "faul" zurückgesetzt, siehe `syncTrainingProgress` in playerProfileStore.ts. */
   weeklyReps: number;
   weeklyBucketKey: string;
+  /** Wie `totalReps`, aber die Form-Score-gewichteten Punkte (`src/gamification/points.ts`) - Grundlage fürs Level auf dem Profil-Screen, auch für fremde Profile (siehe ProfileScreen.tsx). */
+  totalPoints: number;
+  /** Gekauftes Rahmen-Theme aus dem Münz-Shop (siehe frameThemes.ts) - 'default' = normale Rang-Farbe. */
+  frameThemeId: FrameThemeId;
+  /** Kurzer, teilbarer Code zum Hinzufügen als Freund (siehe friendsStore.ts) - einmalig bei Profilerstellung generiert. */
+  friendCode: string;
   updatedAt: number;
 }
 
@@ -34,6 +45,9 @@ export function createDefaultPlayerProfile(
     totalReps: 0,
     weeklyReps: 0,
     weeklyBucketKey: weekKey(new Date(now)),
+    totalPoints: 0,
+    frameThemeId: 'default',
+    friendCode: generateDuelCode(),
     updatedAt: now,
   };
 }

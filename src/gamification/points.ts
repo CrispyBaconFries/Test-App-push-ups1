@@ -23,15 +23,45 @@ export function totalPointsForReps(reps: RepResult[]): number {
 }
 
 /**
- * Simple level curve: level N requires N * LEVEL_STEP total points to reach.
- * Kept intentionally simple for the MVP; the roadmap (weekly challenges, PvP
- * matches, badges) will likely replace this with a proper XP/season system, but
- * this is enough to give users a sense of progression today.
+ * Level 1-50, gedeckelt (siehe ProfileScreen.tsx) - Level N zu erreichen kostet
+ * `100 + (N-2)*25` Punkte mehr als Level N-1 (Level 2 kostet 100, Level 3 kostet 125,
+ * ..., Level 50 kostet 1300) - frühe Level gehen schnell, Level 50 ist ein echtes,
+ * mehrmonatiges Fernziel (bei einem durchgehaltenen Tagesziel von 30 Liegestützen/Tag
+ * ca. 3-4 Monate). Ersetzt die frühere flache "alle 250 Punkte ein Level"-Kurve, die nie
+ * endete und Level 50 nach nur ~1000 Liegestützen erreicht hätte - zu schnell für einen
+ * Wert, der sich wie ein echter Deckel anfühlen soll.
  */
-const LEVEL_STEP = 250;
+export const MAX_LEVEL = 50;
 
-export function levelForPoints(totalPoints: number): { level: number; pointsIntoLevel: number; pointsForNextLevel: number } {
-  const level = Math.floor(totalPoints / LEVEL_STEP) + 1;
-  const pointsIntoLevel = totalPoints % LEVEL_STEP;
-  return { level, pointsIntoLevel, pointsForNextLevel: LEVEL_STEP };
+/** LEVEL_THRESHOLDS[i] = Gesamtpunkte, um Level i+1 zu erreichen (Index 0 = Level 1 = 0 Punkte). */
+const LEVEL_THRESHOLDS: number[] = (() => {
+  const thresholds = [0];
+  for (let level = 2; level <= MAX_LEVEL; level++) {
+    const costForThisLevel = 100 + (level - 2) * 25;
+    thresholds.push(thresholds[thresholds.length - 1]! + costForThisLevel);
+  }
+  return thresholds;
+})();
+
+export interface LevelProgress {
+  level: number;
+  pointsIntoLevel: number;
+  /** 0, sobald `isMaxLevel` - es gibt kein "nächstes Level" mehr. */
+  pointsForNextLevel: number;
+  isMaxLevel: boolean;
+}
+
+export function levelForPoints(totalPoints: number): LevelProgress {
+  const capped = Math.max(0, totalPoints);
+  let level = 1;
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (capped >= LEVEL_THRESHOLDS[i]!) {
+      level = i + 1;
+      break;
+    }
+  }
+  const isMaxLevel = level >= MAX_LEVEL;
+  const pointsIntoLevel = capped - LEVEL_THRESHOLDS[level - 1]!;
+  const pointsForNextLevel = isMaxLevel ? 0 : LEVEL_THRESHOLDS[level]! - LEVEL_THRESHOLDS[level - 1]!;
+  return { level, pointsIntoLevel, pointsForNextLevel, isMaxLevel };
 }

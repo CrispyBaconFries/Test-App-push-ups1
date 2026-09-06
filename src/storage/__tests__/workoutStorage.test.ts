@@ -69,6 +69,39 @@ describe('computeStats streak', () => {
   });
 });
 
+describe('computeStats streak with frozenDayKeys (Streak-Rettung)', () => {
+  it('bridges a gap day that has no session but is frozen', () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T12:00:00.000Z'));
+
+    const sessions = [
+      sessionAt('2024-03-10T08:00:00.000Z'),
+      sessionAt('2024-03-09T08:00:00.000Z'),
+      // gap: no session on 2024-03-08, but frozen below
+      sessionAt('2024-03-07T08:00:00.000Z'),
+    ];
+    const frozen = new Set(['2024-03-08']);
+    expect(computeStats(sessions, frozen).currentStreakDays).toBe(4);
+  });
+
+  it('does not affect longestStreakDays, only the current streak', () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T12:00:00.000Z'));
+
+    const sessions = [sessionAt('2024-03-10T08:00:00.000Z'), sessionAt('2024-03-08T08:00:00.000Z')];
+    const frozen = new Set(['2024-03-09']);
+    const stats = computeStats(sessions, frozen);
+    expect(stats.currentStreakDays).toBe(3);
+    expect(stats.longestStreakDays).toBe(3); // max(currentStreakDays, raw longest run) - hier gewinnt die gefrorene current streak
+  });
+
+  it('a frozen key that is not actually adjacent to the streak has no effect', () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T12:00:00.000Z'));
+
+    const sessions = [sessionAt('2024-03-10T08:00:00.000Z')];
+    const frozen = new Set(['2024-01-01']); // weit weg, keine echte Lücke direkt davor
+    expect(computeStats(sessions, frozen).currentStreakDays).toBe(1);
+  });
+});
+
 describe('computeStats longestStreakDays', () => {
   it('remembers a past streak even after it has ended', () => {
     jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-05-01T12:00:00.000Z'));

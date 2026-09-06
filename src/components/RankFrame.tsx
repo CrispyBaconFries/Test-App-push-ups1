@@ -1,19 +1,24 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import type { PlayerAvatar } from '../ranking/avatar';
+import { DEFAULT_AVATAR_ICON_ID } from '../ranking/avatar';
 import type { RankTier } from '../ranking/ranks';
 import { frameStyleForTier } from '../ranking/rankFrameStyle';
+import { frameThemeById, type FrameThemeId } from '../ranking/frameThemes';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 interface Props {
   avatar: PlayerAvatar;
   tier: RankTier;
-  /** Aktuelle LP - wird anstelle des Platzhalter-Icons angezeigt (siehe AvatarContent). */
+  /** Aktuelle LP - wird gezeigt, solange kein bewusst gewähltes (Standard- oder Foto-)Avatar-Icon vorliegt (siehe AvatarContent). */
   lp: number;
   /** Durchmesser des Avatars selbst (ohne Rahmen). */
   size?: number;
+  /** Gekauftes Rahmen-Theme (Münz-Shop) - überschreibt nur die Farben, nicht Ringdicke/Glow/Pulsieren der Rang-Stufe. 'default' (oder weggelassen) = normale Rang-Farbe. */
+  frameThemeId?: FrameThemeId;
 }
 
 /**
@@ -22,8 +27,10 @@ interface Props {
  * leichtes Pulsieren bei Challenger). Die konkrete Icon-/Bild-Auswahl kommt in einem
  * späteren Schritt; hier zählt nur, dass der Rahmen schon jetzt für jeden Rang steht.
  */
-export function RankFrame({ avatar, tier, lp, size = 56 }: Props) {
-  const style = frameStyleForTier(tier);
+export function RankFrame({ avatar, tier, lp, size = 56, frameThemeId = 'default' }: Props) {
+  const tierStyle = frameStyleForTier(tier);
+  const themeOverride = frameThemeById(frameThemeId).gradientColors;
+  const style = themeOverride ? { ...tierStyle, gradientColors: themeOverride } : tierStyle;
   const outerSize = size + style.borderWidth * 2;
 
   const pulse = useRef(new Animated.Value(0)).current;
@@ -70,10 +77,19 @@ function AvatarContent({ avatar, lp, size }: { avatar: PlayerAvatar; lp: number;
   if (avatar.type === 'photo') {
     return <Image source={{ uri: avatar.photoUrl }} style={{ width: size, height: size }} />;
   }
-  // Platzhalter-Icons (avatar.iconId) sind noch nicht final gestaltet - bis dahin
-  // zeigt der Avatar stattdessen die aktuelle Rang-Punktzahl (LP), das ist informativer
-  // als ein austauschbares Symbol. Sobald die richtigen Icons/Fotos da sind, kann
-  // dieser Zweig wieder `avatar.iconId` rendern.
+  // Ein bewusst *gewähltes* Icon (im Münz-Shop gekauft/ausgerüstet, siehe shop.ts) ist
+  // eine echte, informative Personalisierung - anders als das reine Platzhalter-Set an
+  // sich (noch nicht final gestaltet), das früher hier immer anstelle der LP gezeigt
+  // wurde. Nur der eine, kostenlose Start-Avatar (DEFAULT_AVATAR_ICON_ID) gilt weiterhin
+  // als "nichts Bewusstes gewählt" und zeigt stattdessen die aktuelle Rang-Punktzahl
+  // (LP) - informativer als ein austauschbares Symbol, das niemand ausgesucht hat.
+  if (avatar.iconId !== DEFAULT_AVATAR_ICON_ID) {
+    return (
+      <View style={[styles.iconBackground, { width: size, height: size }]}>
+        <Ionicons name={avatar.iconId as never} size={size * 0.55} color={colors.textPrimary} />
+      </View>
+    );
+  }
   return (
     <View style={[styles.iconBackground, { width: size, height: size }]}>
       <Text

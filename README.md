@@ -29,10 +29,14 @@ Screen einen sichtbaren „Zurück"-Button):
   „Training starten" auf einem Gerät Probleme macht (`CameraScreen.tsx`, nutzt
   `expo-camera` statt der MediaPipe-Pipeline — dient als einfacher Diagnose-Fallback).
 
-Auf der Startseite außerdem: ein Level-Fortschrittsbalken, eine Bestleistungen-Übersicht
-(beste Session, bester Form-Score, längste Streak jemals) und die **Missionen** (tägliche/
-wöchentliche Aufgaben mit Münzen-Belohnung, optionaler täglicher Erinnerung) — siehe
-„Missionen & Münzen" für Details.
+Auf der Startseite außerdem: ein Level-Fortschrittsbalken (Level 1-50, gedeckelt), eine
+Bestleistungen-Übersicht (beste Session, bester Form-Score, längste Streak jemals) und
+die **Missionen** (tägliche/wöchentliche Aufgaben mit Münzen-Belohnung, dynamischem
+Login-Streak-Bonus, optionaler täglicher Erinnerung) — siehe „Missionen & Münzen" für
+Details. Weitere Menüpunkte: **Rangliste** (Gesamt/Woche/Liga/Freunde, siehe
+„Ranking-System einrichten"), **Mein Profil** (Level/XP, Reps gesamt/Woche,
+Freundescode) und **Münz-Shop** (Streak-Rettung, Avatare, Rahmen-Themes) — siehe
+„Münz-Shop" und „Profil-Screen & Level 1-50".
 
 ## Auf dem Handy installieren (lokaler Android-Build mit Android Studio)
 
@@ -293,7 +297,7 @@ ab — das ist erwartet und kein Bug.
 
 ## Ranking-System einrichten
 
-**Status: Freundschaftsspiel *und* Ranked spielbar, dazu eine Rangliste (Gesamt/Woche/Liga), sobald Firebase eingerichtet ist.**
+**Status: Freundschaftsspiel *und* Ranked spielbar, dazu eine Rangliste (Gesamt/Woche/Liga/Freunde) mit Profil-Ansicht, sobald Firebase eingerichtet ist.**
 Fertig und getestet: LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen,
 der komplette Duell-Ablauf (Home-Screen → „Freundschaftsspiel" per Einladungscode oder
 „Ranked" per Skill-based Matchmaking → synchronisierter 60-Sekunden-Kampf mit Kamera +
@@ -373,10 +377,9 @@ Function nötig, bleibt im kostenlosen Firebase-Tarif.
 
 ### Rangliste (bereits implementiert)
 
-Eigener Menüpunkt auf dem Home-Screen („Rangliste", `LeaderboardScreen.tsx`) mit drei
-Unter-Tabs, alle drei über `useDuelIdentity()` genau wie Freundschaftsspiel/Ranked
-gegatet (Firebase eingerichtet + mit Google angemeldet nötig, da es eine
-Firestore-uid braucht):
+Eigener Menüpunkt auf dem Home-Screen („Rangliste", `LeaderboardScreen.tsx`) mit vier
+Unter-Tabs, alle über `useDuelIdentity()` genau wie Freundschaftsspiel/Ranked gegatet
+(Firebase eingerichtet + mit Google angemeldet nötig, da es eine Firestore-uid braucht):
 
 - **Gesamt**: alle jemals absolvierten Liegestütze, über alle Spieler hinweg, absteigend
   sortiert (`players.totalReps`).
@@ -385,6 +388,12 @@ Firestore-uid braucht):
 - **Meine Liga**: alle Spieler in derselben Rang-Stufe (Bronze/Silber/Gold/Diamant/
   Challenger, siehe „LP-/Rangsystem") wie man selbst, nach LP sortiert - eine
   Bestenliste unter Gleichgesinnten statt der gesamten Spielerbasis.
+- **Freunde** (per Ein/Aus-Schalter oben auf dem Screen ausblendbar, siehe
+  „Freundesliste" unten): ich selbst + alle, die ich per Freundescode hinzugefügt habe,
+  nach Gesamt-Liegestützen sortiert.
+
+Ein Tap auf eine beliebige Zeile öffnet das (bei anderen Spielern schreibgeschützte)
+Profil dieser Person, siehe „Profil-Screen & Level 1-50".
 
 **Datenmodell** (`src/ranking/playerProfile.ts`, dieselben `players/{uid}`-Dokumente wie
 fürs LP-System): zwei neue Felder, `totalReps` und `weeklyReps` + `weeklyBucketKey`.
@@ -415,11 +424,48 @@ Vereinfachungen:
   `orderBy('lp', 'desc')`) - dieselbe Art Query wie schon beim
   Ranked-Matchmaking-Suchradius, kein zusätzlicher Index nötig (Bereichsfilter +
   Sortierung auf demselben Feld).
-- **Bekannte Grenze**: jede Bestenliste zeigt nur die Top 50 (`LEADERBOARD_LIMIT` in
-  `leaderboardStore.ts`); steht man selbst nicht darunter, gibt es aktuell keine
-  Anzeige der eigenen Platzierung ("du bist Rang 137") - das würde eine laufend
-  gepflegte Rang-Zählung brauchen (typischerweise eine Cloud Function), die hier
-  bewusst nicht gebaut wurde. Für später vorgemerkt.
+- **Bekannte Grenze**: jede Bestenliste (außer "Freunde", die naturgemäß klein bleibt)
+  zeigt nur die Top 50 (`LEADERBOARD_LIMIT` in `leaderboardStore.ts`); steht man selbst
+  nicht darunter, gibt es aktuell keine Anzeige der eigenen Platzierung ("du bist Rang
+  137") - das würde eine laufend gepflegte Rang-Zählung brauchen (typischerweise eine
+  Cloud Function), die hier bewusst nicht gebaut wurde. Für später vorgemerkt.
+
+#### Rangliste-Sync-Queue (Offline-Absicherung, bereits implementiert)
+
+`syncLeaderboardProgress` (leaderboardSync.ts) ist fire-and-forget - ohne Absicherung
+würde eine Session, die ohne Internet endet (z. B. Boss-Kampf im Flugmodus), ihre Reps
+einfach nie in der Online-Rangliste sehen, ohne dass der Nutzer etwas davon merkt.
+Stattdessen:
+
+- Schlägt der Firestore-Schreibzugriff fehl, landet `{ reps, points, finishedAtIso }`
+  in `src/ranking/leaderboardSyncQueue.ts` (AsyncStorage) statt verloren zu gehen.
+  `finishedAtIso` ist bewusst der Zeitpunkt der *ursprünglichen* Session, nicht des
+  (späteren) Nachhol-Versuchs - sonst würde eine Sonntagabend-Session, die erst
+  Dienstag nachgeholt wird, fälschlich in der falschen Woche gezählt.
+- Nachgeholt wird automatisch bei jedem folgenden erfolgreichen Sync, außerdem explizit
+  bei jedem Fokussieren von Home-Screen *und* Rangliste-Screen
+  (`flushPendingLeaderboardSync`) - das sind ohnehin die Momente, in denen der Nutzer
+  vermutlich gerade online ist. Bricht ein Nachhol-Durchlauf bei einem Eintrag ab
+  (vermutlich generelles Netzwerkproblem), wird der Rest für später aufgehoben statt
+  jeden einzelnen Eintrag erneut erfolglos zu versuchen.
+- Ein kleiner Hinweistext auf dem Rangliste-Screen ("X Sessions warten noch auf
+  Synchronisierung") macht sichtbar, dass noch etwas aussteht, statt es unsichtbar im
+  Hintergrund zu lassen.
+
+#### Freundesliste (bereits implementiert)
+
+- **`src/ranking/friendsStore.ts`**: bewusst *einseitig* ("Folgen" statt
+  "Anfreunden mit Bestätigung") - ich trage jemanden per 6-stelligem Freundescode
+  (`players/{uid}.friendCode`, generiert mit demselben Generator wie
+  Freundschaftsspiel-Einladungscodes, `duelCode.ts`) in meine eigene
+  `players/{myUid}/friends`-Subcollection ein. Kein Cloud Function nötig (jeder schreibt
+  nur seine eigene Subcollection, siehe `firestore.rules`), aber auch keine
+  Zustimmung/Benachrichtigung der anderen Seite - eine bewusste Vereinfachung, passend
+  zum Rest dieses Ranking-Systems (auch Duelle laufen ohne Anfrage-Schritt).
+- **Ein/Aus-Schalter** (`src/ranking/friendsFeatureFlag.ts`, AsyncStorage, Standard: an):
+  oben auf dem Rangliste-Screen, jederzeit umschaltbar - falls sich die Freundesliste im
+  Alltag doch als unnötig herausstellt, lässt sie sich ohne App-Update ausblenden, ohne
+  den Code oder die schon gesammelten Freunde zu verlieren.
 
 ### Architekturentscheidungen (mit Begründung)
 
@@ -695,21 +741,81 @@ Home-Screen, Karte „Missionen".
   Background-Task (z.B. `expo-task-manager` + Background Fetch), der hier bewusst noch
   nicht eingebaut wurde (siehe Ideen unten).
 
-**Was hier bewusst noch fehlt (für später vorgemerkt, wie besprochen)**:
-- Ein **Shop/Ausgabe-Mechanismus** für die Münzen (z.B. kosmetische Extras, alternative
-  Boss-Skins, ein Zusatzleben im Boss-Modus) - aktuell sammeln sich Münzen nur an, ohne
-  dass man sie ausgeben kann. Reine Verdienst-Seite war der explizite Auftrag; die
-  Ausgabe-Seite ist ein sinnvoller nächster Schritt.
-- **Rotierende/zufällige Missionen** statt der aktuellen festen 6 - würde Abwechslung
-  bringen, braucht aber eine (am besten geräteübergreifend deterministische, z.B.
-  tagesdatum-geseedete) Auswahl-Logik.
-- **Streak-Bonus fürs tägliche Einloggen** (z.B. steigende Münzen für aufeinanderfolgende
-  Tage, ähnlich der bestehenden Trainings-Streak in `computeStats`) - aktuell zahlt
-  „Täglich dabei" jeden Tag denselben festen Betrag.
-- Ein **Background-Task** für eine wirklich zum Auslösezeitpunkt aktuelle
-  Erinnerungs-Nachricht (siehe oben).
-- Größere/schwerere **Sondermissionen** (z.B. "besiege Boss 5" oder "gewinne ein Ranked
-  gegen einen höheren Rang") für zusätzliche Abwechslung.
+### Login-Streak-Bonus (bereits implementiert)
+
+„Täglich dabei" zahlt nicht mehr jeden Tag denselben festen Betrag - `src/gamification/
+loginStreak.ts` führt einen eigenen, von der Trainings-Streak (`computeStats().
+currentStreakDays`, die einen echten Satz Liegestütze braucht) getrennten
+Login-Streak: einfach die App an aufeinanderfolgenden Kalendertagen öffnen reicht.
+`coinsForLoginStreak()` zahlt an den ersten 5 Tagen steigend 10/15/20/25/30 Münzen,
+danach gedeckelt bei 30 - schnell spürbar, ohne dass ein sehr langer Streak einzelne
+Tage absurd wertvoll macht. Der Home-Screen übergibt den tatsächlichen Betrag als
+`rewardOverride` an `claimCompletedMissions` (siehe currencyStore.ts), da die Mission
+selbst weiterhin einen statischen `rewardCoins`-Wert als Fallback trägt.
+
+## Münz-Shop (bereits implementiert)
+
+Ausgabe-Seite zur Münz-Ökonomie oben - endlich ein Grund, die gesammelten Münzen auch
+auszugeben. Neuer Menüpunkt „Münz-Shop" (`ShopScreen.tsx`) mit drei Kategorien:
+
+- **Streak-Rettung** (60 Münzen, `src/gamification/streakFreezeStore.ts`): schützt die
+  Trainings-Streak automatisch vor dem nächsten verpassten Tag - genau wie in bekannten
+  Streak-Systemen wird ein gehaltener Freeze beim ersten echten Rückschlag automatisch
+  und endgültig verbraucht, man muss ihn nicht manuell auf einen bestimmten Tag
+  anwenden. Rein lokal (kein Firestore, keine Anmeldung nötig) - `computeStats()` bekommt
+  dafür einen neuen optionalen `frozenDayKeys`-Parameter, der einen Tag ohne Training
+  trotzdem als "Streak lief weiter" zählt (nur für die *aktuelle* Streak, nicht für den
+  historischen `longestStreakDays`-Rekord). Der Home-Screen versucht das bei jedem
+  Fokussieren automatisch (`reconcileStreakFreezes`) und zeigt bei einer frisch
+  eingesetzten Rettung eine kurze Banner-Meldung.
+- **Avatare** (100 Münzen je Icon, 7 Stück aus dem bestehenden Platzhalter-Set): einmal
+  gekauft, sofort ausgerüstet (`players/{uid}.avatar`) und damit überall sichtbar, wo
+  `RankFrame` auftaucht (Rangliste, Profil, Duelle). Ein bewusst *gewähltes* Icon gilt
+  jetzt als echte Personalisierung und wird auch angezeigt (`RankFrame.tsx`s
+  `AvatarContent`) - nur der eine kostenlose Start-Avatar (Flamme) zeigt weiterhin die
+  aktuelle Rang-Punktzahl (LP) statt eines Icons, wie ursprünglich gewünscht.
+- **Rahmen-Themes** (250 Münzen, 5 Farbvarianten, `src/ranking/frameThemes.ts`): färben
+  nur den Rang-Rahmen um (`RankFrame`s `gradientColors`), Ringdicke/Glow/Pulsieren
+  bleiben von der Rang-Stufe bestimmt - der Rahmen kommuniziert also weiterhin ehrlich
+  den erreichten Rang, das Theme ist reine Personalisierung obendrauf. Gespeichert als
+  `players/{uid}.frameThemeId`, damit auch andere es in Rangliste/Duellen sehen.
+
+**Preis-Philosophie**: als Maßstab dient, wie viele Münzen ein einigermaßen aktiver
+Tag/eine Woche realistisch einbringt (siehe „Missionen & Münzen" oben - grob 60-80
+Münzen an einem vollen Tag, ~220 zusätzlich pro Woche). Die Streak-Rettung ist bewusst
+am günstigsten - genau nach der eigenen Idee aus der Konzeptphase, sie ungefähr 3-4
+Tage Login-Bonus kosten zu lassen: die ersten 4 Tage Login-Bonus ergeben 10+15+20+25=70
+Münzen, 60 ist die runde Zahl knapp darunter. Avatare sind reine, günstige
+Sammel-Kosmetik (~1-2 Tage). Rahmen-Themes sind sichtbarer (überall wo `RankFrame`
+auftaucht) und daher spürbar teurer (~3-5 Tage) - ein glaubwürdiges "Flex"-Item, ohne
+eine ganze Woche Grind zu verlangen.
+
+**Bekannte Grenze**: welche Avatare/Rahmen-Themes man schon besitzt, wird rein lokal
+gespeichert (`src/gamification/inventoryStore.ts`) - eine Neuinstallation verliert den
+Kaufverlauf der Kosmetik (nicht aber die Münzen selbst oder das aktuell ausgerüstete
+Icon/Theme, die in Firestore liegen). Für ein Hobby-Projekt akzeptabel; ein sauberer Fix
+wäre, den Besitz zusätzlich in Firestore zu spiegeln.
+
+## Profil-Screen & Level 1-50 (bereits implementiert)
+
+Neuer Menüpunkt „Mein Profil" (`ProfileScreen.tsx`) - zeigt Gesamt-Liegestütze, Reps
+diese Woche, Level+XP-Balken, Bestleistungen/Abzeichen-Anzahl (nur fürs eigene Profil,
+da das reine Lokaldaten sind) sowie - falls angemeldet - Rang/LP, Sieg/Niederlage-Bilanz
+und den eigenen Freundescode. Ein Tap auf eine andere Person in der Rangliste öffnet
+dasselbe Profil schreibgeschützt für sie, aus den in Firestore ohnehin schon
+synchronisierten Feldern (`totalReps`, `weeklyReps`, `totalPoints`, `lp`, `wins`,
+`losses`, `avatar`, `frameThemeId`) - dafür synct `syncTrainingProgress`
+(playerProfileStore.ts) jetzt zusätzlich `totalPoints`, nicht nur `totalReps`.
+
+**Level-Kurve** (`src/gamification/points.ts`, ersetzt die frühere flache "alle 250
+Punkte ein Level"-Kurve): Level 1-50, gedeckelt. Level N zu erreichen kostet
+`100 + (N-2)*25` Punkte mehr als Level N-1 (Level 2 kostet 100, Level 3 kostet 125, ...,
+Level 50 kostet 1300) - frühe Level gehen schnell, Level 50 ist ein echtes,
+mehrmonatiges Fernziel (bei einem durchgehaltenen Tagesziel von 30 Liegestützen/Tag ca.
+3-4 Monate). Die alte Kurve hätte Level 50 schon nach ~1000 Liegestützen erreicht - zu
+schnell für einen Wert, der sich wie ein echter Deckel anfühlen soll. Dieselbe Kurve
+speist weiterhin den Level-Balken auf dem Home-Screen, es gibt also nur ein einziges,
+konsistentes Level pro Nutzer statt zweier widersprüchlicher Zahlen.
 
 ## Play-Store-Veröffentlichung
 
@@ -820,8 +926,12 @@ src/
     matchmaking.ts                  Suchradius-Logik fürs Ranked-Matchmaking, testbar
     matchmakingQueue.ts               Firestore-Warteschlange: beitreten/suchen/claimen
     useDuelIdentity.ts                gemeinsamer Hook: Firebase/Anmeldung/Spielerprofil-Voraussetzung
-    leaderboardSync.ts                schreibt Session-Reps best-effort in players/{uid} (Gesamt/Woche)
-    leaderboardStore.ts                Firestore-Abfragen für die drei Rangliste-Tabs (Gesamt/Woche/Liga)
+    leaderboardSync.ts                schreibt Session-Reps/-Punkte best-effort in players/{uid} (Gesamt/Woche)
+    leaderboardSyncQueue.ts            AsyncStorage-Warteschlange für fehlgeschlagene Syncs (Offline-Absicherung)
+    leaderboardStore.ts                Firestore-Abfragen für die vier Rangliste-Tabs (Gesamt/Woche/Liga/Freunde)
+    friendsStore.ts                    Freundescode-Suche + einseitiges Hinzufügen (players/{uid}/friends)
+    friendsFeatureFlag.ts               Ein/Aus-Schalter für den Freunde-Tab (AsyncStorage)
+    frameThemes.ts                       Käufliche Rahmen-Farbthemes (reine Konfiguration)
   duel/
     duelCode.ts                   6-stelliger Einladungscode fürs Freundschaftsspiel, testbar
     duelSession.ts                  Realtime-Database-Logik: erstellen/beitreten/bereit/Live-Zähler
@@ -845,13 +955,19 @@ src/
     DuelScreen.tsx             Kamera-Duell: eigener Zähler + Gegner-Punktestand, synced Countdown/Timer
     DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
     BossFightScreen.tsx           Offline-Solo: Kamera + Boss-Lebensbalken, kein Backend nötig
-    LeaderboardScreen.tsx           Rangliste: Gesamt/Diese Woche/Meine Liga als Unter-Tabs
-  storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
+    LeaderboardScreen.tsx           Rangliste: Gesamt/Diese Woche/Meine Liga/Freunde als Unter-Tabs
+    ShopScreen.tsx                    Münz-Shop: Streak-Rettung, Avatare, Rahmen-Themes
+    ProfileScreen.tsx                  Eigenes oder fremdes Profil: Level/XP, Reps gesamt/Woche, Freundescode
+  storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken + Streak (mit Freeze-Support)
   gamification/
-    points.ts       Punkte-/Level-Berechnung
+    points.ts       Punkte-/Level-Berechnung (Level 1-50, gedeckelt), testbar
     badges.ts         Abzeichen-Definitionen + Freischalt-Logik (reine Funktionen, testbar)
     missions.ts        Missions-Definitionen + Tages-/Wochen-Fortschritt (reine Funktionen, testbar)
     currencyStore.ts    Münz-Guthaben + Beleg-Ledger fürs einmalige Einlösen jeder Mission (AsyncStorage)
+    loginStreak.ts        Login-Streak (getrennt von der Trainings-Streak) + dynamischer Münz-Bonus, testbar
+    streakFreezeStore.ts    Streak-Rettung: gehaltene Freezes + welche Tage schon eingefroren wurden (AsyncStorage)
+    shop.ts                 Shop-Katalog (Preise/Kategorien), reine Konfiguration
+    inventoryStore.ts         Besitz gekaufter Kosmetik (AsyncStorage) + Kauf-/Ausrüsten-Orchestrierung
   navigation/RootNavigator.tsx
 plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
@@ -894,8 +1010,9 @@ ist die Grundlage für alles Folgende:
    `DuelResultScreen` (inkl. LP-Änderung bei Ranked), Spieler-Avatare mit Rang-Rahmen
    inklusive — siehe „Ranking-System einrichten" für alle Details.
 5. **Leaderboards** ✅ umgesetzt (`LeaderboardScreen.tsx`, `src/ranking/leaderboardStore.ts`/
-   `leaderboardSync.ts`): baut auf Punkt 4 auf (dieselbe Backend-Anbindung) - drei Tabs
-   (Gesamt-Liegestütze, diese Woche, eigene Liga) - siehe „Rangliste" für alle Details.
+   `leaderboardSync.ts`): baut auf Punkt 4 auf (dieselbe Backend-Anbindung) - vier Tabs
+   (Gesamt-Liegestütze, diese Woche, eigene Liga, Freunde per Code), mit Offline-Sync-
+   Warteschlange und Profil-Ansicht per Tap - siehe „Rangliste" für alle Details.
 6. **Boss-Modus** ✅ umgesetzt (`src/bossmode/`, `BossFightScreen.tsx`): Offline-Solo
    gegen immer stärkere Bosse - Boss 1-4 mit 100/120/150/180 HP, danach steigt die
    nötige Wiederholungszahl abwechselnd um 2/3 pro Boss; ein Liegestütz zieht 15 HP ab.
@@ -903,6 +1020,12 @@ ist die Grundlage für alles Folgende:
    fürs Trainingsverlauf/Punkte/Auszeichnungen mit; echte Personen-Freistellung per
    TFLite/Skia (noch nicht auf echtem Gerät getestet) — siehe „Boss-Modus" für Details
    und die offenen Punkte.
+7. **Münz-Shop & Profil** ✅ umgesetzt (`ShopScreen.tsx`, `ProfileScreen.tsx`): Streak-
+   Rettung/Avatare/Rahmen-Themes gegen Münzen, dazu ein Profil-Screen mit Level 1-50
+   (eigene, gedeckelte XP-Kurve) und Gesamt-/Wochen-Liegestützen, für sich selbst und
+   - schreibgeschützt - für andere Spieler aus der Rangliste - siehe „Münz-Shop" und
+   „Profil-Screen & Level 1-50".
 
-Punkte 1–3 und 6 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins
-(siehe „Ranking-System einrichten").
+Punkte 1–3 und 6 sind reine On-Device-Features ohne Backend; Punkte 4–5 und 7 (mit
+Ausnahme der rein lokalen Streak-Rettung) brauchen eins (siehe „Ranking-System
+einrichten").

@@ -8,18 +8,17 @@ export interface LevelProgressBarProps {
   level: number;
   pointsIntoLevel: number;
   pointsForNextLevel: number;
+  isMaxLevel?: boolean;
 }
 
-export function LevelProgressBar({ level, pointsIntoLevel, pointsForNextLevel }: LevelProgressBarProps) {
-  const progress = pointsForNextLevel > 0 ? pointsIntoLevel / pointsForNextLevel : 0;
+export function LevelProgressBar({ level, pointsIntoLevel, pointsForNextLevel, isMaxLevel }: LevelProgressBarProps) {
+  const progress = isMaxLevel ? 1 : pointsForNextLevel > 0 ? pointsIntoLevel / pointsForNextLevel : 0;
 
   return (
     <View>
       <View style={styles.labelRow}>
-        <Text style={styles.label}>Level {level}</Text>
-        <Text style={styles.pointsLabel}>
-          {pointsIntoLevel} / {pointsForNextLevel}
-        </Text>
+        <Text style={styles.label}>Level {level}{isMaxLevel ? ' · MAX' : ''}</Text>
+        <Text style={styles.pointsLabel}>{isMaxLevel ? 'Höchststufe erreicht' : `${pointsIntoLevel} / ${pointsForNextLevel}`}</Text>
       </View>
       <ProgressBar progress={progress} />
     </View>

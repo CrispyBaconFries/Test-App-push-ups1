@@ -123,7 +123,7 @@ export function WorkoutScreen({ navigation }: Props) {
 
     // Bewusst nicht awaited - ein Netzwerkproblem beim Online-Rangliste-Sync darf das
     // Beenden des Workouts nicht verzögern (siehe leaderboardSync.ts).
-    syncLeaderboardProgress(auth.profile, session.totalReps).catch(() => {});
+    syncLeaderboardProgress(auth.profile, session.totalReps, session.points, session.finishedAtIso).catch(() => {});
 
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
@@ -139,7 +139,11 @@ export function WorkoutScreen({ navigation }: Props) {
     // (see currencyStore.ts), so it's safe to call here even though HomeScreen also
     // calls it on every focus - whichever runs first gets the "newly completed" credit.
     const duelLog = await loadDuelLog();
-    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: true });
+    // appOpenedToday bleibt hier false - diese Mission gehört dem Home-Screen (siehe
+    // dort), da nur er den Login-Streak kennt und den korrekten, streak-abhängigen
+    // Betrag auszahlen kann; hier ausgelöst würde sie sonst nur den (falschen)
+    // statischen Fallback-Betrag zahlen.
+    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: false });
     const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
 
     navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });

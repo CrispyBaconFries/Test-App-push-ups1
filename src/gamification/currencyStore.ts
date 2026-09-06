@@ -51,8 +51,17 @@ export interface ClaimResult {
  * finishes, ...) since `claimReward` above is idempotent per period+mission. Returns only
  * what's newly claimed *this call*, so callers can show a "you just earned this" toast
  * without re-announcing rewards claimed earlier.
+ *
+ * `rewardOverrides` lets a caller pay out a *different* amount than the mission's static
+ * `rewardCoins` for specific mission ids - used for `daily_app_open`, whose actual reward
+ * depends on the current login streak (see `coinsForLoginStreak` in loginStreak.ts)
+ * rather than being a fixed number. Missions without an override use their normal
+ * `rewardCoins` as before.
  */
-export async function claimCompletedMissions(snapshot: MissionsSnapshot): Promise<ClaimResult> {
+export async function claimCompletedMissions(
+  snapshot: MissionsSnapshot,
+  rewardOverrides: Partial<Record<string, number>> = {}
+): Promise<ClaimResult> {
   let balance = await getCoinBalance();
   let coinsEarned = 0;
   const newlyCompleted: MissionDefinition[] = [];
@@ -60,13 +69,28 @@ export async function claimCompletedMissions(snapshot: MissionsSnapshot): Promis
   for (const { definition, complete } of [...snapshot.daily, ...snapshot.weekly]) {
     if (!complete) continue;
     const periodKey = definition.period === 'daily' ? snapshot.dayKey : snapshot.weekKey;
-    const result = await claimReward(`${periodKey}:${definition.id}`, definition.rewardCoins);
+    const amount = rewardOverrides[definition.id] ?? definition.rewardCoins;
+    const result = await claimReward(`${periodKey}:${definition.id}`, amount);
     balance = result.balance;
     if (!result.alreadyClaimed) {
-      coinsEarned += definition.rewardCoins;
+      coinsEarned += amount;
       newlyCompleted.push(definition);
     }
   }
 
   return { balance, coinsEarned, newlyCompleted };
+}
+
+/**
+ * Bucht `amount` Münzen ab, sofern das Guthaben reicht - für den Münz-Shop (shop.ts/
+ * inventoryStore.ts). Kein Nebenläufigkeits-Schutz nötig (anders als bei Firestore-
+ * Transaktionen): AsyncStorage ist rein lokal auf diesem Gerät, ein einzelner Nutzer
+ * kann sich hier nicht selbst überholen.
+ */
+export async function spendCoins(amount: number): Promise<{ ok: boolean; balance: number }> {
+  const balance = await getCoinBalance();
+  if (balance < amount) return { ok: false, balance };
+  const next = balance - amount;
+  await AsyncStorage.setItem(BALANCE_KEY, String(next));
+  return { ok: true, balance: next };
 }
