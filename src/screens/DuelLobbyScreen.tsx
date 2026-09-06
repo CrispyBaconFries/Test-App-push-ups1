@@ -144,7 +144,7 @@ export function DuelLobbyScreen({ navigation }: Props) {
 
       {me && (mode === 'menu' || mode === 'creating' || mode === 'joiningForm' || mode === 'joining') && (
         <View style={styles.avatarPreview}>
-          <RankFrame avatar={me.avatar} tier={me.tier} size={64} />
+          <RankFrame avatar={me.avatar} tier={me.tier} lp={me.lp} size={64} />
           <Text style={styles.avatarName}>{me.displayName}</Text>
         </View>
       )}

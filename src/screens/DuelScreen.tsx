@@ -179,9 +179,16 @@ export function DuelScreen({ route, navigation }: Props) {
       />
 
       <View style={styles.hudRow} pointerEvents="none">
-        <PlayerBadge label={me.displayName} avatar={me.avatar} tier={me.tier} reps={myReps} align="left" />
+        <PlayerBadge label={me.displayName} avatar={me.avatar} tier={me.tier} lp={me.lp} reps={myReps} align="left" />
         {opponent && (
-          <PlayerBadge label={opponent.displayName} avatar={opponent.avatar} tier={opponent.tier} reps={opponent.reps} align="right" />
+          <PlayerBadge
+            label={opponent.displayName}
+            avatar={opponent.avatar}
+            tier={opponent.tier}
+            lp={opponent.lp}
+            reps={opponent.reps}
+            align="right"
+          />
         )}
       </View>
 
@@ -200,18 +207,20 @@ function PlayerBadge({
   label,
   avatar,
   tier,
+  lp,
   reps,
   align,
 }: {
   label: string;
   avatar: DuelPlayerState['avatar'];
   tier: DuelPlayerState['tier'];
+  lp: number;
   reps: number;
   align: 'left' | 'right';
 }) {
   return (
     <View style={[styles.badge, align === 'right' && styles.badgeRight]}>
-      <RankFrame avatar={avatar} tier={tier} size={36} />
+      <RankFrame avatar={avatar} tier={tier} lp={lp} size={36} />
       <View style={align === 'right' ? styles.badgeTextWrapRight : styles.badgeTextWrap}>
         <Text style={styles.badgeReps}>{reps}</Text>
         <Text style={styles.badgeName} numberOfLines={1}>

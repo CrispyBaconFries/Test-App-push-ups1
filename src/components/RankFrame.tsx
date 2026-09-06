@@ -1,15 +1,17 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Image, StyleSheet, View } from 'react-native';
+import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import type { PlayerAvatar } from '../ranking/avatar';
 import type { RankTier } from '../ranking/ranks';
 import { frameStyleForTier } from '../ranking/rankFrameStyle';
 import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
 
 interface Props {
   avatar: PlayerAvatar;
   tier: RankTier;
+  /** Aktuelle LP - wird anstelle des Platzhalter-Icons angezeigt (siehe AvatarContent). */
+  lp: number;
   /** Durchmesser des Avatars selbst (ohne Rahmen). */
   size?: number;
 }
@@ -20,7 +22,7 @@ interface Props {
  * leichtes Pulsieren bei Challenger). Die konkrete Icon-/Bild-Auswahl kommt in einem
  * späteren Schritt; hier zählt nur, dass der Rahmen schon jetzt für jeden Rang steht.
  */
-export function RankFrame({ avatar, tier, size = 56 }: Props) {
+export function RankFrame({ avatar, tier, lp, size = 56 }: Props) {
   const style = frameStyleForTier(tier);
   const outerSize = size + style.borderWidth * 2;
 
@@ -57,20 +59,31 @@ export function RankFrame({ avatar, tier, size = 56 }: Props) {
         ]}
       >
         <View style={[styles.avatarClip, { width: size, height: size, borderRadius: size / 2 }]}>
-          <AvatarContent avatar={avatar} size={size} />
+          <AvatarContent avatar={avatar} lp={lp} size={size} />
         </View>
       </LinearGradient>
     </Animated.View>
   );
 }
 
-function AvatarContent({ avatar, size }: { avatar: PlayerAvatar; size: number }) {
+function AvatarContent({ avatar, lp, size }: { avatar: PlayerAvatar; lp: number; size: number }) {
   if (avatar.type === 'photo') {
     return <Image source={{ uri: avatar.photoUrl }} style={{ width: size, height: size }} />;
   }
+  // Platzhalter-Icons (avatar.iconId) sind noch nicht final gestaltet - bis dahin
+  // zeigt der Avatar stattdessen die aktuelle Rang-Punktzahl (LP), das ist informativer
+  // als ein austauschbares Symbol. Sobald die richtigen Icons/Fotos da sind, kann
+  // dieser Zweig wieder `avatar.iconId` rendern.
   return (
     <View style={[styles.iconBackground, { width: size, height: size }]}>
-      <Ionicons name={avatar.iconId} size={size * 0.6} color={colors.textPrimary} />
+      <Text
+        style={[styles.lpText, { fontSize: size * 0.34 }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        allowFontScaling={false}
+      >
+        {lp}
+      </Text>
     </View>
   );
 }
@@ -88,6 +101,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceElevated,
+  },
+  lpText: {
+    fontFamily: fonts.extraBold,
+    color: colors.textPrimary,
+    fontVariant: ['tabular-nums'],
   },
   glowShadow: {
     shadowOffset: { width: 0, height: 0 },

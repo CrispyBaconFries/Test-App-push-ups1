@@ -74,12 +74,20 @@ export function DuelResultScreen({ route, navigation }: Props) {
           </Text>
 
           <View style={styles.tallyRow}>
-            <PlayerTally label={me.displayName} avatar={me.avatar} tier={me.tier} reps={myFinalReps!} highlight={outcome === 'win'} />
+            <PlayerTally
+              label={me.displayName}
+              avatar={me.avatar}
+              tier={me.tier}
+              lp={me.lp}
+              reps={myFinalReps!}
+              highlight={outcome === 'win'}
+            />
             <Text style={styles.vsText}>vs</Text>
             <PlayerTally
               label={opponent!.displayName}
               avatar={opponent!.avatar}
               tier={opponent!.tier}
+              lp={opponent!.lp}
               reps={opponent!.finishedReps!}
               highlight={outcome === 'loss'}
             />
@@ -108,18 +116,20 @@ function PlayerTally({
   label,
   avatar,
   tier,
+  lp,
   reps,
   highlight,
 }: {
   label: string;
   avatar: DuelPlayerState['avatar'];
   tier: DuelPlayerState['tier'];
+  lp: number;
   reps: number;
   highlight: boolean;
 }) {
   return (
     <View style={styles.tallyItem}>
-      <RankFrame avatar={avatar} tier={tier} size={56} />
+      <RankFrame avatar={avatar} tier={tier} lp={lp} size={56} />
       <Text style={[styles.tallyReps, highlight && { color: colors.primary }]}>{reps}</Text>
       <Text style={styles.tallyName} numberOfLines={1}>
         {label}
