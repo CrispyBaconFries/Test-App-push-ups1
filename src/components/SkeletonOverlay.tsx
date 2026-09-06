@@ -3,7 +3,13 @@ import Svg, { Circle, Line } from 'react-native-svg';
 import { PoseLandmarkIndex } from '../pose/blazePoseLandmarks';
 import type { FormIssue } from '../pose/formAnalysis';
 
-export type ViewPoint = { x: number; y: number };
+export type ViewPoint = { x: number; y: number; visibility?: number };
+
+/** Below this, a landmark's position is MediaPipe's low-confidence best guess rather than
+ * something actually seen - most visible on legs/feet when they're out of frame or at a
+ * shallow angle, where it otherwise draws a short, wrong-looking stroke collapsed near
+ * the knee. Matches the visibility floor formAnalysis.ts uses for the same landmarks. */
+const MIN_DRAW_VISIBILITY = 0.5;
 
 const { leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist, leftHip, rightHip, leftKnee, rightKnee, leftAnkle, rightAnkle, nose, leftEar, rightEar } =
   PoseLandmarkIndex;
@@ -70,7 +76,8 @@ export function SkeletonOverlay({ width, height, points, activeIssue }: Skeleton
   }
 
   const boneColor = activeIssue ? COLOR_WARN : COLOR_OK;
-  const headPoint = points[nose];
+  const nosePoint = points[nose];
+  const headPoint = nosePoint && (nosePoint.visibility ?? 1) >= MIN_DRAW_VISIBILITY ? nosePoint : null;
   const headIsWarn = highlightedJoints.has(nose);
 
   return (
@@ -90,7 +97,7 @@ export function SkeletonOverlay({ width, height, points, activeIssue }: Skeleton
       {/* Every joint (elbows, wrists, hips, knees, ankles) as a small circle. */}
       {BODY_JOINTS.map((index) => {
         const p = points[index];
-        if (!p) return null;
+        if (!p || (p.visibility ?? 1) < MIN_DRAW_VISIBILITY) return null;
         const isWarn = highlightedJoints.has(index);
         return (
           <Circle
@@ -133,6 +140,6 @@ function BoneLine({
 }) {
   const pa = points[a];
   const pb = points[b];
-  if (!pa || !pb) return null;
+  if (!pa || !pb || (pa.visibility ?? 1) < MIN_DRAW_VISIBILITY || (pb.visibility ?? 1) < MIN_DRAW_VISIBILITY) return null;
   return <Line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />;
 }

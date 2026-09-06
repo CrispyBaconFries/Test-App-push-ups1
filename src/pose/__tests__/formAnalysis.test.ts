@@ -79,6 +79,27 @@ describe('PushUpAnalyzer', () => {
     expect(lastResult!.completedRep!.issues).toContain('ELBOWS_FLARED');
   });
 
+  it('still counts a rep when the feet/hips are out of frame, as long as the arm is visible', () => {
+    // Realistic push-up camera setup: phone propped up low in front of the user, so the
+    // arm (shoulder/elbow/wrist) is clearly visible but the feet trail off out of frame
+    // or too foreshortened for MediaPipe to trust (visibility 0.1, well under the 0.5
+    // minimum). Rep counting must not depend on that - only form-quality checks that
+    // specifically need hip/ankle/ear should degrade, not the rep count itself.
+    const analyzer = new PushUpAnalyzer();
+    const sequence = [180, 150, 90, 90, 120, 150, 165];
+    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+
+    sequence.forEach((elbowAngleDeg, i) => {
+      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, extendedVisibility: 0.1 }), i * 33);
+    });
+
+    expect(lastResult!.completedRep).not.toBeNull();
+    // No hip/ankle data was ever available, so those checks must give the benefit of the
+    // doubt rather than penalizing the rep for something that couldn't be measured.
+    expect(lastResult!.completedRep!.issues).toEqual([]);
+    expect(analyzer.getPhase()).toBe('up');
+  });
+
   it('reports trackingOk: false and skips analysis when the pose is barely visible', () => {
     const analyzer = new PushUpAnalyzer();
     const { live, completedRep } = analyzer.processFrame(buildFrame({ elbowAngleDeg: 90, visibility: 0.1 }), 0);

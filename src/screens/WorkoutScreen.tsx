@@ -28,8 +28,6 @@ import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 const POSE_MODEL = 'pose_landmarker_lite.task';
-/** Only rebuild the on-screen skeleton every Nth pose result; the rep/form logic still runs every frame. */
-const OVERLAY_FRAME_SKIP = 2;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Workout'>;
 
@@ -38,7 +36,6 @@ export function WorkoutScreen({ navigation }: Props) {
   const auth = useAuth();
   const analyzerRef = useRef(new PushUpAnalyzer());
   const startedAtRef = useRef(new Date().toISOString());
-  const frameCounterRef = useRef(0);
   const repsRef = useRef<RepResult[]>([]);
 
   const [repCount, setRepCount] = useState(0);
@@ -85,12 +82,12 @@ export function WorkoutScreen({ navigation }: Props) {
       playRepSoundRef.current(completedRep.issues.length === 0);
     }
 
-    frameCounterRef.current += 1;
-    if (frameCounterRef.current % OVERLAY_FRAME_SKIP === 0) {
-      const frameDims = vc.getFrameDims(result);
-      const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));
-      setSkeletonPoints(points);
-    }
+    // Rebuilt every frame (no throttling) so the overlay tracks the camera in
+    // near-real-time - it used to only update every 2nd result, which read as
+    // noticeably laggy skeleton tracking.
+    const frameDims = vc.getFrameDims(result);
+    const points = imageLandmarks.map((lm) => ({ ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }), visibility: lm.visibility }));
+    setSkeletonPoints(points);
   }, []);
 
   const onError = useCallback((error: DetectionError) => {

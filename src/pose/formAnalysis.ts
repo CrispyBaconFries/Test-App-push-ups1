@@ -146,25 +146,39 @@ export class PushUpAnalyzer {
     const side = this.lockedSide ?? pickMoreVisibleSide(pose);
     const idx = sideIndices(side);
 
-    if (!allVisible(pose, [idx.ear, idx.shoulder, idx.elbow, idx.wrist, idx.hip, idx.ankle], t.minVisibility)) {
+    // Only the arm itself is required to count a rep at all - shoulder/elbow/wrist are
+    // reliably in frame in any push-up camera setup. Ear/hip/ankle are only needed for
+    // the *optional* form-quality checks below: a phone propped up low in front of the
+    // user very often has the feet out of frame or at too shallow an angle for MediaPipe
+    // to trust, and requiring them here used to mean the rep counter simply never
+    // advanced past 'up' whenever that happened - no rep ever counted, regardless of how
+    // clean the push-up itself was.
+    if (!allVisible(pose, [idx.shoulder, idx.elbow, idx.wrist], t.minVisibility)) {
       return {
         live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null },
         completedRep: null,
       };
     }
 
-    const ear = getLandmark(pose, idx.ear)!;
     const shoulder = getLandmark(pose, idx.shoulder)!;
     const elbow = getLandmark(pose, idx.elbow)!;
     const wrist = getLandmark(pose, idx.wrist)!;
-    const hip = getLandmark(pose, idx.hip)!;
-    const ankle = getLandmark(pose, idx.ankle)!;
-
     const elbowAngleDeg = angleAtPoint(shoulder, elbow, wrist);
-    const hipStraightnessDeg = angleAtPoint(shoulder, hip, ankle);
-    const elbowFlareDeg = angleAtPoint(elbow, shoulder, hip);
-    const neckAngleDeg = angleAtPoint(ear, shoulder, hip);
-    const hipSagDeviation = signedPerpendicularDeviation2D(shoulder, ankle, hip);
+
+    const hasHip = allVisible(pose, [idx.hip], t.minVisibility);
+    const hasAnkle = allVisible(pose, [idx.ankle], t.minVisibility);
+    const hasEar = allVisible(pose, [idx.ear], t.minVisibility);
+    const hip = hasHip ? getLandmark(pose, idx.hip)! : null;
+    const ankle = hasAnkle ? getLandmark(pose, idx.ankle)! : null;
+    const ear = hasEar ? getLandmark(pose, idx.ear)! : null;
+
+    // null (rather than a bogus 0) whenever the landmarks needed for that specific check
+    // aren't visible this frame - finishRep()/liveCue() below treat null as "unknown,
+    // don't penalize", not as a real bad-form reading.
+    const hipStraightnessDeg = hip && ankle ? angleAtPoint(shoulder, hip, ankle) : null;
+    const elbowFlareDeg = hip ? angleAtPoint(elbow, shoulder, hip) : null;
+    const neckAngleDeg = ear && hip ? angleAtPoint(ear, shoulder, hip) : null;
+    const hipSagDeviation = hip && ankle ? signedPerpendicularDeviation2D(shoulder, ankle, hip) : null;
 
     let completedRep: RepResult | null = null;
 
@@ -207,33 +221,45 @@ export class PushUpAnalyzer {
 
     if (this.acc && this.phase !== 'up') {
       this.acc.minElbowAngleDeg = Math.min(this.acc.minElbowAngleDeg, elbowAngleDeg);
-      this.acc.minHipStraightnessDeg = Math.min(this.acc.minHipStraightnessDeg, hipStraightnessDeg);
-      this.acc.maxElbowFlareDeg = Math.max(this.acc.maxElbowFlareDeg, elbowFlareDeg);
-      this.acc.minNeckAngleDeg = Math.min(this.acc.minNeckAngleDeg, neckAngleDeg);
+      if (hipStraightnessDeg !== null) {
+        this.acc.minHipStraightnessDeg = Math.min(this.acc.minHipStraightnessDeg, hipStraightnessDeg);
+      }
+      if (elbowFlareDeg !== null) {
+        this.acc.maxElbowFlareDeg = Math.max(this.acc.maxElbowFlareDeg, elbowFlareDeg);
+      }
+      if (neckAngleDeg !== null) {
+        this.acc.minNeckAngleDeg = Math.min(this.acc.minNeckAngleDeg, neckAngleDeg);
+      }
       if (elbowAngleDeg < this.acc.deepestElbowAngleSoFar) {
         this.acc.deepestElbowAngleSoFar = elbowAngleDeg;
-        this.acc.hipSagDeviationAtDeepest = hipSagDeviation;
+        if (hipSagDeviation !== null) {
+          this.acc.hipSagDeviationAtDeepest = hipSagDeviation;
+        }
       }
     }
 
     const cue = this.liveCue(hipStraightnessDeg, elbowFlareDeg, neckAngleDeg);
 
     return {
-      live: { phase: this.phase, trackingOk: true, elbowAngleDeg, hipStraightnessDeg, cue },
+      live: { phase: this.phase, trackingOk: true, elbowAngleDeg, hipStraightnessDeg: hipStraightnessDeg ?? 0, cue },
       completedRep,
     };
   }
 
-  private liveCue(hipStraightnessDeg: number, elbowFlareDeg: number, neckAngleDeg: number): LiveFeedback['cue'] {
+  private liveCue(
+    hipStraightnessDeg: number | null,
+    elbowFlareDeg: number | null,
+    neckAngleDeg: number | null
+  ): LiveFeedback['cue'] {
     if (this.phase === 'up') return null;
     const t = this.thresholds;
-    if (hipStraightnessDeg < t.minHipStraightnessDeg) {
+    if (hipStraightnessDeg !== null && hipStraightnessDeg < t.minHipStraightnessDeg) {
       return 'HIPS_SAGGING';
     }
-    if (elbowFlareDeg > t.maxElbowFlareDeg) {
+    if (elbowFlareDeg !== null && elbowFlareDeg > t.maxElbowFlareDeg) {
       return 'ELBOWS_FLARED';
     }
-    if (neckAngleDeg < t.minNeckAngleDeg) {
+    if (neckAngleDeg !== null && neckAngleDeg < t.minNeckAngleDeg) {
       return 'HEAD_MISALIGNED';
     }
     return 'GOOD_FORM';

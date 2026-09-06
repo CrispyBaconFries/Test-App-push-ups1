@@ -31,6 +31,8 @@ export interface SyntheticFrameParams {
   hipOffsetY?: number;
   /** Landmark visibility for the tracked side; set low to simulate the user stepping out of frame. */
   visibility?: number;
+  /** Visibility for ear/hip/ankle specifically (defaults to `visibility`) - set low on its own to simulate feet/lower body being out of frame while the arm stays trackable. */
+  extendedVisibility?: number;
   /** Which side of the body to populate. Defaults to 'right' (pickMoreVisibleSide will pick it, since the other side is left at 0 visibility). */
   side?: BodySide;
 }
@@ -42,7 +44,15 @@ export interface SyntheticFrameParams {
  * precise thresholds without having to reverse-engineer real body coordinates.
  */
 export function buildFrame(params: SyntheticFrameParams): Pose {
-  const { elbowAngleDeg, flareDeg = 30, neckAngleDeg = 175, hipOffsetY = 0, visibility = 1, side = 'right' } = params;
+  const {
+    elbowAngleDeg,
+    flareDeg = 30,
+    neckAngleDeg = 175,
+    hipOffsetY = 0,
+    visibility = 1,
+    extendedVisibility = visibility,
+    side = 'right',
+  } = params;
 
   const shoulder: Vec2 = { x: 0, y: 0 };
   const hipDir: Vec2 = { x: 1, y: 0 };
@@ -81,13 +91,13 @@ export function buildFrame(params: SyntheticFrameParams): Pose {
         ankle: PoseLandmarkIndex.rightAnkle,
         knee: PoseLandmarkIndex.rightKnee,
       };
-  set(i.ear, ear);
+  pose[i.ear] = { x: ear.x, y: ear.y, z: 0, visibility: extendedVisibility };
   set(i.shoulder, shoulder);
   set(i.elbow, elbow);
   set(i.wrist, wrist);
-  set(i.hip, hip);
-  set(i.ankle, ankle);
-  set(i.knee, { x: 1.5, y: 0 });
+  pose[i.hip] = { x: hip.x, y: hip.y, z: 0, visibility: extendedVisibility };
+  pose[i.ankle] = { x: ankle.x, y: ankle.y, z: 0, visibility: extendedVisibility };
+  pose[i.knee] = { x: 1.5, y: 0, z: 0, visibility: extendedVisibility };
 
   return pose;
 }
