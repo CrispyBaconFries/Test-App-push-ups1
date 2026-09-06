@@ -155,7 +155,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Erinnerungen | `expo-notifications` — optionale tägliche lokale Benachrichtigung, nur nach expliziter Erlaubnis |
 | Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
 | Anmeldung | `@react-native-google-signin/google-signin` (optional, „Mit Google anmelden" auf dem Home-Screen) + `expo-secure-store` für die verschlüsselte lokale Ablage des Profils — kein eigenes Backend, siehe „Google-Anmeldung einrichten" |
-| Ranking-System (im Aufbau) | `@react-native-firebase` (app/auth/firestore) als Backend, LP-/Rangsystem + Uhrzeit-Abgleich bereits fertig und getestet (`src/ranking/`) — siehe „Ranking-System einrichten" |
+| Ranking-System (Freundschaftsspiel fertig, Ranked in Arbeit) | `@react-native-firebase` (app/auth/firestore/database) als Backend; LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen und das komplette Freundschaftsspiel-Duell (Lobby/Kamera-Duell/Ergebnis) bereits fertig — siehe „Ranking-System einrichten" |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -293,14 +293,59 @@ ab — das ist erwartet und kein Bug.
 
 ## Ranking-System einrichten
 
-**Status: Fundament gelegt, Duell-Screens folgen im nächsten Schritt.** Bereits fertig
-und getestet: das komplette LP-/Rang-Punktesystem (`src/ranking/lp.ts`,
-`src/ranking/ranks.ts`), der Uhrzeit-Abgleich zwischen zwei Handys
-(`src/ranking/clockSync.ts`), die Firebase-Anbindung als Backend (Pakete installiert,
-Config-Plugin geschrieben und geprüft) sowie Security-Rules-Entwürfe
-(`firestore.rules`, `database.rules.json`). Noch offen: die Matchmaking-Warteschlange,
-die eigentlichen Duell-/Kamera-Screens und die Home-Screen-Buttons „Ranked" /
-„Freundschaftsspiel" — das ist der nächste Schritt.
+**Status: Freundschaftsspiel-Duell spielbar (sobald Firebase eingerichtet ist),
+Ranked-Matchmaking folgt als Nächstes.** Fertig und getestet: das LP-/Rang-
+Punktesystem, der Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen, und jetzt auch
+der komplette Duell-Ablauf über einen Einladungscode: Home-Screen → „Freundschaftsspiel"
+→ Duell erstellen/beitreten (`DuelLobbyScreen`) → synchronisierter 60-Sekunden-Kampf
+mit Kamera + Live-Gegner-Zähler (`DuelScreen`) → Ergebnis (`DuelResultScreen`). Noch
+offen: die Skill-based-Matchmaking-Warteschlange für den „Ranked"-Modus (der eigentliche
+Duell-Screen ist bereits so gebaut, dass er beides bedient, siehe `isRanked`-Parameter).
+
+### Spieler-Avatare & Rang-Rahmen
+
+Datenmodell steht (`src/ranking/avatar.ts`): ein Avatar ist entweder ein Icon aus einer
+festen Auswahl oder ein eigenes Foto (Selfie) - `PlayerAvatar = {type:'icon', iconId} |
+{type:'photo', photoUrl}`. Neue Spieler starten mit dem eigenen Google-Profilbild als
+Foto-Avatar (`avatarFromGooglePhoto`), fallback auf ein Platzhalter-Icon. **Die
+eigentliche Icon-/Bild-Gestaltung kommt in einem eigenen Schritt** - die
+Platzhalter-Icons in `AVATAR_ICON_IDS` sind bewusst nur ein Platzhalter-Set (Ionicons),
+der Typ `AvatarIconId` bleibt aber stabil, wenn die richtigen Icons kommen.
+
+`RankFrame.tsx` zeichnet um jeden Avatar einen Rahmen, der sich mit dem Rang optisch
+steigert (`src/ranking/rankFrameStyle.ts`, reine Konfiguration + eigene Tests):
+Bronze/Silber sind ein schlichter, matter Farbring; Gold bekommt einen echten
+Farbverlauf; Diamant zusätzlich ein Leuchten (Glow); Challenger einen mehrfarbigen
+Farbverlauf, das stärkste Leuchten *und* ein leichtes Pulsieren. Wird überall verwendet,
+wo ein Spieler im Duell auftaucht (Lobby, Duell-HUD, Ergebnis-Screen) - sobald es echte
+Icons/Fotos gibt, ändert sich nur `AvatarContent` in `RankFrame.tsx`, der Rahmen bleibt.
+
+### Freundschaftsspiel-Duell (bereits implementiert)
+
+- **`src/duel/duelCode.ts`**: 6-stelliger, mündlich teilbarer Code (ohne verwechselbare
+  Zeichen wie 0/O, 1/I/L), rein getestet.
+- **`src/duel/duelSession.ts`**: die eigentliche Realtime-Database-Logik - Duell
+  erstellen/beitreten (per Transaktion, verhindert doppeltes Beitreten/mehr als 2
+  Spieler), "bereit"-Markierung (sobald beide bereit sind, setzt *eine* der beiden
+  Transaktionen den gemeinsamen `startsAtServerTime`-Zeitpunkt - berechnet aus der
+  geschätzten Serverzeit, nicht aus der eigenen, potenziell ungenauen Gerätezeit, siehe
+  `clockSync.ts`), Live-Wiederholungszähler, Endergebnis.
+- **`DuelLobbyScreen`**: „Duell erstellen" (zeigt den Code zum Teilen) oder „Mit Code
+  beitreten". Lädt/erstellt dabei automatisch das Firestore-Spielerprofil
+  (`playerProfileStore.ts`) inkl. Start-LP.
+- **`DuelScreen`**: identische Kamera-/Zähl-Logik wie im Solo-Training
+  (`PushUpAnalyzer`, siehe unten „Faire Zählung"), aber mit eigenem HUD: eigener Zähler
+  oben links, **nur der Punktestand** (keine Kamera!) des Gegners oben rechts, dazu ein
+  synchronisierter Countdown und 60-Sekunden-Timer.
+- **`DuelResultScreen`**: wartet, bis beide Spieler fertig sind, zeigt den Vergleich;
+  bei einem Ranked-Duell (aktuell noch nicht erreichbar, siehe „Noch offen" oben) auch
+  die LP-Änderung.
+- **Google-Anmeldung ↔ Firebase-Anmeldung verknüpft**: `AuthContext` meldet nach dem
+  Google-Login jetzt zusätzlich bei Firebase Auth an (`firebaseAuthBridge.ts`,
+  `signInWithCredential` mit dem Google-ID-Token) - nötig, damit die
+  Security Rules (`request.auth`) überhaupt greifen. Wichtig: die Firebase-uid ist
+  *nicht* dieselbe ID wie die lokale Google-Profil-ID - für alles Ranking-Bezogene
+  zählt ausschließlich die Firebase-uid.
 
 ### Architekturentscheidungen (mit Begründung)
 
@@ -527,14 +572,27 @@ src/
   ranking/
     lp.ts                      LP-Vergabe (Elo-inspiriert, 12-35 Gewinn / 40-60% Verlust)
     ranks.ts                     Bronze/Silber/Gold/Diamant/Challenger, reine Ableitung der LP
+    rankFrameStyle.ts             Rahmen-Optik je Rang (Dicke/Farbverlauf/Glow/Pulsieren), testbar
     clockSync.ts                  NTP-artiger Uhrzeit-Abgleich für den synchronisierten Duell-Start
-  firebase/firebaseConfig.ts     isFirebaseConfigured() - liest expo.extra.firebaseConfigured
+    avatar.ts                     Avatar-Datenmodell (Icon-Auswahl oder eigenes Foto)
+    playerProfile.ts               Firestore-Dokumenttyp players/{uid} + Default-Erstellung
+    playerProfileStore.ts           Firestore-Lesen/Schreiben inkl. LP-Anwendung nach einem Duell
+  duel/
+    duelCode.ts                   6-stelliger Einladungscode fürs Freundschaftsspiel, testbar
+    duelSession.ts                  Realtime-Database-Logik: erstellen/beitreten/bereit/Live-Zähler
+  firebase/
+    firebaseConfig.ts              isFirebaseConfigured() - liest expo.extra.firebaseConfigured
+    firebaseAuthBridge.ts           Google-Anmeldung → Firebase Auth (für Security Rules nötig)
+  components/RankFrame.tsx        Avatar + Rang-Rahmen, überall im Ranking-System verwendet
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
     WorkoutScreen.tsx    Kamera + Skelett-Overlay + Zähl-/Bewertungslogik (Kernscreen)
     CameraScreen.tsx     einfacher Kamera-Test ohne Auswertung (expo-camera)
     AchievementsScreen.tsx  Abzeichen-Liste (freigeschaltet/gesperrt + Fortschritt)
     SummaryScreen.tsx, HistoryScreen.tsx
+    DuelLobbyScreen.tsx      Freundschaftsspiel: Duell erstellen (Code zeigen) oder beitreten
+    DuelScreen.tsx             Kamera-Duell: eigener Zähler + Gegner-Punktestand, synced Countdown/Timer
+    DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
   gamification/
     points.ts       Punkte-/Level-Berechnung
@@ -572,15 +630,15 @@ ist die Grundlage für alles Folgende:
    `AchievementsScreen.tsx`): 6 Meilensteine (10/100/500 Liegestütze, 3-/7-Tage-Streak,
    perfekte Session) — ein neu freigeschaltetes Abzeichen wird direkt nach dem Workout
    auf dem Zusammenfassungs-Screen gefeiert.
-4. **Online-Ranking-Modus (in Arbeit)** 🚧: ein 60-Sekunden-Kopf-an-Kopf-Duell — wer
-   schafft in der Zeit mehr (saubere) Liegestütze, jeder sieht sein eigenes Kamerabild +
-   Zähler oben links, das des Gegners oben rechts. Fundament steht bereits (siehe
-   „Ranking-System einrichten" für Details und offene Punkte): LP-/Rangsystem
-   (Bronze–Challenger, `src/ranking/lp.ts` + `ranks.ts`), Uhrzeit-Abgleich für den
-   synchronisierten Start (`src/ranking/clockSync.ts`), Firebase als Backend
-   (installiert, Config-Plugin geschrieben), Security-Rules-Entwürfe. Noch offen:
-   Matchmaking-Warteschlange, die Duell-/Kamera-Screens selbst, Home-Screen-Einstieg
-   („Ranked" getrennt von „Freundschaftsspiel").
+4. **Online-Ranking-Modus** — Freundschaftsspiel ✅ umgesetzt, Ranked 🚧 in Arbeit: ein
+   60-Sekunden-Kopf-an-Kopf-Duell — wer schafft in der Zeit mehr (saubere) Liegestütze,
+   jeder sieht sein eigenes Kamerabild + Zähler oben links, **nur den Punktestand** (kein
+   Kamerabild) des Gegners oben rechts. Per Einladungscode gegen einen Freund spielbar
+   ist bereits fertig (`DuelLobbyScreen` → `DuelScreen` → `DuelResultScreen`,
+   Spieler-Avatare mit Rang-Rahmen inklusive) — siehe „Ranking-System einrichten" für
+   alle Details. Noch offen: die Skill-based-Matchmaking-Warteschlange für den
+   „Ranked"-Modus (der Duell-Screen selbst unterstützt beide Modi bereits, nur die
+   Gegner-Suche für Ranked fehlt noch).
 5. **Leaderboards**: baut auf Punkt 4 auf (dieselbe Backend-Anbindung, serverseitig
    validierte Scores).
 

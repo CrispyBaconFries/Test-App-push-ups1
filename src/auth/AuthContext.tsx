@@ -4,6 +4,8 @@ import { ensureGoogleSignInConfigured, isGoogleSignInConfigured } from './google
 import { toAuthProfile } from './mapGoogleUser';
 import { saveProfile, loadProfile, clearProfile } from './profileStorage';
 import type { AuthProfile } from './types';
+import { isFirebaseConfigured } from '../firebase/firebaseConfig';
+import { signInToFirebaseWithGoogleIdToken, signOutOfFirebase } from '../firebase/firebaseAuthBridge';
 
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 
@@ -50,6 +52,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await saveProfile(nextProfile);
       setProfile(nextProfile);
       setStatus('signedIn');
+
+      // Bridges into Firebase Auth so Firestore/RTDB security rules see a signed-in
+      // user (needed for the ranking system) - best-effort: the Google sign-in above
+      // already fully succeeded, so a Firebase-side hiccup here shouldn't be shown as
+      // a failed login, it just means ranking features stay unavailable this session.
+      if (isFirebaseConfigured() && response.data.idToken) {
+        try {
+          await signInToFirebaseWithGoogleIdToken(response.data.idToken);
+        } catch (firebaseError) {
+          console.warn('[AuthContext] Firebase-Anmeldung fehlgeschlagen', firebaseError);
+        }
+      }
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
       if (code === statusCodes.SIGN_IN_CANCELLED || code === statusCodes.IN_PROGRESS) {
@@ -70,6 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Native session may already be gone (e.g. revoked in the Google account
       // settings) - local state below still needs clearing either way.
+    }
+    if (isFirebaseConfigured()) {
+      try {
+        await signOutOfFirebase();
+      } catch (firebaseError) {
+        console.warn('[AuthContext] Firebase-Abmeldung fehlgeschlagen', firebaseError);
+      }
     }
     await clearProfile();
     setProfile(null);

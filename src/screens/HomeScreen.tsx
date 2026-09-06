@@ -20,7 +20,7 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type MenuItem = {
-  key: 'Workout' | 'History' | 'Achievements' | 'Camera';
+  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby';
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -34,6 +34,12 @@ const MENU_ITEMS: MenuItem[] = [
     title: 'Training starten',
     subtitle: 'Kamera + Skelett-Overlay, zählt deine Liegestütze automatisch',
     emphasis: true,
+  },
+  {
+    key: 'DuelLobby',
+    icon: 'people-circle-outline',
+    title: 'Freundschaftsspiel',
+    subtitle: '60-Sekunden-Duell gegen einen Freund per Einladungscode',
   },
   {
     key: 'History',

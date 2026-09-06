@@ -3,12 +3,16 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { WorkoutSession } from '../storage/workoutStorage';
 import type { BadgeDefinition } from '../gamification/badges';
+import type { DuelPlayerInfo } from '../duel/duelSession';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CameraScreen } from '../screens/CameraScreen';
 import { WorkoutScreen } from '../screens/WorkoutScreen';
 import { SummaryScreen } from '../screens/SummaryScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { AchievementsScreen } from '../screens/AchievementsScreen';
+import { DuelLobbyScreen } from '../screens/DuelLobbyScreen';
+import { DuelScreen } from '../screens/DuelScreen';
+import { DuelResultScreen } from '../screens/DuelResultScreen';
 
 // `WorkoutScreen` (MediaPipe pose detection) needs native modules that only exist in a
 // custom-built app (a local Android Studio / Xcode build, or an EAS dev client) - it
@@ -25,6 +29,9 @@ export type RootStackParamList = {
   Summary: { session: WorkoutSession; newBadges: BadgeDefinition[]; newBestReps: boolean; newBestFormScore: boolean };
   History: undefined;
   Achievements: undefined;
+  DuelLobby: undefined;
+  Duel: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
+  DuelResult: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -39,6 +46,9 @@ export function RootNavigator() {
         <Stack.Screen name="Summary" component={SummaryScreen} />
         <Stack.Screen name="History" component={HistoryScreen} />
         <Stack.Screen name="Achievements" component={AchievementsScreen} />
+        <Stack.Screen name="DuelLobby" component={DuelLobbyScreen} />
+        <Stack.Screen name="Duel" component={DuelScreen} />
+        <Stack.Screen name="DuelResult" component={DuelResultScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
