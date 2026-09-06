@@ -31,12 +31,15 @@ import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 const POSE_MODEL = 'pose_landmarker_lite.task';
-/** Lets the boss artwork behind the <Camera> show through - a much simpler stand-in for
- * true person-segmentation cutout compositing (see README "Boss-Modus" for why that
- * approach - Skia frame processor + a separate TFLite segmentation model - was dropped:
- * it pulled in three fragile native dependencies just for this one screen and kept
- * crashing on real devices with no reliable fix in sight). */
-const CAMERA_OPACITY = 0.55;
+/** The boss artwork renders semi-transparent *over* the (fully opaque) camera feed - a
+ * much simpler stand-in for true person-segmentation cutout compositing (see README
+ * "Boss-Modus" for why that approach - Skia frame processor + a separate TFLite
+ * segmentation model - was dropped: it pulled in three fragile native dependencies just
+ * for this one screen and kept crashing on real devices with no reliable fix in sight).
+ * Deliberately not applied to the <Camera> itself - a native camera preview surface with
+ * reduced opacity confused its image-format negotiation on a real device, failing every
+ * single frame with "Android media image must use RGBA_8888 config". */
+const BOSS_ARTWORK_OPACITY = 0.55;
 const BOSS_DEFEATED_BANNER_MS = 1800;
 
 // Nur ein Platzhalter-Look, solange die echten Boss-Artworks noch nicht existieren
@@ -196,23 +199,27 @@ export function BossFightScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* Platzhalter-"Boss" - echte Personen-Freistellung (siehe README "Boss-Modus" für
-          die ganze Geschichte) wurde bewusst verworfen: die halbtransparente <Camera>
-          darüber lässt den Boss überall durchscheinen, statt nur um eine per Segmentierung
-          freigestellte Silhouette herum. Die eigentliche Boss-Grafik kommt in einem
-          späteren Schritt - aktuell ein eingefärbtes Platzhalter-Icon. */}
+      {/* Kamera bleibt voll opak/unverändert wie im normalen Trainingsmodus - eine
+          native Kamera-Vorschau mit reduzierter Deckkraft zu versehen brachte auf einem
+          echten Gerät die interne Bildformat-Aushandlung durcheinander (jeder Frame
+          scheiterte mit "Android media image must use RGBA_8888 config"). Stattdessen
+          bekommt das Boss-Artwork selbst reduzierte Deckkraft und liegt *über* der
+          Kamera - optisch fast derselbe Blend-Effekt, ohne die native Kamera-Ansicht
+          anzufassen. Echte Personen-Freistellung (siehe README "Boss-Modus" für die
+          ganze Geschichte) wurde bewusst verworfen. Die eigentliche Boss-Grafik kommt
+          in einem späteren Schritt - aktuell ein eingefärbtes Platzhalter-Icon. */}
+      <MediapipeCamera
+        style={StyleSheet.absoluteFill}
+        solution={solution}
+        activeCamera="front"
+        resizeMode="cover"
+      />
+
       {boss && (
         <View style={styles.bossArtwork} pointerEvents="none">
           <Ionicons name="skull" size={220} color={bossTint} />
         </View>
       )}
-
-      <MediapipeCamera
-        style={styles.cameraOverlay}
-        solution={solution}
-        activeCamera="front"
-        resizeMode="cover"
-      />
 
       <SkeletonOverlay
         width={solution.cameraViewDimensions.width}
@@ -311,20 +318,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 14,
   },
-  cameraOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: CAMERA_OPACITY,
-  },
   bossArtwork: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    opacity: BOSS_ARTWORK_OPACITY,
     alignItems: 'center',
     justifyContent: 'center',
     paddingBottom: 120,
