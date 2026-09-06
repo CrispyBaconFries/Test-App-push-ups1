@@ -57,6 +57,10 @@ export function WorkoutScreen({ navigation }: Props) {
   const playRepSound = useRepSounds();
   const playRepSoundRef = useRef(playRepSound);
   playRepSoundRef.current = playRepSound;
+  // DEV DIAGNOSTIC (temporär) - loggt alle ~15 Frames Phase/Winkel/Sichtbarkeit in die
+  // Metro-Konsole, um zu sehen, woran die Zählung auf einem echten Gerät genau
+  // scheitert. Entfernen, sobald das geklärt ist.
+  const diagFrameCounterRef = useRef(0);
 
   useEffect(() => {
     if (!hasPermission) {
@@ -70,6 +74,11 @@ export function WorkoutScreen({ navigation }: Props) {
     const worldLandmarks = bundle?.worldLandmarks?.[0];
 
     if (!imageLandmarks || !worldLandmarks) {
+      // DEV DIAGNOSTIC (temporär) - entfernen.
+      console.log('[DIAG] Kein Pose-Ergebnis diesen Frame', {
+        hasImageLandmarks: !!imageLandmarks,
+        hasWorldLandmarks: !!worldLandmarks,
+      });
       setSkeletonPoints(null);
       setLive((prev) => (prev ? { ...prev, trackingOk: false } : prev));
       return;
@@ -77,6 +86,17 @@ export function WorkoutScreen({ navigation }: Props) {
 
     const { live: liveResult, completedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
+
+    // DEV DIAGNOSTIC (temporär) - entfernen, sobald die Zählung nachweislich funktioniert.
+    diagFrameCounterRef.current += 1;
+    if (diagFrameCounterRef.current % 15 === 0) {
+      console.log('[DIAG]', {
+        phase: liveResult.phase,
+        trackingOk: liveResult.trackingOk,
+        elbowAngleDeg: Math.round(liveResult.elbowAngleDeg),
+        cue: liveResult.cue,
+      });
+    }
 
     if (completedRep) {
       repsRef.current = [...repsRef.current, completedRep];
