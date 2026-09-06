@@ -43,6 +43,7 @@
       ],
       "./plugins/withPoseLandmarkerModel.js",
       "./plugins/withReleaseSigning.js",
+      "./plugins/withCameraXVersionAlignment.js",
       [
         "expo-audio",
         {
