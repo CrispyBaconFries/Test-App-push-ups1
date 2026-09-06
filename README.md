@@ -200,6 +200,30 @@ reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS`
 (`src/pose/formAnalysis.ts`) und lassen sich leicht anpassen/kalibrieren, sobald du
 gesehen hast, wie sich die App bei dir anfühlt.
 
+### Native Bugfix: MediaPipe erkannte auf dem echten Gerät gar keine Pose
+
+Ursache dafür, dass auf dem echten Handy überhaupt keine Wiederholung gezählt wurde
+(auch nach den JS-seitigen Fixes oben): `react-native-mediapipe`s natives Android-Modul
+(`PoseDetectorHelper.kt`, Methode `detectLiveStream()`) hat die tatsächliche
+Geräte-/Frame-Orientierung komplett ignoriert und stattdessen **immer** `Orientation.PORTRAIT`
+fest verwendet (der echte Wert war einauskommentiert: `// this.imageRotation =
+orientationToDegrees(orientation)`). Stimmt die angenommene Rotation nicht mit der
+tatsächlichen Haltung des Handys überein, bekommt MediaPipes Pose-Modell ein
+"falsch gedrehtes" Bild und erkennt in **jedem einzelnen Frame** keine Person — und weil
+`DetectorListener.onEmpty()` (aufgerufen, wenn `landmarks().size == 0`) in
+`PoseDetectionModule.kt` nie überschrieben wird, kommt in diesem Fall **überhaupt kein**
+Event auf der JS-Seite an (auch kein Fehler) — daher blieb selbst das reine
+Diagnose-Logging in `onResults` komplett stumm.
+
+Behoben über [`patch-package`](https://github.com/ds300/patch-package): das Paket liegt als
+Dev-Dependency in `package.json`, der Fix selbst steckt in
+`patches/react-native-mediapipe+0.6.0.patch` und wird über das `postinstall`-Skript
+(`"postinstall": "patch-package"`) automatisch nach jedem `npm install` erneut in
+`node_modules` angewendet. Der Patch ersetzt die feste `Orientation.PORTRAIT`-Zuweisung
+durch die tatsächlich übergebene `orientation`. **Das ist eine native Änderung** — nach
+`npm install` ist ein vollständiger `expo prebuild --clean` + `npm run android` nötig,
+reines Metro-Reload reicht hier nicht (siehe Kommando-Block unten).
+
 ### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
 
 **`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler

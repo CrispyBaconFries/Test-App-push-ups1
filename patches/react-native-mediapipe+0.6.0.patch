@@ -1,0 +1,21 @@
+diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
+index 2641054..7abae92 100644
+--- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
++++ b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
+@@ -235,10 +235,12 @@ class PoseDetectorHelper(
+       )
+     }
+     val frameTime = SystemClock.uptimeMillis()
+-    // this is a hack bc we use this in the callback and it might have changed
+-//    this.imageRotation = orientationToDegrees(orientation)
+-    this.imageRotation = orientationToDegrees(Orientation.PORTRAIT)
+-    //    this.imageRotation = 90
++    // Use the real device/frame orientation instead of hardcoding PORTRAIT - otherwise
++    // MediaPipe gets fed a rotation that doesn't match how the phone is actually held,
++    // and PoseLandmarker then silently detects zero poses on every single frame (and
++    // since DetectorListener.onEmpty() is a no-op with nothing wired to JS, that failure
++    // is completely invisible on the JS side).
++    this.imageRotation = orientationToDegrees(orientation)
+     detectAsync(mpImage, frameTime, this.imageRotation)
+   }
+ 
