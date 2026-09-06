@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Camera } from 'react-native-vision-camera';
-import type { PoseDetectionResultBundle, ViewCoordinator, DetectionError } from 'react-native-mediapipe';
+import { useCameraPermission } from 'react-native-vision-camera';
+import {
+  usePoseDetection,
+  MediapipeCamera,
+  RunningMode,
+  Delegate,
+  type PoseDetectionResultBundle,
+  type ViewCoordinator,
+  type DetectionError,
+} from 'react-native-mediapipe';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
@@ -19,11 +27,16 @@ import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
 import { useAuth } from '../auth/AuthContext';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
-import { useBossFightCamera } from '../bossmode/useBossFightCamera';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-const OVERLAY_FRAME_SKIP = 2;
+const POSE_MODEL = 'pose_landmarker_lite.task';
+/** Lets the boss artwork behind the <Camera> show through - a much simpler stand-in for
+ * true person-segmentation cutout compositing (see README "Boss-Modus" for why that
+ * approach - Skia frame processor + a separate TFLite segmentation model - was dropped:
+ * it pulled in three fragile native dependencies just for this one screen and kept
+ * crashing on real devices with no reliable fix in sight). */
+const CAMERA_OPACITY = 0.55;
 const BOSS_DEFEATED_BANNER_MS = 1800;
 
 // Nur ein Platzhalter-Look, solange die echten Boss-Artworks noch nicht existieren
@@ -34,9 +47,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BossFight'>;
 
 export function BossFightScreen({ navigation }: Props) {
   const auth = useAuth();
+  const { hasPermission, requestPermission } = useCameraPermission();
   const analyzerRef = useRef(new PushUpAnalyzer());
   const startedAtRef = useRef(new Date().toISOString());
-  const frameCounterRef = useRef(0);
   const repsRef = useRef<RepResult[]>([]);
   const bossRef = useRef<BossProgress | null>(null);
 
@@ -57,6 +70,12 @@ export function BossFightScreen({ navigation }: Props) {
       setBoss(progress);
     });
   }, []);
+
+  useEffect(() => {
+    if (!hasPermission) {
+      requestPermission();
+    }
+  }, [hasPermission, requestPermission]);
 
   const onResults = useCallback((result: PoseDetectionResultBundle, vc: ViewCoordinator) => {
     const bundle = result.results[0];
@@ -90,26 +109,23 @@ export function BossFightScreen({ navigation }: Props) {
       saveBossProgress(next).catch(() => {});
     }
 
-    frameCounterRef.current += 1;
-    if (frameCounterRef.current % OVERLAY_FRAME_SKIP === 0) {
-      const frameDims = vc.getFrameDims(result);
-      const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));
-      setSkeletonPoints(points);
-    }
+    // Rebuilt every frame (no throttling) - see WorkoutScreen's onResults for why.
+    const frameDims = vc.getFrameDims(result);
+    const points = imageLandmarks.map((lm) => ({ ...vc.convertPoint(frameDims, { x: lm.x, y: lm.y }), visibility: lm.visibility }));
+    setSkeletonPoints(points);
   }, []);
 
   const onError = useCallback((error: DetectionError) => {
     console.warn('[BossFightScreen] pose detection error', error.code, error.message);
   }, []);
 
-  const {
-    hasPermission,
-    requestPermission,
-    device,
-    frameProcessor,
-    cameraViewLayoutChangeHandler,
-    cameraViewDimensions,
-  } = useBossFightCamera({ onPoseResults: onResults, onError });
+  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, {
+    delegate: Delegate.GPU,
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+    mirrorMode: 'mirror-front-only',
+  });
 
   // Genau wie WorkoutScreen: die in dieser Sitzung gemachten Liegestütze zählen ganz
   // normal fürs Trainingsverlauf/Punkte/Auszeichnungen - der Boss-Modus ist eine andere
@@ -173,17 +189,6 @@ export function BossFightScreen({ navigation }: Props) {
     );
   }
 
-  if (device == null) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.permissionText}>Keine Frontkamera gefunden.</Text>
-        <Pressable style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]} onPress={() => navigation.goBack()}>
-          <Text style={styles.linkButtonText}>Zurück</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   const activeIssue: FormIssue | null = live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null;
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
   const bossTint = boss ? BOSS_TINTS[(boss.bossNumber - 1) % BOSS_TINTS.length] : colors.danger;
@@ -191,10 +196,10 @@ export function BossFightScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* Platzhalter-"Boss" - echte Personen-Freistellung (siehe README "Boss-Modus"):
-          die <Camera> darüber zeichnet nur noch die per Segmentierung freigestellten
-          Nutzer-Pixel auf einer sonst transparenten Fläche, sodass dieser Hintergrund
-          überall sonst durchscheint. Die eigentliche Boss-Grafik kommt in einem
+      {/* Platzhalter-"Boss" - echte Personen-Freistellung (siehe README "Boss-Modus" für
+          die ganze Geschichte) wurde bewusst verworfen: die halbtransparente <Camera>
+          darüber lässt den Boss überall durchscheinen, statt nur um eine per Segmentierung
+          freigestellte Silhouette herum. Die eigentliche Boss-Grafik kommt in einem
           späteren Schritt - aktuell ein eingefärbtes Platzhalter-Icon. */}
       {boss && (
         <View style={styles.bossArtwork} pointerEvents="none">
@@ -202,17 +207,16 @@ export function BossFightScreen({ navigation }: Props) {
         </View>
       )}
 
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive
-        frameProcessor={frameProcessor}
-        onLayout={cameraViewLayoutChangeHandler}
+      <MediapipeCamera
+        style={styles.cameraOverlay}
+        solution={solution}
+        activeCamera="front"
+        resizeMode="cover"
       />
 
       <SkeletonOverlay
-        width={cameraViewDimensions.width}
-        height={cameraViewDimensions.height}
+        width={solution.cameraViewDimensions.width}
+        height={solution.cameraViewDimensions.height}
         points={skeletonPoints}
         activeIssue={activeIssue}
       />
@@ -306,6 +310,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: CAMERA_OPACITY,
   },
   bossArtwork: {
     position: 'absolute',

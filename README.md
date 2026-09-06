@@ -620,106 +620,44 @@ Firebase, kein Google-Login nötig, funktioniert also für jeden sofort. Home-Sc
 - **Boss besiegt** → kurzes Banner, danach automatisch weiter zum nächsten (stärkeren)
   Boss bei voller Lebensanzeige - kein Bruch im Trainingsfluss.
 
-### Personen-Freistellung ("echtes" Video-Ausschneiden)
+### Personen-Freistellung - versucht, auf echtem Gerät gescheitert, wieder vereinfacht
 
-Die anfängliche Version (halbtransparentes Icon über opaker Kamera) wurde durch eine
-echte Personen-Freistellung ersetzt - der Nutzer wird als Video-Ausschnitt vor dem Boss
-freigestellt, statt nur ein Overlay mit reduzierter Deckkraft zu sein.
+Es gab einen Versuch, den Nutzer per echter Personen-Segmentierung vor dem Boss
+freizustellen (Skia-Frame-Processor + ein separates TFLite-„Selfie Segmenter"-Modell,
+siehe Git-Historie für die Details). Auf einem echten Android-Gerät zeigte sich das
+aber als Sackgasse:
 
-**Warum eine zweite ML-Bibliothek nötig war**: `react-native-mediapipe@0.6.0` (bereits
-für die Pose-Erkennung im Einsatz) bietet zwar eine `shouldOutputSegmentationMasks`-Option,
-deren Ergebnis ist aber in der installierten Version auf beiden Plattformen toter Code
-(Android liefert in `ConvertHelpers.kt` immer ein leeres Array zurück, iOS hat die
-Konvertierung in `PdConvertHelpers.swift` auskommentiert). Ein Patch der Bibliothek selbst
-wäre blind riskant gewesen; stattdessen läuft die Segmentierung über eine zweite,
-unabhängige Pipeline:
+- `useSkiaFrameProcessor`s interne `<Canvas>`-Komponente ist unter React Natives neuer
+  Architektur (die dieses Projekt durchgehend nutzt) offiziell **nicht unterstützt**
+  (Warnung direkt aus `@shopify/react-native-skia`).
+- Das TFLite-Modell scheiterte beim Laden mit
+  `TFLite: Failed to allocate memory for input/output tensors! Status: unresolved-ops` -
+  es nutzt Ops, die der Standard-Interpreter von `react-native-fast-tflite` nicht ohne
+  Weiteres auflösen konnte.
+- `getNativeBuffer()` (von VisionCamera für den Skia-Frame-Processor benötigt) verlangt
+  Android-`HardwareBuffer`, verfügbar erst ab API 26 - der Prebuild-Default lag bei 24
+  (siehe „minSdkVersion" unten, das ist inzwischen unabhängig davon korrigiert).
 
-- **`react-native-fast-tflite`** (`useTensorflowModel`) lädt Googles offizielles
-  „Selfie Segmenter"-TFLite-Modell (`assets/models/selfie_segmenter.tflite`,
-  per `npm run model:download` geladen wie das Pose-Modell, `256×256×3` RGB rein,
-  `256×256×1` Personen-Konfidenz raus) und führt es synchron (`runSync`) direkt im
-  Frame Processor aus.
-- **`@shopify/react-native-skia`** (`useSkiaFrameProcessor`) zeichnet pro Frame: das
-  Kamerabild (auf ein zentriertes Quadrat zugeschnitten, wie es das Modell erwartet)
-  in einen Layer, danach die Maske als `Alpha_8`-Bild mit `BlendMode.DstIn` darüber -
-  das lässt nur die als „Person" erkannten Pixel übrig. Alles andere bleibt transparent,
-  sodass der `Boss`-Platzhalter (jetzt in voller Deckkraft, `src/screens/BossFightScreen.tsx`)
-  dahinter durchscheint.
-- **`react-native-reanimated`** musste zusätzlich installiert werden: VisionCamera
-  rendert das Skia-Frame-Processor-Ergebnis intern über eine eigene
-  `SkiaCameraCanvas`-Komponente, die `useFrameCallback` aus Reanimated nutzt - ohne
-  Reanimated käme also gar kein Bild auf den Schirm, obwohl Skia selbst Reanimated nur
-  als optionale Peer-Dependency deklariert.
-  **Korrektur nach dem ersten echten Geräte-Build** (siehe unten): ursprünglich wurde
-  hier bewusst `3.19.1` (nicht 4.x) gewählt, um das zusätzliche `react-native-worklets`-
-  Paket zu vermeiden, das Reanimated 4 braucht. Das ließ sich ohne echten nativen Build
-  nicht prüfen (peer-dependency-Metadaten allein reichen nicht) - beim ersten echten
-  `npm run android` auf einem Windows-PC stellte sich heraus, dass Reanimated 3.19.x
-  noch Java-Code für React Natives *alte* Architektur enthält
-  (`ReaLayoutAnimator`/`ReanimatedUIManager`, Paket `layoutReanimation`), der Klassen
-  wie `LayoutAnimationController`/`UIManagerModuleListener` referenziert - und React
-  Native 0.86.3 hat diese Alte-Architektur-Klassen bereits vollständig entfernt (nur
-  noch neue Architektur). Der Build brach mit `20 Fehler` beim Kompilieren von
-  `react-native-reanimated:compileDebugJavaWithJavac` ab.
-  **Fix**: Upgrade auf `react-native-reanimated@^4.6.0` + neu
-  `react-native-worklets@^0.12.1` (Reanimated 4 hat das komplette
-  `layoutReanimation`-Paket entfernt, keine der alten Klassen mehr referenziert; die
-  peer-dependency-Spanne `react-native: '0.83 - 0.87'` von Reanimated 4.6.0 passt exakt
-  zu RN 0.86.3). `babel.config.js`s `'react-native-reanimated/plugin'`-Eintrag musste
-  *nicht* geändert werden - er ist in 4.x nur noch ein dünner Re-Export von
-  `'react-native-worklets/plugin'`. Die befürchtete Kollision mit dem bereits
-  installierten `react-native-worklets-core` (für VisionCamera/MediaPipe) trat nicht
-  ein - unterschiedliche Java-Package-Namen (`com.swmansion.worklets` vs. `com.worklets`),
-  beide koexistieren nebeneinander, jeweils für ihre eigene Bibliothek zuständig.
-  **Bekannte, aber wohl unschädliche Inkonsistenz**: `expo-modules-core` (Teil von
-  Expo SDK 57) deklariert seine eigene `react-native-worklets`-Peer-Dependency noch
-  auf `^0.7.4 || ^0.8.0 || ^0.9.0 || ^0.10.0` - älter als das hier installierte
-  `0.12.1`. `npm ls` markiert das als `invalid`, aber es gibt (anders als zunächst
-  befürchtet) nur eine einzige physische Kopie von `react-native-worklets` im Baum,
-  keine doppelten nativen Klassen - der reale Android-Build lief nach dem Upgrade
-  durch. Ein `package.json`-`overrides`-Eintrag wurde testweise probiert, um auch
-  diese Meldung verschwinden zu lassen, aber wieder verworfen: er brachte das
-  Hoisting von `expo-modules-core` selbst durcheinander (Jest fand das Modul danach
-  nicht mehr) - ein Risiko, das größer war als die harmlose Versions-Warnung, die er
-  beheben sollte.
-- **`vision-camera-resize-plugin`** verkleinert/konvertiert den quadratischen
-  Kamera-Ausschnitt synchron auf die vom Modell erwartete `256×256`-Auflösung.
-- **`react-native-nitro-modules`**: `react-native-fast-tflite` baut auf Nitro Modules
-  auf; da VisionCamera v4 einen anderen (nicht Nitro-basierten) Worklet-Runtime nutzt,
-  muss das geladene Modell explizit mit `NitroModules.box()` auf dem JS-Thread verpackt
-  und im Worklet wieder mit `.unbox()` entpackt werden (offiziell so von
-  `react-native-fast-tflite` dokumentiert).
+Drei kaputte, voneinander unabhängige native Bausteine gleichzeitig, für ein Feature,
+bei dem der Nutzer selbst vorschlug, es einfach durch eine halbtransparente Kamera über
+dem Boss zu ersetzen - **also genau das getan**. `src/bossmode/useBossFightCamera.ts`
+ist komplett weg; `BossFightScreen.tsx` nutzt jetzt exakt denselben
+`usePoseDetection()`/`<MediapipeCamera>`-Aufbau wie `WorkoutScreen.tsx`, nur mit einer
+`opacity: 0.55` auf der Kamera-Ansicht, damit das (aktuell noch als eingefärbtes
+Platzhalter-Icon gezeichnete) Boss-Artwork dahinter durchscheint - kein Segmentierungs-
+Modell, kein Skia-Compositing, kein Nitro-Boxing mehr nötig.
 
-Die neue Logik sitzt in **`src/bossmode/useBossFightCamera.ts`**, das zusätzlich zur
-Segmentierung auch die Pose-Erkennung für die Wiederholungszählung übernimmt - eine
-`<Camera>`-Komponente kann nämlich nur *einen* Frame Processor gleichzeitig haben.
-Da `react-native-mediapipe`'s eigener `usePoseDetection()`-Hook nicht neben einem
-zweiten Frame Processor lief, ruft dieser Hook das intern von der Bibliothek unter dem
-Namen `"poseDetection"` registrierte native Plugin direkt auf (`VisionCameraProxy.
-initFrameProcessorPlugin('poseDetection', {})`) und repliziert die (kleine) Menge an
-Native-Modul-/Event-Emitter-Plumbing, die der Hook sonst kapselt. Das ist bewusst eine
-Abhängigkeit von einem undokumentierten Implementierungsdetail statt einer öffentlichen
-API - ein künftiges Upgrade von `react-native-mediapipe`, das diesen Plugin-Namen oder
-die native `PoseDetection`-Modul-Form ändert, würde diese Datei brechen.
+Damit sind `react-native-fast-tflite`, `react-native-nitro-modules` und
+`vision-camera-resize-plugin` komplett aus dem Projekt entfernt (nicht mehr in
+`package.json`, taucht auch nicht mehr in der nativen Autolinking-Modulliste auf) -
+drei weniger potenziell instabile native Module im Gradle-Build.
+`@shopify/react-native-skia` bleibt zwar noch als transitive Abhängigkeit von
+`react-native-vision-camera` selbst installiert (dessen eigene, optionale
+Skia-Frame-Processor-Unterstützung), wird aber von diesem Projekt an keiner Stelle mehr
+aktiv aufgerufen.
 
-**Bekannte Einschränkung**: Das Modell sieht nur ein zentriertes Quadrat des
-(im Portrait-Modus nicht quadratischen) Kamerabilds - Freistellung und Zuschnitt
-passieren nur in diesem Quadrat, die Ränder (oben/unten bei Portrait) zeigen also nie
-Kamerabild, sondern immer den Boss dahinter.
-
-**Teilweise verifiziert, wichtigster offener Punkt bleibt aber offen**: Der native
-Android-Build (Gradle/Kotlin/Java-Kompilierung aller nativen Module) läuft inzwischen
-auf einem echten Windows-PC mit echtem Handy erfolgreich durch - das hat bereits einen
-echten Fehler aufgedeckt und behoben (siehe „react-native-reanimated musste zusätzlich
-installiert werden" oben: Reanimated 3.19.1 → 4.6.0 nötig). Was aber weiterhin
-**nicht** getestet ist: das tatsächliche visuelle Ergebnis der Segmentierung
-(Skia-Compositing, TFLite-Inferenz, Nitro-Boxing, ob VisionCamera's natives Kamera-View
-tatsächlich transparent statt opak rendert), Timing/Performance auf dem Gerät, und ob
-die Freistellung wie erwartet aussieht - das lässt sich nur durch tatsächliches Öffnen
-des Boss-Modus auf dem Handy prüfen, nicht durch einen erfolgreichen Build allein.
-
-**Boss-Grafiken**: aktuell ein einfaches, eingefärbtes Platzhalter-Icon (Totenkopf) -
-die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
+**Boss-Grafiken**: aktuell weiterhin ein einfaches, eingefärbtes Platzhalter-Icon
+(Totenkopf) - die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
 
 ## Missionen & Münzen (bereits implementiert)
 
@@ -972,7 +910,6 @@ src/
   bossmode/
     bossDefinitions.ts              Boss-HP-Formel (Boss 1-4 fest, danach +2/+3 Reps je Boss), testbar
     bossProgressStorage.ts            aktueller Boss + Rest-HP (AsyncStorage, überlebt App-Neustarts)
-    useBossFightCamera.ts             Kamera-Hook: Pose-Erkennung + Skia/TFLite-Personenfreistellung
   components/RankFrame.tsx        Avatar + Rang-Rahmen, überall im Ranking-System verwendet
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
@@ -1047,9 +984,10 @@ ist die Grundlage für alles Folgende:
    gegen immer stärkere Bosse - Boss 1-4 mit 100/120/150/180 HP, danach steigt die
    nötige Wiederholungszahl abwechselnd um 2/3 pro Boss; ein Liegestütz zieht 15 HP ab.
    Nicht besiegte Bosse merken sich ihre Rest-HP lokal fürs nächste Mal. Zählt normal
-   fürs Trainingsverlauf/Punkte/Auszeichnungen mit; echte Personen-Freistellung per
-   TFLite/Skia (noch nicht auf echtem Gerät getestet) — siehe „Boss-Modus" für Details
-   und die offenen Punkte.
+   fürs Trainingsverlauf/Punkte/Auszeichnungen mit; die Kamera läuft halbtransparent
+   über dem Boss-Artwork (eine versuchte echte Personen-Freistellung per TFLite/Skia
+   scheiterte auf einem echten Gerät an drei getrennten nativen Problemen und wurde
+   wieder verworfen) — siehe „Boss-Modus" für Details.
 7. **Münz-Shop & Profil** ✅ umgesetzt (`ShopScreen.tsx`, `ProfileScreen.tsx`): Streak-
    Rettung/Avatare/Rahmen-Themes gegen Münzen, dazu ein Profil-Screen mit Level 1-50
    (eigene, gedeckelte XP-Kurve) und Gesamt-/Wochen-Liegestützen, für sich selbst und
