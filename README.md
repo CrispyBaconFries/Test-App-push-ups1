@@ -248,10 +248,15 @@ Die im Code hinterlegten Platzhalter-IDs gehören zu keinem echten Google-Projek
 1. **Google Cloud Console öffnen**: https://console.cloud.google.com/ → neues Projekt
    anlegen (oder ein bestehendes wählen).
 2. **OAuth-Zustimmungsbildschirm** einrichten (APIs & Dienste →
-   OAuth-Zustimmungsbildschirm): externen Nutzertyp wählen, App-Namen/Support-E-Mail
-   ausfüllen. Für eigene Tests reicht der „Testing"-Modus mit deiner E-Mail als
+   OAuth-Zustimmungsbildschirm): externen Nutzertyp wählen. Alle Feldwerte (App-Name,
+   Support-E-Mail, Startseite, Datenschutz-/Nutzungsbedingungen-Link, autorisierte
+   Domain) stehen fertig zum Eintragen in
+   [`docs/play-store-listing.md`](docs/play-store-listing.md) → Abschnitt
+   „Google-OAuth-Zustimmungsbildschirm" — nur die Kontakt-E-Mail musst du dort noch
+   ersetzen. Für eigene Tests reicht der „Testing"-Modus mit deiner E-Mail als
    Testnutzer — für die Play-Store-Veröffentlichung muss er später auf „In Produktion"
-   gestellt und von Google verifiziert werden.
+   gestellt werden (die verwendeten Scopes sind nicht „sensibel", daher entfällt Googles
+   aufwändige Verifizierungsprüfung).
 3. **Android-OAuth-Client anlegen** (APIs & Dienste → Anmeldedaten → + Anmeldedaten
    erstellen → OAuth-Client-ID → Android):
    - Paketname: `com.pushupcoach.app` (`app.json` → `android.package` — das ist aktuell
@@ -325,48 +330,41 @@ besitzen darfst — ich kann und darf ihn nicht für dich erzeugen oder aufbewah
    „Mit Google anmelden" im signierten Release-Build nicht.
 5. **Bundle bauen**: `npm run prebuild && cd android && ./gradlew bundleRelease` →
    Ergebnis unter `android/app/build/outputs/bundle/release/app-release.aab`.
-6. **Play Console**: Datenschutzerklärung (URL, siehe unten), Data-Safety-Formular
-   (siehe unten), Store-Eintrag (Screenshots/Beschreibung), interner Test →
+6. **Play Console**: Datenschutzerklärung (URL, siehe unten), Data-Safety-Formular,
+   Inhaltsbewertung und Store-Eintrag (Titel/Beschreibung/Kategorie) — alle Texte fertig
+   in [`docs/play-store-listing.md`](docs/play-store-listing.md), interner Test →
    geschlossener Test → Produktion.
 
-### Datenschutzerklärung (Privacy Policy)
+### Datenschutzerklärung & Nutzungsbedingungen (Privacy Policy / ToS)
 
 Pflicht für jede Play-Store-App, sobald Berechtigungen wie Kamera oder eine
-Google-Anmeldung genutzt werden. Der fertige Text liegt bereits im Repo unter
-`docs/index.html` (eigenständige, statische HTML-Seite, kein Build-Schritt nötig) —
-zusammengefasst:
+Google-Anmeldung genutzt werden. Beide Texte liegen bereits fertig im Repo —
+`docs/index.html` (Datenschutzerklärung) und `docs/terms.html` (Nutzungsbedingungen),
+beides eigenständige statische HTML-Seiten, kein Build-Schritt nötig.
 
-- **Kamerabilder**: werden ausschließlich lokal auf dem Gerät verarbeitet
-  (MediaPipe-Posenerkennung on-device), verlassen das Gerät nie, werden nicht
-  gespeichert oder hochgeladen.
-- **Trainingsdaten** (Wiederholungen, Datum/Uhrzeit, Form-Score, Punkte): nur lokal auf
-  dem Gerät gespeichert (`AsyncStorage`) — kein Server, keine Übertragung an Dritte.
-- **Google-Kontodaten** (Name, E-Mail, Profilbild) bei optionaler Anmeldung: nur lokal
-  und verschlüsselt gespeichert (`expo-secure-store`), keine Übertragung an einen
-  eigenen Server (existiert noch nicht) und keine Weitergabe an Dritte.
-- **Benachrichtigungen**: nur lokal geplante Erinnerungen, kein Push-Server.
-- Keine Werbung, kein Tracking, keine Analytics-SDKs.
+**So bekommst du die öffentlichen URLs für die Play Console** (Pflichtfeld):
 
-**Damit du eine öffentliche URL für die Play Console bekommst** (Pflichtfeld):
-
-1. In `docs/index.html` die Platzhalter-Kontaktadresse `KONTAKT-E-MAIL@ersetzen.de`
+1. In **beiden** Dateien die Platzhalter-Kontaktadresse `KONTAKT-E-MAIL@ersetzen.de`
    durch eine echte, erreichbare E-Mail-Adresse ersetzen (die Play Console verlangt eine
    Kontaktmöglichkeit für Datenschutzanfragen). Ich habe hier bewusst einen Platzhalter
    gelassen statt eine E-Mail-Adresse zu raten oder automatisch einzusetzen.
 2. Im GitHub-Repo: **Settings → Pages → Build and deployment → Source: „Deploy from a
    branch"**, Branch auf diesen Branch (bzw. später `main`) und Ordner `/docs` stellen,
    speichern.
-3. GitHub zeigt dir danach die fertige URL (Form
-   `https://<dein-github-name>.github.io/<repo-name>/`) — genau diese URL in der Play
-   Console beim Store-Eintrag unter „Datenschutzerklärung" eintragen.
+3. Die URLs stehen danach fest (GitHub leitet sie deterministisch aus Konto-/Repo-Namen
+   ab) und sind bereits überall dort eingetragen, wo sie gebraucht werden
+   (`docs/play-store-listing.md`, Google-OAuth-Zustimmungsbildschirm-Werte oben):
+   - Datenschutzerklärung: `https://crispybaconfries.github.io/Test-App-push-ups1/`
+   - Nutzungsbedingungen: `https://crispybaconfries.github.io/Test-App-push-ups1/terms.html`
 
-### Data-Safety-Formular (Play Console)
+### Data-Safety-Formular & Inhaltsbewertung (Play Console)
 
-Passend zur obigen Liste: „Kamera" und „Name/E-Mail-Adresse/Profilbild" jeweils als
-gesammelte Datenkategorie mit Zweck „App-Funktionalität" angeben, jeweils **nicht**
-geteilt; bei der Kamera zusätzlich angeben, dass die Verarbeitung ausschließlich
-on-device erfolgt. Keine Kategorie für Werbung/Analytics ankreuzen, solange kein
-entsprechendes SDK eingebaut ist.
+Fertig als Frage/Antwort-Tabellen in
+[`docs/play-store-listing.md`](docs/play-store-listing.md) — genau in der Reihenfolge,
+in der die Play Console sie abfragt: welche Datentypen erfasst werden (Kamera nur
+on-device/sofort verworfen, Kontodaten nur lokal verschlüsselt, nichts an Dritte
+geteilt), sowie die komplette IARC-Inhaltsbewertung (Gewalt/Sexualität/Glücksspiel/etc.
+— bei dieser App überall „Nein").
 
 ## Projektstruktur
 
@@ -406,7 +404,10 @@ plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
   withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
 keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)
-docs/index.html                     Datenschutzerklärung, fertig zum Hosten via GitHub Pages
+docs/
+  index.html                     Datenschutzerklärung, fertig zum Hosten via GitHub Pages
+  terms.html                       Nutzungsbedingungen, selbes Hosting
+  play-store-listing.md            Store-Eintrag/Data-Safety/Inhaltsbewertung/OAuth-Felder, fertig zum Copy-Paste
 scripts/
   download-pose-model.js        lädt das MediaPipe-Modell herunter
   generate-rep-sounds.js          erzeugt assets/sounds/*.wav (synthetische Töne)
