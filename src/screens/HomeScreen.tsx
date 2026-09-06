@@ -20,7 +20,7 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type MenuItem = {
-  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby' | 'RankedMatchmaking';
+  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby' | 'RankedMatchmaking' | 'BossFight';
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -34,6 +34,12 @@ const MENU_ITEMS: MenuItem[] = [
     title: 'Training starten',
     subtitle: 'Kamera + Skelett-Overlay, zählt deine Liegestütze automatisch',
     emphasis: true,
+  },
+  {
+    key: 'BossFight',
+    icon: 'skull-outline',
+    title: 'Boss-Modus',
+    subtitle: 'Offline, allein gegen immer stärkere Bosse - kein Internet nötig',
   },
   {
     key: 'RankedMatchmaking',

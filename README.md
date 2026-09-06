@@ -156,6 +156,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
 | Anmeldung | `@react-native-google-signin/google-signin` (optional, „Mit Google anmelden" auf dem Home-Screen) + `expo-secure-store` für die verschlüsselte lokale Ablage des Profils — kein eigenes Backend, siehe „Google-Anmeldung einrichten" |
 | Ranking-System | `@react-native-firebase` (app/auth/firestore/database) als Backend; LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen, Freundschaftsspiel (Einladungscode) und Ranked (Skill-based Matchmaking) — beide spielbar, sobald Firebase eingerichtet ist, siehe „Ranking-System einrichten" |
+| Boss-Modus | Komplett offline (kein Backend nötig): dieselbe Kamera-/Zähllogik wie das normale Training, gegen einen immer stärkeren Boss (`src/bossmode/`) — siehe „Boss-Modus" |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -498,6 +499,45 @@ bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen
    sicher nutzbar (vorher zeigt die App an entsprechender Stelle nur einen
    „Noch nicht eingerichtet"-Hinweis, stürzt aber nirgends ab).
 
+## Boss-Modus (Offline-Solo, bereits implementiert)
+
+Dritter Modus neben Ranked/Freundschaftsspiel, aber bewusst komplett **offline** - kein
+Firebase, kein Google-Login nötig, funktioniert also für jeden sofort. Home-Screen →
+„Boss-Modus".
+
+- **`src/bossmode/bossDefinitions.ts`** (rein, getestet): Boss 1-4 haben exakt die
+  vorgegebenen 100/120/150/180 HP. Ab Boss 5 wächst die zum Sieg nötige Anzahl
+  Wiederholungen abwechselnd um 2 bzw. 3 (im Schnitt „2-3 mehr" wie gewünscht) -
+  `bossMaxHp(n)` übersetzt das zurück in HP. Jeder Liegestütz zieht pauschal
+  **15 HP** ab (`REP_DAMAGE_HP`), unabhängig vom Form-Score - eine bewusste
+  Vereinfachung, damit die Kampf-Mechanik leicht verständlich bleibt.
+- **`src/bossmode/bossProgressStorage.ts`**: aktueller Boss + seine verbleibenden HP
+  werden nach jeder Wiederholung lokal gespeichert (`AsyncStorage`, wie die
+  Trainingshistorie) - schafft man einen Boss nicht in einer Sitzung, geht es beim
+  nächsten Mal exakt mit den übrigen HP weiter, wie gewünscht.
+- **`BossFightScreen`**: dieselbe geprüfte Kamera-/Zähllogik wie im normalen Training
+  (`PushUpAnalyzer`) - der Boss-Modus ist nur eine andere Verpackung desselben
+  Trainings, die Wiederholungen zählen also ganz normal fürs Trainingsverlauf,
+  Punkte/Level und Auszeichnungen mit (identischer Abschluss-Ablauf wie
+  `WorkoutScreen`, landet ebenfalls im `SummaryScreen`).
+- **Boss besiegt** → kurzes Banner, danach automatisch weiter zum nächsten (stärkeren)
+  Boss bei voller Lebensanzeige - kein Bruch im Trainingsfluss.
+
+**Zur Darstellung ("Boss im Hintergrund, Nutzer im Vordergrund")** - ehrliche
+Einordnung: Die App hat aktuell **keine Personen-Freistellung** (kein
+Segmentierungsmodell wie MediaPipes Selfie Segmentation im Einsatz), kann den Nutzer
+also nicht wirklich "vor" dem Boss freistellen. Umgesetzt ist stattdessen der
+naheliegende, ohne neue Kamera-Technik sofort umsetzbare Kompromiss: die
+Kamera-Vorschau bleibt wie gewohnt vollflächig im Vordergrund, der Boss (aktuell ein
+Platzhalter-Icon, siehe unten) wird mit reduzierter Deckkraft **darüber** eingeblendet
+und wirkt dadurch wie eine verblasste Präsenz im Hintergrund, während Lebensbalken,
+Zähler und Skelett-Overlay in voller Deckkraft klar im Vordergrund bleiben. Eine echte
+Freistellung wäre ein späteres, separates Feature (neues ML-Modell nötig) - hier
+transparent als Grenze benannt, nicht verschwiegen.
+
+**Boss-Grafiken**: aktuell ein einfaches, eingefärbtes Platzhalter-Icon (Totenkopf) -
+die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
+
 ## Play-Store-Veröffentlichung
 
 Ziel ist ein signiertes `.aab` (Android App Bundle — der Play Store verlangt zwingend
@@ -613,6 +653,9 @@ src/
   firebase/
     firebaseConfig.ts              isFirebaseConfigured() - liest expo.extra.firebaseConfigured
     firebaseAuthBridge.ts           Google-Anmeldung → Firebase Auth (für Security Rules nötig)
+  bossmode/
+    bossDefinitions.ts              Boss-HP-Formel (Boss 1-4 fest, danach +2/+3 Reps je Boss), testbar
+    bossProgressStorage.ts            aktueller Boss + Rest-HP (AsyncStorage, überlebt App-Neustarts)
   components/RankFrame.tsx        Avatar + Rang-Rahmen, überall im Ranking-System verwendet
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
@@ -624,6 +667,7 @@ src/
     RankedMatchmakingScreen.tsx  Ranked: Gegner suchen (Skill-based Matchmaking)
     DuelScreen.tsx             Kamera-Duell: eigener Zähler + Gegner-Punktestand, synced Countdown/Timer
     DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
+    BossFightScreen.tsx           Offline-Solo: Kamera + Boss-Lebensbalken, kein Backend nötig
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
   gamification/
     points.ts       Punkte-/Level-Berechnung
@@ -671,6 +715,12 @@ ist die Grundlage für alles Folgende:
    inklusive — siehe „Ranking-System einrichten" für alle Details.
 5. **Leaderboards**: baut auf Punkt 4 auf (dieselbe Backend-Anbindung, serverseitig
    validierte Scores).
+6. **Boss-Modus** ✅ umgesetzt (`src/bossmode/`, `BossFightScreen.tsx`): Offline-Solo
+   gegen immer stärkere Bosse - Boss 1-4 mit 100/120/150/180 HP, danach steigt die
+   nötige Wiederholungszahl abwechselnd um 2/3 pro Boss; ein Liegestütz zieht 15 HP ab.
+   Nicht besiegte Bosse merken sich ihre Rest-HP lokal fürs nächste Mal. Zählt normal
+   fürs Trainingsverlauf/Punkte/Auszeichnungen mit — siehe „Boss-Modus" für Details und
+   die ehrliche Einordnung zur aktuellen (Platzhalter-)Darstellung.
 
-Punkte 1–3 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins (siehe
-„Ranking-System einrichten").
+Punkte 1–3 und 6 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins
+(siehe „Ranking-System einrichten").
