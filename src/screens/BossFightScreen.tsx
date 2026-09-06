@@ -15,6 +15,8 @@ import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badge
 import { computeMissions } from '../gamification/missions';
 import { claimCompletedMissions } from '../gamification/currencyStore';
 import { loadDuelLog } from '../duel/duelLog';
+import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
+import { useAuth } from '../auth/AuthContext';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 import { useBossFightCamera } from '../bossmode/useBossFightCamera';
@@ -31,6 +33,7 @@ const BOSS_TINTS = [colors.danger, colors.accent, '#B23AFF', '#5AC8E8'];
 type Props = NativeStackScreenProps<RootStackParamList, 'BossFight'>;
 
 export function BossFightScreen({ navigation }: Props) {
+  const auth = useAuth();
   const analyzerRef = useRef(new PushUpAnalyzer());
   const startedAtRef = useRef(new Date().toISOString());
   const frameCounterRef = useRef(0);
@@ -126,6 +129,9 @@ export function BossFightScreen({ navigation }: Props) {
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString(), 'boss');
     await saveSession(session);
 
+    // Siehe WorkoutScreen's finishWorkout - bewusst nicht awaited.
+    syncLeaderboardProgress(auth.profile, session.totalReps).catch(() => {});
+
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
     const newBadges = newlyUnlockedBadges(badgesBefore, badgesAfter);
@@ -140,7 +146,7 @@ export function BossFightScreen({ navigation }: Props) {
     const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
 
     navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });
-  }, [navigation]);
+  }, [navigation, auth.profile]);
 
   useEffect(() => {
     return navigation.addListener('beforeRemove', (e) => {

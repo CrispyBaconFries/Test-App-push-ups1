@@ -27,7 +27,7 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 type MenuItem = {
-  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby' | 'RankedMatchmaking' | 'BossFight';
+  key: 'Workout' | 'History' | 'Achievements' | 'Camera' | 'DuelLobby' | 'RankedMatchmaking' | 'BossFight' | 'Leaderboard';
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -47,6 +47,12 @@ const MENU_ITEMS: MenuItem[] = [
     icon: 'skull-outline',
     title: 'Boss-Modus',
     subtitle: 'Offline, allein gegen immer stärkere Bosse - kein Internet nötig',
+  },
+  {
+    key: 'Leaderboard',
+    icon: 'podium-outline',
+    title: 'Rangliste',
+    subtitle: 'Gesamt, diese Woche und deine Liga im Vergleich',
   },
   {
     key: 'RankedMatchmaking',

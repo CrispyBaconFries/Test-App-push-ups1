@@ -22,6 +22,8 @@ import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badge
 import { computeMissions } from '../gamification/missions';
 import { claimCompletedMissions } from '../gamification/currencyStore';
 import { loadDuelLog } from '../duel/duelLog';
+import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
+import { useAuth } from '../auth/AuthContext';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -33,6 +35,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Workout'>;
 
 export function WorkoutScreen({ navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
+  const auth = useAuth();
   const analyzerRef = useRef(new PushUpAnalyzer());
   const startedAtRef = useRef(new Date().toISOString());
   const frameCounterRef = useRef(0);
@@ -118,6 +121,10 @@ export function WorkoutScreen({ navigation }: Props) {
     const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString(), 'training');
     await saveSession(session);
 
+    // Bewusst nicht awaited - ein Netzwerkproblem beim Online-Rangliste-Sync darf das
+    // Beenden des Workouts nicht verzögern (siehe leaderboardSync.ts).
+    syncLeaderboardProgress(auth.profile, session.totalReps).catch(() => {});
+
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
     const newBadges = newlyUnlockedBadges(badgesBefore, badgesAfter);
@@ -136,7 +143,7 @@ export function WorkoutScreen({ navigation }: Props) {
     const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
 
     navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });
-  }, [navigation]);
+  }, [navigation, auth.profile]);
 
   // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
   // both dispatch the same navigation event) used to discard any reps done so far

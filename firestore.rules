@@ -8,15 +8,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Spielerprofil (Anzeigename, Foto, LP, Rang, Siege/Niederlagen).
-    // Lesen: jeder eingeloggte Nutzer (nötig für Matchmaking/Bestenlisten).
+    // Spielerprofil (Anzeigename, Foto, LP, Rang, Siege/Niederlagen, Gesamt-/
+    // Wochen-Liegestütze fürs Rangliste-Feature).
+    // Lesen: jeder eingeloggte Nutzer (nötig für Matchmaking/Ranglisten).
     // Schreiben: nur der Profil-Inhaber selbst.
     //
     // Bekannte Grenze: ohne Cloud Function könnte ein manipulierter Client
-    // theoretisch seine eigenen LP/Sieg-Werte direkt schreiben. Für ein
+    // theoretisch seine eigenen LP-/Sieg-/Liegestütz-Werte direkt schreiben. Für ein
     // Hobby-Projekt ohne echten Wettbewerbsdruck akzeptabel; der saubere Fix wäre,
-    // LP-Änderungen ausschließlich serverseitig (Cloud Function) auf Basis der
-    // `matches`-Einträge zu berechnen und hier nur noch Lesezugriff zu erlauben.
+    // LP-Änderungen und Liegestütz-Zähler ausschließlich serverseitig (Cloud
+    // Function) auf Basis der `matches`-Einträge bzw. signierter Session-Daten zu
+    // berechnen und hier nur noch Lesezugriff zu erlauben.
     match /players/{uid} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid;

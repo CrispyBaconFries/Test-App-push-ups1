@@ -16,6 +16,7 @@ import { RankedMatchmakingScreen } from '../screens/RankedMatchmakingScreen';
 import { DuelScreen } from '../screens/DuelScreen';
 import { DuelResultScreen } from '../screens/DuelResultScreen';
 import { BossFightScreen } from '../screens/BossFightScreen';
+import { LeaderboardScreen } from '../screens/LeaderboardScreen';
 
 // `WorkoutScreen` (MediaPipe pose detection) needs native modules that only exist in a
 // custom-built app (a local Android Studio / Xcode build, or an EAS dev client) - it
@@ -44,6 +45,7 @@ export type RootStackParamList = {
   Duel: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
   DuelResult: { duelCode: string; me: DuelPlayerInfo; isRanked: boolean };
   BossFight: undefined;
+  Leaderboard: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -63,6 +65,7 @@ export function RootNavigator() {
         <Stack.Screen name="Duel" component={DuelScreen} />
         <Stack.Screen name="DuelResult" component={DuelResultScreen} />
         <Stack.Screen name="BossFight" component={BossFightScreen} />
+        <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

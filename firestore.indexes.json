@@ -8,6 +8,14 @@
         { "fieldPath": "lp", "order": "ASCENDING" },
         { "fieldPath": "queuedAtMs", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "weeklyBucketKey", "order": "ASCENDING" },
+        { "fieldPath": "weeklyReps", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

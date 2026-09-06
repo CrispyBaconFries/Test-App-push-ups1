@@ -293,7 +293,7 @@ ab — das ist erwartet und kein Bug.
 
 ## Ranking-System einrichten
 
-**Status: Freundschaftsspiel *und* Ranked spielbar, sobald Firebase eingerichtet ist.**
+**Status: Freundschaftsspiel *und* Ranked spielbar, dazu eine Rangliste (Gesamt/Woche/Liga), sobald Firebase eingerichtet ist.**
 Fertig und getestet: LP-/Rangsystem, Uhrzeit-Abgleich, Spieler-Avatare mit Rang-Rahmen,
 der komplette Duell-Ablauf (Home-Screen → „Freundschaftsspiel" per Einladungscode oder
 „Ranked" per Skill-based Matchmaking → synchronisierter 60-Sekunden-Kampf mit Kamera +
@@ -370,6 +370,56 @@ Function nötig, bleibt im kostenlosen Firebase-Tarif.
 - **`RankedMatchmakingScreen`**: „Gegner suchen" → wartet (mit Abbrechen-Möglichkeit) →
   navigiert automatisch zum `DuelScreen`, sobald ein Gegner gefunden wurde (durch
   eigenes Claimen oder weil man selbst geclaimt wurde).
+
+### Rangliste (bereits implementiert)
+
+Eigener Menüpunkt auf dem Home-Screen („Rangliste", `LeaderboardScreen.tsx`) mit drei
+Unter-Tabs, alle drei über `useDuelIdentity()` genau wie Freundschaftsspiel/Ranked
+gegatet (Firebase eingerichtet + mit Google angemeldet nötig, da es eine
+Firestore-uid braucht):
+
+- **Gesamt**: alle jemals absolvierten Liegestütze, über alle Spieler hinweg, absteigend
+  sortiert (`players.totalReps`).
+- **Diese Woche**: dasselbe, aber nur die aktuelle (Montag-basierte) Woche
+  (`players.weeklyReps`).
+- **Meine Liga**: alle Spieler in derselben Rang-Stufe (Bronze/Silber/Gold/Diamant/
+  Challenger, siehe „LP-/Rangsystem") wie man selbst, nach LP sortiert - eine
+  Bestenliste unter Gleichgesinnten statt der gesamten Spielerbasis.
+
+**Datenmodell** (`src/ranking/playerProfile.ts`, dieselben `players/{uid}`-Dokumente wie
+fürs LP-System): zwei neue Felder, `totalReps` und `weeklyReps` + `weeklyBucketKey`.
+Kein Cloud Function nötig, wie beim Rest des Ranking-Systems - dafür ein paar bewusste
+Vereinfachungen:
+
+- **Sync statt Live-Berechnung**: `src/ranking/leaderboardSync.ts` wird nach jeder
+  lokal gespeicherten Session (Solo-Training *und* Boss-Modus, `WorkoutScreen`/
+  `BossFightScreen`) aufgerufen - best-effort und *nicht* abgewartet
+  (`syncLeaderboardProgress(...).catch(() => {})`), damit ein Netzwerkproblem nie das
+  Beenden eines Workouts verzögert. Ein No-op, wenn Firebase nicht eingerichtet oder
+  der Nutzer nicht angemeldet ist - die Ranglisten sind wie der Rest des
+  Ranking-Systems **opt-in per Google-Anmeldung**, rein lokales Training ohne Anmeldung
+  taucht dort nicht auf.
+- **Wochen-Reset ohne Cron-Job**: `weeklyReps` gilt für die Woche, die in
+  `weeklyBucketKey` steht. Landet ein Sync in einer *neuen* Woche, wird `weeklyReps`
+  bei diesem Schreibzugriff "faul" auf nur die neuen Reps zurückgesetzt statt addiert
+  (`syncTrainingProgress` in `playerProfileStore.ts`, per Firestore-Transaktion für
+  Konsistenz bei z. B. zwei Geräten desselben Nutzers). Für die Wochen-Bestenliste
+  selbst reicht das aber nicht: ein Spieler, der diese Woche noch gar nicht trainiert
+  hat, hätte in seinem Dokument noch den (veralteten) Stand der Vorwoche stehen -
+  deshalb filtert die Wochen-Abfrage zusätzlich auf
+  `weeklyBucketKey == aktuelle Woche` (composite Index in `firestore.indexes.json`,
+  Collection `players`, Felder `weeklyBucketKey` ASC + `weeklyReps` DESC).
+- **Liga-Abfrage ohne gespeichertes Tier-Feld**: die Liga wird nicht separat
+  gespeichert, sondern direkt über die LP-Spanne der Stufe gefiltert
+  (`where('lp', '>=', tier.minLp)`, ggf. `where('lp', '<=', tier.maxLp)`,
+  `orderBy('lp', 'desc')`) - dieselbe Art Query wie schon beim
+  Ranked-Matchmaking-Suchradius, kein zusätzlicher Index nötig (Bereichsfilter +
+  Sortierung auf demselben Feld).
+- **Bekannte Grenze**: jede Bestenliste zeigt nur die Top 50 (`LEADERBOARD_LIMIT` in
+  `leaderboardStore.ts`); steht man selbst nicht darunter, gibt es aktuell keine
+  Anzeige der eigenen Platzierung ("du bist Rang 137") - das würde eine laufend
+  gepflegte Rang-Zählung brauchen (typischerweise eine Cloud Function), die hier
+  bewusst nicht gebaut wurde. Für später vorgemerkt.
 
 ### Architekturentscheidungen (mit Begründung)
 
@@ -485,12 +535,14 @@ bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen
    `ios.bundleIdentifier`) → `GoogleService-Info.plist` herunterladen → ebenfalls ins
    Projekt-Wurzelverzeichnis (auch bereits gitignored).
 4. **Firestore aktivieren** (Build → Firestore Database → Datenbank erstellen,
-   Produktionsmodus) und Regeln + Index deployen — entweder per Firebase-CLI
+   Produktionsmodus) und Regeln + Indexe deployen — entweder per Firebase-CLI
    (`firebase deploy --only firestore:rules,firestore:indexes`, braucht einmalig
    `firebase init`) oder `firestore.rules` im Firebase-Console-Regel-Editor einfügen
-   und den Composite-Index aus `firestore.indexes.json` manuell im Firestore-Tab
-   „Indexe" anlegen (Collection `rankedQueue`, Felder `status` ASC, `lp` ASC,
-   `queuedAtMs` ASC - nötig für die Ranked-Matchmaking-Suche).
+   und die beiden Composite-Indexe aus `firestore.indexes.json` manuell im
+   Firestore-Tab „Indexe" anlegen: Collection `rankedQueue` (Felder `status` ASC,
+   `lp` ASC, `queuedAtMs` ASC - nötig für die Ranked-Matchmaking-Suche) und Collection
+   `players` (Felder `weeklyBucketKey` ASC, `weeklyReps` DESC - nötig für die
+   Wochen-Rangliste, siehe „Rangliste").
 5. **Realtime Database aktivieren** (Build → Realtime Database → Datenbank erstellen)
    und `database.rules.json` genauso deployen/einfügen.
 6. Danach `npm run prebuild` (bzw. `npm run android`) erneut ausführen — ab jetzt sind
@@ -764,13 +816,16 @@ src/
     clockSync.ts                  NTP-artiger Uhrzeit-Abgleich für den synchronisierten Duell-Start
     avatar.ts                     Avatar-Datenmodell (Icon-Auswahl oder eigenes Foto)
     playerProfile.ts               Firestore-Dokumenttyp players/{uid} + Default-Erstellung
-    playerProfileStore.ts           Firestore-Lesen/Schreiben inkl. LP-Anwendung nach einem Duell
+    playerProfileStore.ts           Firestore-Lesen/Schreiben inkl. LP-Anwendung nach einem Duell + Rangliste-Sync
     matchmaking.ts                  Suchradius-Logik fürs Ranked-Matchmaking, testbar
     matchmakingQueue.ts               Firestore-Warteschlange: beitreten/suchen/claimen
     useDuelIdentity.ts                gemeinsamer Hook: Firebase/Anmeldung/Spielerprofil-Voraussetzung
+    leaderboardSync.ts                schreibt Session-Reps best-effort in players/{uid} (Gesamt/Woche)
+    leaderboardStore.ts                Firestore-Abfragen für die drei Rangliste-Tabs (Gesamt/Woche/Liga)
   duel/
     duelCode.ts                   6-stelliger Einladungscode fürs Freundschaftsspiel, testbar
     duelSession.ts                  Realtime-Database-Logik: erstellen/beitreten/bereit/Live-Zähler
+    duelLog.ts                       lokales Protokoll abgeschlossener Duelle (fürs Wochenmissionen-Tracking)
   firebase/
     firebaseConfig.ts              isFirebaseConfigured() - liest expo.extra.firebaseConfigured
     firebaseAuthBridge.ts           Google-Anmeldung → Firebase Auth (für Security Rules nötig)
@@ -790,8 +845,8 @@ src/
     DuelScreen.tsx             Kamera-Duell: eigener Zähler + Gegner-Punktestand, synced Countdown/Timer
     DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
     BossFightScreen.tsx           Offline-Solo: Kamera + Boss-Lebensbalken, kein Backend nötig
+    LeaderboardScreen.tsx           Rangliste: Gesamt/Diese Woche/Meine Liga als Unter-Tabs
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
-  duel/duelLog.ts               lokales Protokoll abgeschlossener Duelle (fürs Wochenmissionen-Tracking)
   gamification/
     points.ts       Punkte-/Level-Berechnung
     badges.ts         Abzeichen-Definitionen + Freischalt-Logik (reine Funktionen, testbar)
@@ -838,8 +893,9 @@ ist die Grundlage für alles Folgende:
    Gegner (`RankedMatchmakingScreen`) — beide münden in denselben `DuelScreen` →
    `DuelResultScreen` (inkl. LP-Änderung bei Ranked), Spieler-Avatare mit Rang-Rahmen
    inklusive — siehe „Ranking-System einrichten" für alle Details.
-5. **Leaderboards**: baut auf Punkt 4 auf (dieselbe Backend-Anbindung, serverseitig
-   validierte Scores).
+5. **Leaderboards** ✅ umgesetzt (`LeaderboardScreen.tsx`, `src/ranking/leaderboardStore.ts`/
+   `leaderboardSync.ts`): baut auf Punkt 4 auf (dieselbe Backend-Anbindung) - drei Tabs
+   (Gesamt-Liegestütze, diese Woche, eigene Liga) - siehe „Rangliste" für alle Details.
 6. **Boss-Modus** ✅ umgesetzt (`src/bossmode/`, `BossFightScreen.tsx`): Offline-Solo
    gegen immer stärkere Bosse - Boss 1-4 mit 100/120/150/180 HP, danach steigt die
    nötige Wiederholungszahl abwechselnd um 2/3 pro Boss; ein Liegestütz zieht 15 HP ab.
