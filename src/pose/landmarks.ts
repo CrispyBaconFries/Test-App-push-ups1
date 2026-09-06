@@ -10,8 +10,20 @@ export type BodySide = 'left' | 'right';
 
 const MIN_VISIBILITY = 0.5;
 
+/**
+ * react-native-mediapipe's native bridge (see its ConvertHelpers.kt, both
+ * normalizedLandmarkToWritableMap and landmarkToWritableMap) never actually copies
+ * MediaPipe's per-landmark visibility/presence score into the object it hands to JS -
+ * every landmark's `visibility` is always `undefined` here, for every frame, on both
+ * `landmarks` and `worldLandmarks`. Treating that as "0 = not visible" (as this used to)
+ * made `allVisible()` fail on literally every frame, so no rep was ever counted no
+ * matter how clean the push-up was. Defaulting missing data to "visible" instead makes
+ * this check a no-op given what this library actually sends today, while still
+ * correctly gating out genuinely low-confidence landmarks if a future version (or a
+ * patched one) starts populating real values.
+ */
 function visibility(landmark: PoseLandmark | undefined): number {
-  return landmark?.visibility ?? 0;
+  return landmark?.visibility ?? 1;
 }
 
 export function getLandmark(pose: Pose, index: number): PoseLandmark | undefined {

@@ -79,6 +79,26 @@ describe('PushUpAnalyzer', () => {
     expect(lastResult!.completedRep!.issues).toContain('ELBOWS_FLARED');
   });
 
+  it('still counts a rep when the pose has no visibility data at all (matches real device data)', () => {
+    // react-native-mediapipe's native bridge never actually populates `visibility` on
+    // any landmark (see landmarks.ts for the full explanation) - every landmark arrives
+    // with visibility simply absent, not a real low number. Build frames the same way
+    // instead of going through buildFrame() (which always sets some visibility value)
+    // to prove the analyzer still works against what the app actually receives.
+    const analyzer = new PushUpAnalyzer();
+    const stripVisibility = (pose: ReturnType<typeof buildFrame>) =>
+      pose.map(({ visibility: _visibility, ...rest }) => rest);
+    const sequence = [180, 150, 90, 90, 120, 150, 165];
+    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+
+    sequence.forEach((elbowAngleDeg, i) => {
+      lastResult = analyzer.processFrame(stripVisibility(buildFrame({ elbowAngleDeg })), i * 33);
+    });
+
+    expect(lastResult!.completedRep).not.toBeNull();
+    expect(lastResult!.completedRep!.formScore).toBe(100);
+  });
+
   it('still counts a rep when the feet/hips are out of frame, as long as the arm is visible', () => {
     // Realistic push-up camera setup: phone propped up low in front of the user, so the
     // arm (shoulder/elbow/wrist) is clearly visible but the feet trail off out of frame
