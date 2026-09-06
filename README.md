@@ -370,19 +370,39 @@ Lokalzeit — beide 60-Sekunden-Countdowns enden dann zur selben realen Sekunde.
 
 ### Faire Zählung / Anti-Cheat — ehrliche Grenzen
 
-Die Wiederholungszählung nutzt dieselbe geprüfte Zustandsmaschine wie im Solo-Training
-(`src/pose/formAnalysis.ts`) — nichts Neues zu bauen, und beide Spieler unterliegen
-exakt denselben Regeln. Was das **nicht** abdeckt: ein manipuliertes Gerät (gerootet,
-modifizierter Client) könnte theoretisch gefälschte Wiederholungen an den Server
-melden. Echte, wasserdichte Anti-Cheat-Prüfung würde bedeuten, die Kamera-/Pose-Daten
-laufend zum Server zu streamen und dort serverseitig zu validieren — das sprengt für
-diese App Bandbreite, Infrastruktur und Kosten bei Weitem und ist nicht geplant. Fürs
-Erste: Klartext-Ansage, keine falschen Versprechen, plus zwei einfache
-Plausibilitätsprüfungen beim Server-Empfang (geplant, noch nicht implementiert): eine
-Ober­grenze für Wiederholungen/Sekunde (physiologisch unmöglich schnelle Serien
-verwerfen) und dass beide Spieler während des gesamten Duells den Kamera-Screen aktiv
-sehen (sichtbar für den jeweils anderen Spieler — auffälliges Verhalten wird also live
-bemerkt, nicht erst hinterher).
+**Klarstellung**: Es wird ausschließlich der **Zählerstand** (eine Zahl) an den
+Gegner übertragen, kein Kamerabild und kein Video. Jeder Spieler sieht nur sein
+eigenes Kamerabild + eigenen Zähler oben links, und den **Punktestand** des Gegners
+oben rechts — nicht dessen Kamera. Das ist ohnehin die einzig sinnvolle Architektur:
+Video-Streaming zwischen zwei Handys in Echtzeit wäre technisch deutlich aufwändiger
+(Bandbreite, Latenz, WebRTC-artige Infrastruktur) und hätte mit Firebase in dieser
+Form gar nicht ins günstige/einfache Backend-Konzept gepasst. RTDB überträgt also nur
+kleine Zahlen-Updates (`duels/{duelId}/players/{uid}/reps`) — leichtgewichtig und
+schnell.
+
+Die Wiederholungszählung selbst nutzt dieselbe geprüfte Zustandsmaschine wie im
+Solo-Training (`src/pose/formAnalysis.ts`) — nichts Neues zu bauen, und beide Spieler
+unterliegen exakt denselben Regeln. Was das **nicht** abdeckt: ein manipuliertes Gerät
+(gerootet, modifizierter Client) könnte theoretisch gefälschte Zählerstände an den
+Server melden — und weil (anders als in meiner ersten Zusammenfassung fälschlich
+behauptet) der Gegner das Kamerabild nicht sieht, gibt es **keine visuelle
+Gegenkontrolle** durch den Mitspieler. Echte, wasserdichte Prüfung würde bedeuten, die
+Kamera-/Pose-Daten laufend zum Server zu streamen und dort serverseitig zu validieren
+— das sprengt für diese App Bandbreite, Infrastruktur und Kosten bei Weitem und ist
+nicht geplant. Realistische Abschwächungen fürs MVP (geplant, noch nicht
+implementiert):
+
+- **Plausibilitätsprüfung beim Server-Empfang**: eine Obergrenze für
+  Wiederholungen/Sekunde (physiologisch unmöglich schnelle Serien verwerfen) sowie ein
+  Mindestabstand zwischen zwei Zähler-Updates.
+- **Melden-Button** nach dem Duell ("Gegner wirkte verdächtig") — kein technischer,
+  aber ein einfacher sozialer Mechanismus, wie ihn auch andere Casual-Ranked-Systeme
+  ohne harte Anti-Cheat-Prüfung nutzen; auffällige Muster (viele Meldungen gegen
+  denselben Spieler) könnten später manuell oder automatisiert geprüft werden.
+
+Kurz gesagt: Die Zählung ist genauso fair/genau wie im Solo-Modus (gleiche Logik), aber
+*nicht* hieb- und stichfest gegen einen absichtlich manipulierten Client — das ist eine
+bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen.
 
 ### Firebase-Projekt einrichten
 
