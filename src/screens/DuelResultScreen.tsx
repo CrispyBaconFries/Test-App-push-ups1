@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { listenToDuel, type DuelPlayerState } from '../duel/duelSession';
+import { recordDuelCompleted } from '../duel/duelLog';
 import { applyDuelResult } from '../ranking/playerProfileStore';
 import { RankFrame } from '../components/RankFrame';
 import { colors } from '../theme/colors';
@@ -19,6 +20,7 @@ export function DuelResultScreen({ route, navigation }: Props) {
   const [myFinalReps, setMyFinalReps] = useState<number | null>(null);
   const [lpChange, setLpChange] = useState<number | null>(null);
   const lpAppliedRef = useRef(false);
+  const duelLoggedRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = listenToDuel(duelCode, (state) => {
@@ -52,6 +54,14 @@ export function DuelResultScreen({ route, navigation }: Props) {
       .then(({ lpChange: change }) => setLpChange(change))
       .catch(() => {});
   }, [bothFinished, isRanked, outcome, opponent, me]);
+
+  // Any concluded duel (win/loss/draw alike) counts toward the weekly "3
+  // Freundschaftsspiele"/"3 Ranglistenspiele" missions - see src/gamification/missions.ts.
+  useEffect(() => {
+    if (!bothFinished || duelLoggedRef.current) return;
+    duelLoggedRef.current = true;
+    recordDuelCompleted(isRanked).catch(() => {});
+  }, [bothFinished, isRanked]);
 
   return (
     <View style={styles.container}>

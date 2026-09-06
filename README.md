@@ -29,11 +29,10 @@ Screen einen sichtbaren „Zurück"-Button):
   „Training starten" auf einem Gerät Probleme macht (`CameraScreen.tsx`, nutzt
   `expo-camera` statt der MediaPipe-Pipeline — dient als einfacher Diagnose-Fallback).
 
-Auf der Startseite außerdem: ein Level-Fortschrittsbalken, Tages-/Wochenziel
-(„Herausforderungen", Standard 30 Liegestütze/Tag bzw. 150/Woche,
-`src/gamification/challenges.ts`) mit optionaler täglicher Erinnerung (lokale
-Push-Benachrichtigung um 18 Uhr, `src/notifications/dailyReminder.ts`) und eine
-Bestleistungen-Übersicht (beste Session, bester Form-Score, längste Streak jemals).
+Auf der Startseite außerdem: ein Level-Fortschrittsbalken, eine Bestleistungen-Übersicht
+(beste Session, bester Form-Score, längste Streak jemals) und die **Missionen** (tägliche/
+wöchentliche Aufgaben mit Münzen-Belohnung, optionaler täglicher Erinnerung) — siehe
+„Missionen & Münzen" für Details.
 
 ## Auf dem Handy installieren (lokaler Android-Build mit Android Studio)
 
@@ -594,6 +593,72 @@ Projekt bisher.
 **Boss-Grafiken**: aktuell ein einfaches, eingefärbtes Platzhalter-Icon (Totenkopf) -
 die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
 
+## Missionen & Münzen (bereits implementiert)
+
+Komplett offline (kein Backend nötig): tägliche und wöchentliche Missionen mit
+Münzen-Belohnung, dazu eine optionale tägliche Erinnerung, die auf die noch offenen
+Missionen hinweist statt nur einen generischen Text zu zeigen. Alles auf dem
+Home-Screen, Karte „Missionen".
+
+- **`src/gamification/missions.ts`** (rein, getestet): feste Liste von 6 Missionen
+  (`MISSION_DEFINITIONS`), je mit Zeitraum (täglich/wöchentlich), Ziel-Kennzahl,
+  Zielwert und Münz-Belohnung:
+  - *Täglich*: „Tagesziel" (30 Liegestütze, egal in welchem Modus, 20 Münzen), „Perfekte
+    Form" (10 makellose Liegestütze **im Boss-Modus**, 30 Münzen — bewusst als Anreiz,
+    den Offline-Modus für sauberes Techniktraining zu nutzen), „Täglich dabei" (App
+    einmal öffnen, 10 Münzen).
+  - *Wöchentlich* (Montag-basierte Woche): „Wochenziel" (250 Liegestütze — bewusst mehr
+    als 7×30=210, damit es eine echte Zusatzleistung ist, nicht nur das Tagesziel
+    hochgerechnet, 100 Münzen), „Geselligkeit" (3 Freundschaftsspiele abschließen, 60
+    Münzen), „Ranglisten-Grind" (3 Ranglistenspiele abschließen, 60 Münzen).
+  - `computeMissions()` berechnet Fortschritt/Abschluss aus den lokalen
+    `WorkoutSession`s (für Liegestütz-Missionen) und einem neuen lokalen Duell-Protokoll
+    (für die beiden Duell-Missionen, s.u.) - reine Funktion, keine Seiteneffekte.
+- **`src/duel/duelLog.ts`**: Duell-Ergebnisse selbst leben in Firebase Realtime Database
+  (`duelSession.ts`) und werden sonst nirgends lokal gespeichert - für die beiden
+  Wochenmissionen reicht ein einfaches, lokales Protokoll „wann wurde ein Duell
+  abgeschlossen, war es Ranked?", das `DuelResultScreen` bei jedem abgeschlossenen Duell
+  (Sieg/Niederlage/Unentschieden zählen alle) einmalig einträgt.
+- **`src/gamification/currencyStore.ts`**: Münz-Guthaben in `AsyncStorage`, plus ein
+  Beleg-Ledger (`claimReward`/`claimCompletedMissions`), das sich jede
+  Zeitraum+Missions-Kombination merkt, die schon ausgezahlt wurde - dadurch ist das
+  Einlösen **idempotent** und kann gefahrlos von mehreren Stellen aus aufgerufen werden
+  (Home-Screen bei jedem Fokussieren, `WorkoutScreen`/`BossFightScreen` direkt nach dem
+  Speichern einer Session), ohne doppelt auszuzahlen.
+- **Sofort-Feedback**: `WorkoutScreen`/`BossFightScreen` lösen direkt nach dem Speichern
+  einer Session alle inzwischen abgeschlossenen Missionen ein und reichen
+  `coinsEarned`/`newlyCompletedMissions` an den `SummaryScreen` weiter, der das genau wie
+  neu freigeschaltete Abzeichen als eigene Karte feiert ("+30 Münzen verdient!").
+  Duell-basierte Wochenmissionen werden dagegen erst beim nächsten Aufruf des
+  Home-Screens sichtbar eingelöst (kein Extra-Popup direkt im `DuelResultScreen`, um den
+  Umfang dort nicht unnötig zu vergrößern).
+- **Tägliche Erinnerung**: `src/notifications/dailyReminder.ts` kann jetzt einen
+  beliebigen Text statt eines festen Standardtexts verwenden. Der Home-Screen baut
+  diesen Text (`buildDailyReminderBody()`) aus der noch offenen Tages-Mission und
+  plant die Erinnerung bei jedem Fokussieren neu (`refreshDailyReminderContent()`),
+  solange sie aktiv ist. **Ehrliche Einschränkung**: eine lokale, wiederkehrende
+  Push-Benachrichtigung kann ihren Text nicht im Moment des Auslösens neu berechnen -
+  der Text ist also nur so aktuell wie der letzte App-Aufruf, nicht exakt der
+  Fortschritt um 18 Uhr selbst. Für echte Live-Aktualität bräuchte es einen
+  Background-Task (z.B. `expo-task-manager` + Background Fetch), der hier bewusst noch
+  nicht eingebaut wurde (siehe Ideen unten).
+
+**Was hier bewusst noch fehlt (für später vorgemerkt, wie besprochen)**:
+- Ein **Shop/Ausgabe-Mechanismus** für die Münzen (z.B. kosmetische Extras, alternative
+  Boss-Skins, ein Zusatzleben im Boss-Modus) - aktuell sammeln sich Münzen nur an, ohne
+  dass man sie ausgeben kann. Reine Verdienst-Seite war der explizite Auftrag; die
+  Ausgabe-Seite ist ein sinnvoller nächster Schritt.
+- **Rotierende/zufällige Missionen** statt der aktuellen festen 6 - würde Abwechslung
+  bringen, braucht aber eine (am besten geräteübergreifend deterministische, z.B.
+  tagesdatum-geseedete) Auswahl-Logik.
+- **Streak-Bonus fürs tägliche Einloggen** (z.B. steigende Münzen für aufeinanderfolgende
+  Tage, ähnlich der bestehenden Trainings-Streak in `computeStats`) - aktuell zahlt
+  „Täglich dabei" jeden Tag denselben festen Betrag.
+- Ein **Background-Task** für eine wirklich zum Auslösezeitpunkt aktuelle
+  Erinnerungs-Nachricht (siehe oben).
+- Größere/schwerere **Sondermissionen** (z.B. "besiege Boss 5" oder "gewinne ein Ranked
+  gegen einen höheren Rang") für zusätzliche Abwechslung.
+
 ## Play-Store-Veröffentlichung
 
 Ziel ist ein signiertes `.aab` (Android App Bundle — der Play Store verlangt zwingend
@@ -726,10 +791,12 @@ src/
     DuelResultScreen.tsx        Ergebnis-Vergleich, LP-Änderung bei Ranked-Duellen
     BossFightScreen.tsx           Offline-Solo: Kamera + Boss-Lebensbalken, kein Backend nötig
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken
+  duel/duelLog.ts               lokales Protokoll abgeschlossener Duelle (fürs Wochenmissionen-Tracking)
   gamification/
     points.ts       Punkte-/Level-Berechnung
     badges.ts         Abzeichen-Definitionen + Freischalt-Logik (reine Funktionen, testbar)
-    challenges.ts      Tages-/Wochenziel-Fortschritt (reine Funktionen, testbar)
+    missions.ts        Missions-Definitionen + Tages-/Wochen-Fortschritt (reine Funktionen, testbar)
+    currencyStore.ts    Münz-Guthaben + Beleg-Ledger fürs einmalige Einlösen jeder Mission (AsyncStorage)
   navigation/RootNavigator.tsx
 plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
@@ -754,10 +821,11 @@ ist die Grundlage für alles Folgende:
 
 1. **Punkte & Level** ✅ umgesetzt (`src/gamification/points.ts`): Form-Score bestimmt
    Punkte pro Wiederholung, mit Bonus für perfekte Ausführung.
-2. **Tägliche/wöchentliche Challenges** ✅ umgesetzt (`src/gamification/challenges.ts`):
-   Tagesziel (30 Liegestütze) und Wochenziel (150) mit Fortschrittsbalken auf dem
-   Home-Screen, dazu eine optionale tägliche Erinnerung um 18 Uhr (lokale
-   Push-Benachrichtigung, `expo-notifications`, nur nach expliziter Erlaubnis).
+2. **Missionen & Münzen** ✅ umgesetzt (`src/gamification/missions.ts`,
+   `currencyStore.ts`): tägliche/wöchentliche Missionen mit Münzen-Belohnung, dazu eine
+   optionale tägliche Erinnerung um 18 Uhr (lokale Push-Benachrichtigung,
+   `expo-notifications`, nur nach expliziter Erlaubnis) — siehe „Missionen & Münzen" für
+   alle Details.
 3. **Badges/Auszeichnungen** ✅ umgesetzt (`src/gamification/badges.ts`,
    `AchievementsScreen.tsx`): 6 Meilensteine (10/100/500 Liegestütze, 3-/7-Tage-Streak,
    perfekte Session) — ein neu freigeschaltetes Abzeichen wird direkt nach dem Workout

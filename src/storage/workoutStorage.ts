@@ -11,6 +11,13 @@ export interface WorkoutSession {
   goodReps: number;
   averageFormScore: number;
   points: number;
+  /**
+   * Which screen produced this session - 'training' (default) for the normal
+   * WorkoutScreen, 'boss' for the Boss-Modus. Older sessions saved before this field
+   * existed have neither, and are treated as 'training' wherever this matters (see
+   * `src/gamification/missions.ts`), since that was the only mode back then.
+   */
+  source?: 'training' | 'boss';
 }
 
 const SESSIONS_KEY = '@pushup/workoutSessions';
@@ -57,7 +64,12 @@ function longestConsecutiveRun(dayKeys: Set<string>): number {
   return longest;
 }
 
-export function buildSession(reps: RepResult[], startedAtIso: string, finishedAtIso: string): WorkoutSession {
+export function buildSession(
+  reps: RepResult[],
+  startedAtIso: string,
+  finishedAtIso: string,
+  source: 'training' | 'boss' = 'training'
+): WorkoutSession {
   const totalReps = reps.length;
   const goodReps = reps.filter((r) => r.issues.length === 0).length;
   const averageFormScore = totalReps === 0 ? 0 : Math.round(reps.reduce((s, r) => s + r.formScore, 0) / totalReps);
@@ -70,6 +82,7 @@ export function buildSession(reps: RepResult[], startedAtIso: string, finishedAt
     goodReps,
     averageFormScore,
     points: totalPointsForReps(reps),
+    source,
   };
 }
 

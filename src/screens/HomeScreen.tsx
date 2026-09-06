@@ -9,8 +9,15 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { computeStats, loadSessions, type WorkoutSession, type WorkoutStats } from '../storage/workoutStorage';
 import { levelForPoints } from '../gamification/points';
 import { computeBadgeStatuses } from '../gamification/badges';
-import { computeChallengeProgress } from '../gamification/challenges';
-import { isDailyReminderEnabled, enableDailyReminder, disableDailyReminder } from '../notifications/dailyReminder';
+import { computeMissions, buildDailyReminderBody, type MissionProgress } from '../gamification/missions';
+import { claimCompletedMissions, getCoinBalance } from '../gamification/currencyStore';
+import { loadDuelLog, type DuelLogEntry } from '../duel/duelLog';
+import {
+  isDailyReminderEnabled,
+  enableDailyReminder,
+  disableDailyReminder,
+  refreshDailyReminderContent,
+} from '../notifications/dailyReminder';
 import { useAuth } from '../auth/AuthContext';
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
@@ -75,7 +82,9 @@ const MENU_ITEMS: MenuItem[] = [
 
 export function HomeScreen({ navigation }: Props) {
   const [sessions, setSessions] = useState<WorkoutSession[] | null>(null);
+  const [duelLog, setDuelLog] = useState<DuelLogEntry[] | null>(null);
   const [reminderEnabled, setReminderEnabled] = useState<boolean | null>(null);
+  const [coinBalance, setCoinBalance] = useState<number | null>(null);
   const auth = useAuth();
 
   // useFocusEffect already fires on initial mount (the screen is "focused" as soon as
@@ -83,20 +92,41 @@ export function HomeScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       loadSessions().then(setSessions);
+      loadDuelLog().then(setDuelLog);
     }, [])
   );
 
   useEffect(() => {
     isDailyReminderEnabled().then(setReminderEnabled);
+    getCoinBalance().then(setCoinBalance);
   }, []);
 
   const stats: WorkoutStats = useMemo(() => computeStats(sessions ?? []), [sessions]);
   const level = levelForPoints(stats.totalPoints);
-  const challenge = useMemo(() => computeChallengeProgress(sessions ?? []), [sessions]);
+  // Being on this screen at all means the app is open right now - the "täglich
+  // einloggen" mission just reflects that directly, no separate tracking needed.
+  const missions = useMemo(
+    () => computeMissions({ sessions: sessions ?? [], duelLog: duelLog ?? [], appOpenedToday: true }),
+    [sessions, duelLog]
+  );
   const unlockedBadgeCount = useMemo(
     () => computeBadgeStatuses(stats, sessions ?? []).filter((b) => b.unlocked).length,
     [stats, sessions]
   );
+
+  // Idempotent per mission/day/week (see currencyStore.ts) - safe to run on every
+  // recompute, whether or not a mission actually just became complete.
+  useEffect(() => {
+    if (sessions == null || duelLog == null) return;
+    claimCompletedMissions(missions).then(({ balance }) => setCoinBalance(balance));
+  }, [missions, sessions, duelLog]);
+
+  // Keeps tonight's reminder text pointed at whatever's still open, as of the last time
+  // the app was opened (see dailyReminder.ts for why it can't be more "live" than that).
+  useEffect(() => {
+    if (!reminderEnabled) return;
+    refreshDailyReminderContent(buildDailyReminderBody(missions.daily)).catch(() => {});
+  }, [reminderEnabled, missions]);
 
   const toggleReminder = useCallback(async () => {
     if (reminderEnabled) {
@@ -104,7 +134,7 @@ export function HomeScreen({ navigation }: Props) {
       setReminderEnabled(false);
       return;
     }
-    const granted = await enableDailyReminder();
+    const granted = await enableDailyReminder(buildDailyReminderBody(missions.daily));
     setReminderEnabled(granted);
     if (!granted) {
       Alert.alert(
@@ -112,7 +142,7 @@ export function HomeScreen({ navigation }: Props) {
         'Um dich täglich zu erinnern, braucht die App die Erlaubnis, Benachrichtigungen zu senden. Das kannst du in den Handy-Einstellungen für diese App nachträglich erlauben.'
       );
     }
-  }, [reminderEnabled]);
+  }, [reminderEnabled, missions]);
 
   return (
     <LinearGradient colors={colors.backgroundGradient} style={styles.gradient}>
@@ -189,39 +219,36 @@ export function HomeScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardTitle}>Herausforderungen</Text>
-            <Pressable
-              style={({ pressed }) => [styles.reminderButton, pressed && styles.pressed]}
-              onPress={toggleReminder}
-            >
-              <Ionicons
-                name={reminderEnabled ? 'notifications' : 'notifications-outline'}
-                size={16}
-                color={reminderEnabled ? colors.primary : colors.textSecondary}
-              />
-              <Text style={[styles.reminderButtonText, reminderEnabled && { color: colors.primary }]}>
-                {reminderEnabled ? 'Erinnerung an' : 'Erinnerung aus'}
-              </Text>
-            </Pressable>
+            <Text style={styles.cardTitle}>Missionen</Text>
+            <View style={styles.coinChip}>
+              <Ionicons name="cash" size={14} color={colors.warning} />
+              <Text style={styles.coinChipText}>{coinBalance ?? 0}</Text>
+            </View>
           </View>
 
-          <View style={styles.challengeRow}>
-            <Text style={styles.challengeLabel}>Heute</Text>
-            <Text style={styles.challengeValue}>
-              {challenge.dailyReps} / {challenge.dailyGoal}
-              {challenge.dailyComplete ? ' ✓' : ''}
+          <Pressable
+            style={({ pressed }) => [styles.reminderButton, pressed && styles.pressed, styles.reminderButtonStandalone]}
+            onPress={toggleReminder}
+          >
+            <Ionicons
+              name={reminderEnabled ? 'notifications' : 'notifications-outline'}
+              size={16}
+              color={reminderEnabled ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.reminderButtonText, reminderEnabled && { color: colors.primary }]}>
+              {reminderEnabled ? 'Tägliche Erinnerung an' : 'Tägliche Erinnerung aus'}
             </Text>
-          </View>
-          <ProgressBar progress={challenge.dailyReps / challenge.dailyGoal} height={6} />
+          </Pressable>
 
-          <View style={[styles.challengeRow, { marginTop: 14 }]}>
-            <Text style={styles.challengeLabel}>Diese Woche</Text>
-            <Text style={styles.challengeValue}>
-              {challenge.weeklyReps} / {challenge.weeklyGoal}
-              {challenge.weeklyComplete ? ' ✓' : ''}
-            </Text>
-          </View>
-          <ProgressBar progress={challenge.weeklyReps / challenge.weeklyGoal} height={6} color={colors.accent} />
+          <Text style={styles.missionSectionLabel}>Heute</Text>
+          {missions.daily.map((mission) => (
+            <MissionRow key={mission.definition.id} mission={mission} />
+          ))}
+
+          <Text style={[styles.missionSectionLabel, { marginTop: 18 }]}>Diese Woche</Text>
+          {missions.weekly.map((mission) => (
+            <MissionRow key={mission.definition.id} mission={mission} />
+          ))}
         </View>
 
         <View style={styles.card}>
@@ -263,6 +290,32 @@ export function HomeScreen({ navigation }: Props) {
         </View>
       </ScrollView>
     </LinearGradient>
+  );
+}
+
+function MissionRow({ mission }: { mission: MissionProgress }) {
+  const { definition, progress, complete } = mission;
+  return (
+    <View style={styles.missionRow}>
+      <View style={[styles.missionIconBadge, complete && styles.missionIconBadgeComplete]}>
+        <Ionicons
+          name={complete ? 'checkmark' : (definition.icon as keyof typeof Ionicons.glyphMap)}
+          size={16}
+          color={complete ? '#0B0F14' : colors.textPrimary}
+        />
+      </View>
+      <View style={styles.missionTextWrap}>
+        <View style={styles.missionTitleRow}>
+          <Text style={styles.missionTitle}>{definition.title}</Text>
+          <Text style={styles.missionReward}>+{definition.rewardCoins}</Text>
+        </View>
+        <Text style={styles.missionDescription}>
+          {definition.description} · {progress}/{definition.target}
+          {complete ? ' ✓' : ''}
+        </Text>
+        <ProgressBar progress={progress / definition.target} height={5} color={complete ? colors.primary : colors.accent} />
+      </View>
+    </View>
   );
 }
 
@@ -431,20 +484,75 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
   },
-  challengeRow: {
+  reminderButtonStandalone: {
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+  },
+  coinChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,194,75,0.14)',
+  },
+  coinChipText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: colors.warning,
+    fontVariant: ['tabular-nums'],
+  },
+  missionSectionLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  missionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  missionIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  missionIconBadgeComplete: {
+    backgroundColor: colors.primary,
+  },
+  missionTextWrap: {
+    flex: 1,
+  },
+  missionTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    alignItems: 'center',
   },
-  challengeLabel: {
+  missionTitle: {
     fontFamily: fonts.semiBold,
     fontSize: 13,
     color: colors.textPrimary,
   },
-  challengeValue: {
-    fontFamily: fonts.regular,
+  missionReward: {
+    fontFamily: fonts.bold,
     fontSize: 12,
+    color: colors.warning,
+    fontVariant: ['tabular-nums'],
+  },
+  missionDescription: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
     color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: 6,
     fontVariant: ['tabular-nums'],
   },
   statsDivider: {

@@ -12,6 +12,9 @@ import { ProgressBar } from '../components/ProgressBar';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
 import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badges';
+import { computeMissions } from '../gamification/missions';
+import { claimCompletedMissions } from '../gamification/currencyStore';
+import { loadDuelLog } from '../duel/duelLog';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 import { useBossFightCamera } from '../bossmode/useBossFightCamera';
@@ -120,7 +123,7 @@ export function BossFightScreen({ navigation }: Props) {
     const previousStats = computeStats(previousSessions);
     const badgesBefore = computeBadgeStatuses(previousStats, previousSessions);
 
-    const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
+    const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString(), 'boss');
     await saveSession(session);
 
     const allSessions = [session, ...previousSessions];
@@ -131,7 +134,12 @@ export function BossFightScreen({ navigation }: Props) {
     const newBestReps = hasHistory && session.totalReps > previousStats.bestSessionReps;
     const newBestFormScore = hasHistory && session.averageFormScore > previousStats.bestAverageFormScore;
 
-    navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore });
+    // See WorkoutScreen's finishWorkout for why this is safe to call unconditionally.
+    const duelLog = await loadDuelLog();
+    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: true });
+    const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
+
+    navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });
   }, [navigation]);
 
   useEffect(() => {

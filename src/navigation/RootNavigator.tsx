@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { WorkoutSession } from '../storage/workoutStorage';
 import type { BadgeDefinition } from '../gamification/badges';
+import type { MissionDefinition } from '../gamification/missions';
 import type { DuelPlayerInfo } from '../duel/duelSession';
 import { HomeScreen } from '../screens/HomeScreen';
 import { CameraScreen } from '../screens/CameraScreen';
@@ -28,7 +29,14 @@ export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Workout: undefined;
-  Summary: { session: WorkoutSession; newBadges: BadgeDefinition[]; newBestReps: boolean; newBestFormScore: boolean };
+  Summary: {
+    session: WorkoutSession;
+    newBadges: BadgeDefinition[];
+    newBestReps: boolean;
+    newBestFormScore: boolean;
+    coinsEarned: number;
+    newlyCompletedMissions: MissionDefinition[];
+  };
   History: undefined;
   Achievements: undefined;
   DuelLobby: undefined;

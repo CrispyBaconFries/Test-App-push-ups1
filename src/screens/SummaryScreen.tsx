@@ -11,7 +11,7 @@ import { fonts } from '../theme/typography';
 type Props = NativeStackScreenProps<RootStackParamList, 'Summary'>;
 
 export function SummaryScreen({ route, navigation }: Props) {
-  const { session, newBadges, newBestReps, newBestFormScore } = route.params;
+  const { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions } = route.params;
 
   const recordLabels = [
     newBestReps && 'meiste Wiederholungen in einer Session',
@@ -33,6 +33,18 @@ export function SummaryScreen({ route, navigation }: Props) {
           <View style={styles.newBadgeTextWrap}>
             <Text style={styles.newBadgeTitle}>Neue Bestleistung!</Text>
             <Text style={styles.recordNames}>{recordLabels.join(' · ')}</Text>
+          </View>
+        </View>
+      )}
+
+      {coinsEarned > 0 && (
+        <View style={styles.coinCard}>
+          <Ionicons name="cash" size={20} color="#0B0F14" />
+          <View style={styles.newBadgeTextWrap}>
+            <Text style={styles.newBadgeTitle}>+{coinsEarned} Münzen verdient!</Text>
+            <Text style={styles.newBadgeNames}>
+              {newlyCompletedMissions.map((m) => m.title).join(' · ')}
+            </Text>
           </View>
         </View>
       )}
@@ -148,6 +160,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
+    gap: 12,
+  },
+  coinCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     gap: 12,
   },
   newBadgeTextWrap: {

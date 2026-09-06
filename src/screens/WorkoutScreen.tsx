@@ -19,6 +19,9 @@ import { RepHud } from '../components/RepHud';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
 import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badges';
+import { computeMissions } from '../gamification/missions';
+import { claimCompletedMissions } from '../gamification/currencyStore';
+import { loadDuelLog } from '../duel/duelLog';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -112,7 +115,7 @@ export function WorkoutScreen({ navigation }: Props) {
     const previousStats = computeStats(previousSessions);
     const badgesBefore = computeBadgeStatuses(previousStats, previousSessions);
 
-    const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString());
+    const session = buildSession(repsRef.current, startedAtRef.current, new Date().toISOString(), 'training');
     await saveSession(session);
 
     const allSessions = [session, ...previousSessions];
@@ -125,7 +128,14 @@ export function WorkoutScreen({ navigation }: Props) {
     const newBestReps = hasHistory && session.totalReps > previousStats.bestSessionReps;
     const newBestFormScore = hasHistory && session.averageFormScore > previousStats.bestAverageFormScore;
 
-    navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore });
+    // `claimCompletedMissions` only ever pays out a given mission once per day/week
+    // (see currencyStore.ts), so it's safe to call here even though HomeScreen also
+    // calls it on every focus - whichever runs first gets the "newly completed" credit.
+    const duelLog = await loadDuelLog();
+    const missions = computeMissions({ sessions: allSessions, duelLog, appOpenedToday: true });
+    const { coinsEarned, newlyCompleted: newlyCompletedMissions } = await claimCompletedMissions(missions);
+
+    navigation.replace('Summary', { session, newBadges, newBestReps, newBestFormScore, coinsEarned, newlyCompletedMissions });
   }, [navigation]);
 
   // Leaving this screen (Android back button/gesture, or the in-app "Zurück" button -
