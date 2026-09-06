@@ -119,7 +119,20 @@ export function WorkoutScreen({ navigation }: Props) {
     console.warn('[WorkoutScreen] pose detection error', error.code, error.message);
   }, []);
 
-  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, {
+  // DEV DIAGNOSTIC (temporär) - unterscheidet "MediaPipe bekommt Frames, findet aber keine
+  // Pose" (das hier feuert) von "es kommen gar keine Frames an" (weder das hier noch
+  // onResults feuert). Entfernen, sobald die Zählung nachweislich funktioniert.
+  const diagEmptyCounterRef = useRef(0);
+  const onEmpty = useCallback(() => {
+    diagEmptyCounterRef.current += 1;
+    if (diagEmptyCounterRef.current % 15 === 0) {
+      console.log('[DIAG] onEmpty - MediaPipe hat den Frame verarbeitet, aber keine Pose gefunden', {
+        count: diagEmptyCounterRef.current,
+      });
+    }
+  }, []);
+
+  const solution = usePoseDetection({ onResults, onError, onEmpty }, RunningMode.LIVE_STREAM, POSE_MODEL, {
     delegate: Delegate.GPU,
     numPoses: 1,
     minPoseDetectionConfidence: 0.5,

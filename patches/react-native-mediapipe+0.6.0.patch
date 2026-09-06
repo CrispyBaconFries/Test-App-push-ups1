@@ -1,3 +1,32 @@
+diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
+index 3412357..9989776 100644
+--- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
++++ b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
+@@ -33,6 +33,10 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
+     override fun onResults(resultBundle: PoseDetectorHelper.ResultBundle) {
+       module.sendResultsEvent(handle, resultBundle)
+     }
++
++    override fun onEmpty() {
++      module.sendEmptyEvent(handle)
++    }
+   }
+ 
+   @ReactMethod
+@@ -141,6 +145,13 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
+         .emit("onError", errorArgs)
+   }
+ 
++  private fun sendEmptyEvent(handle: Int) {
++    val emptyArgs = Arguments.makeNativeMap(mapOf("handle" to handle))
++    reactApplicationContext
++        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
++        .emit("onEmpty", emptyArgs)
++  }
++
+   private fun sendResultsEvent(handle: Int, bundle: PoseDetectorHelper.ResultBundle) {
+     val resultArgs = convertResultBundleToWritableMap(bundle)
+     resultArgs.putInt("handle", handle)
 diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
 index 2641054..7abae92 100644
 --- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
@@ -19,3 +48,45 @@ index 2641054..7abae92 100644
      detectAsync(mpImage, frameTime, this.imageRotation)
    }
  
+diff --git a/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts b/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts
+index 4764c1d..b1ca5a4 100644
+--- a/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts
++++ b/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts
+@@ -61,6 +61,7 @@ export interface ViewCoordinator {
+ export interface DetectionCallbacks<TResultBundle> {
+     onResults: (result: TResultBundle, vc: ViewCoordinator) => void;
+     onError: (error: DetectionError) => void;
++    onEmpty?: () => void;
+ }
+ export interface DetectionCallbackState<TResultBundle> extends DetectionCallbacks<TResultBundle> {
+     viewCoordinator: ViewCoordinator;
+diff --git a/node_modules/react-native-mediapipe/src/poseDetection/index.ts b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
+index 8225ea5..e7a7079 100644
+--- a/node_modules/react-native-mediapipe/src/poseDetection/index.ts
++++ b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
+@@ -114,6 +114,10 @@ eventEmitter.addListener(
+     }
+   }
+ );
++eventEmitter.addListener("onEmpty", (args: { handle: number }) => {
++  const callbacks = detectorMap.get(args.handle);
++  callbacks?.onEmpty?.();
++});
+ 
+ export function usePoseDetection(
+   callbacks: DetectionCallbacks<PoseDetectionResultBundle>,
+diff --git a/node_modules/react-native-mediapipe/src/shared/types.ts b/node_modules/react-native-mediapipe/src/shared/types.ts
+index 4b5e6c7..8af61b1 100644
+--- a/node_modules/react-native-mediapipe/src/shared/types.ts
++++ b/node_modules/react-native-mediapipe/src/shared/types.ts
+@@ -63,6 +63,10 @@ export interface ViewCoordinator {
+ export interface DetectionCallbacks<TResultBundle> {
+   onResults: (result: TResultBundle, vc: ViewCoordinator) => void;
+   onError: (error: DetectionError) => void;
++  // Fired when the native detector ran on a frame but found zero poses/landmarks
++  // (MediaPipe's onEmpty()) - lets callers tell "no frames arriving" apart from
++  // "frames arriving but nothing detected", which otherwise look identical (silence).
++  onEmpty?: () => void;
+ }
+ 
+ export interface DetectionCallbackState<TResultBundle>

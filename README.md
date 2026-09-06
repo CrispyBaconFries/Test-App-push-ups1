@@ -224,6 +224,14 @@ durch die tatsächlich übergebene `orientation`. **Das ist eine native Änderun
 `npm install` ist ein vollständiger `expo prebuild --clean` + `npm run android` nötig,
 reines Metro-Reload reicht hier nicht (siehe Kommando-Block unten).
 
+Zusätzlich verdrahtet derselbe Patch `DetectorListener.onEmpty()` (Kotlin) auf ein neues
+`"onEmpty"`-Event, das über `usePoseDetection({ ..., onEmpty })` auch auf der JS-Seite
+ankommt (siehe `onEmpty` in `src/screens/WorkoutScreen.tsx`, dev-only Logging). Das
+unterscheidet zweifelsfrei zwei bisher identisch stille Fälle: "MediaPipe bekommt Frames,
+findet aber keine Pose" (jetzt sichtbar als `[DIAG] onEmpty`-Logs) vs. "es kommen gar keine
+Frames beim Detektor an" (dann bleiben auch die `onEmpty`-Logs aus). Temporär, siehe
+Kommentare in `WorkoutScreen.tsx` zum Entfernen.
+
 ### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
 
 **`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler
