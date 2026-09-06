@@ -1,0 +1,18 @@
+{
+  "//": "Starter-Regeln für die Realtime Database (Live-Duell-Status: laufende Wiederholungszähler + synchronisierter Startzeitpunkt). Deployen mit `firebase deploy --only database` - siehe README 'Ranking-System einrichten'.",
+  "rules": {
+    "duels": {
+      "$duelId": {
+        ".read": "auth != null && data.child('playerIds').child(auth.uid).exists()",
+        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists())",
+        "players": {
+          "$uid": {
+            "reps": {
+              ".write": "auth != null && auth.uid === $uid"
+            }
+          }
+        }
+      }
+    }
+  }
+}

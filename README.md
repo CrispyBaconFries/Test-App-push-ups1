@@ -155,6 +155,7 @@ Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing
 | Erinnerungen | `expo-notifications` — optionale tägliche lokale Benachrichtigung, nur nach expliziter Erlaubnis |
 | Gamification | Punkte/Level, Auszeichnungen, Tages-/Wochenziele, Bestleistungen — alles lokal aus `WorkoutSession`-Historie abgeleitet, kein Server nötig (Grundgerüst für Online-Duelle siehe Roadmap) |
 | Anmeldung | `@react-native-google-signin/google-signin` (optional, „Mit Google anmelden" auf dem Home-Screen) + `expo-secure-store` für die verschlüsselte lokale Ablage des Profils — kein eigenes Backend, siehe „Google-Anmeldung einrichten" |
+| Ranking-System (im Aufbau) | `@react-native-firebase` (app/auth/firestore) als Backend, LP-/Rangsystem + Uhrzeit-Abgleich bereits fertig und getestet (`src/ranking/`) — siehe „Ranking-System einrichten" |
 | Design-System | Eigene Schriftart **Sora** (`@expo-google-fonts/sora` + `expo-font`, Laden über `useFonts()` in `App.tsx`) für Überschriften/Zahlen; `@expo/vector-icons` (Ionicons) statt reinem Text; `expo-linear-gradient` für Verläufe; `src/theme/colors.ts` + `src/theme/typography.ts` bündeln Farben/Schriftgewichte |
 
 ## Wie die Formanalyse funktioniert
@@ -290,6 +291,121 @@ Die im Code hinterlegten Platzhalter-IDs gehören zu keinem echten Google-Projek
 Solange die Platzhalter noch drinstehen, bricht „Mit Google anmelden" mit einem Fehler
 ab — das ist erwartet und kein Bug.
 
+## Ranking-System einrichten
+
+**Status: Fundament gelegt, Duell-Screens folgen im nächsten Schritt.** Bereits fertig
+und getestet: das komplette LP-/Rang-Punktesystem (`src/ranking/lp.ts`,
+`src/ranking/ranks.ts`), der Uhrzeit-Abgleich zwischen zwei Handys
+(`src/ranking/clockSync.ts`), die Firebase-Anbindung als Backend (Pakete installiert,
+Config-Plugin geschrieben und geprüft) sowie Security-Rules-Entwürfe
+(`firestore.rules`, `database.rules.json`). Noch offen: die Matchmaking-Warteschlange,
+die eigentlichen Duell-/Kamera-Screens und die Home-Screen-Buttons „Ranked" /
+„Freundschaftsspiel" — das ist der nächste Schritt.
+
+### Architekturentscheidungen (mit Begründung)
+
+- **Backend: Firebase.** `@react-native-firebase/app` + `auth` + `firestore` sind
+  bereits installiert. Firebase Auth übernimmt dabei direkt euren bestehenden
+  Google-Login (`auth().signInWithCredential(GoogleAuthProvider.credential(idToken))`)
+  — kein zweiter Login-Flow nötig.
+- **Firestore** für dauerhafte/abfragbare Daten: Spielerprofile (LP, Rang,
+  Siege/Niederlagen), Matchmaking-Warteschlange, abgeschlossene Duelle (Historie).
+- **Firebase Realtime Database (RTDB)** wird für den *laufenden* Duell-Zustand
+  empfohlen (beide Live-Zähler + Startzeitpunkt) statt Firestore — RTDB hat mit
+  `.info/serverTimeOffset` eine eingebaute, wartungsfreie Server-Zeit-Differenz, genau
+  das, was für den synchronisierten Start gebraucht wird (Firestore hat das nicht,
+  man müsste es sich selbst bauen). `src/ranking/clockSync.ts` ist bewusst
+  Backend-unabhängig geschrieben (nimmt nur eine „Serverzeit" als Zahl entgegen) und
+  funktioniert mit beidem — die Empfehlung ist aber, für die Live-Zähler-Synchronisierung
+  auf RTDB zu setzen, sobald die Duell-Screens gebaut werden.
+- **Kein Cloud-Function-Zwang fürs MVP.** Matchmaking (zwei Spieler mit ähnlichem LP
+  zusammenbringen) ist eigentlich ein Server-Koordinationsproblem — die *gängige
+  Praxis* dafür ist eine Cloud Function, die die Warteschlange periodisch paart (race-
+  conditionsicher). Für den Start reicht aber ein rein client-seitiger Ansatz:
+  ein Spieler schreibt einen Warteschlangen-Eintrag (LP + Zeitstempel), ein anderer
+  Spieler sucht per Firestore-Query nach einem Eintrag mit ähnlichem LP (Suchradius
+  wächst mit Wartezeit) und "claimt" ihn per Firestore-Transaktion (verhindert, dass
+  zwei Spieler denselben Eintrag gleichzeitig beanspruchen). Bleibt komplett im
+  kostenlosen Firebase-Spark-Tarif. **Empfehlung für später** (mehr gleichzeitige
+  Spieler): auf eine Cloud Function umziehen, sobald es eng wird — Blaze-Tarif
+  (Pay-as-you-go), aber die kostenlose Kontingent-Grenze ist bei geringem Volumen
+  i. d. R. ausreichend.
+- **Skill-based Matchmaking**: Suchradius startet eng (z. B. ±100 LP) und weitet sich
+  alle paar Sekunden, damit auch abseits der Stoßzeiten irgendwann ein Gegner gefunden
+  wird — Standardmuster in Ranked-Systemen (Wartezeit vs. Fairness-Trade-off).
+- **Freundschaftsspiel vs. Ranked getrennt** (wie gewünscht): Freundschaftsspiele
+  laufen über einen Einladungslink/-code (kein Matchmaking, kein LP-Effekt, sofort mit
+  einer bestimmten Person spielbar); Ranked nutzt das oben beschriebene
+  Skill-Matchmaking und wirkt sich auf LP/Rang aus.
+
+### LP-/Rangsystem (bereits implementiert)
+
+Elo-inspiriert, siehe `src/ranking/lp.ts` (voll getestet, `npm test` deckt alle
+Grenzfälle ab):
+
+- Sieg bringt **12–35 LP**, abhängig davon, wie erwartet der Sieg war (Außenseiter-Sieg
+  gegen einen deutlich stärkeren Gegner bringt mehr als ein Favoriten-Sieg gegen einen
+  deutlich schwächeren).
+- Niederlage kostet **40–60 % der LP, die der Gegner für diesen Sieg bekommen hat** —
+  nie so viel wie der Sieg selbst gebracht hätte, damit der Aufstieg nicht unnötig zäh
+  wird (genau wie gewünscht).
+- Ränge (`src/ranking/ranks.ts`): **Bronze** (0–499 LP) → **Silber** (500–999) →
+  **Gold** (1000–1499) → **Diamant** (1500–1999) → **Challenger** (2000+, offen nach
+  oben, Rang untereinander nach LP sortiert). Der Rang ist reine Ableitung der LP — kein
+  Extra-Feld, kein Aufstiegs-/Abstiegs-Sonderfall nötig, Auf- *und* Abstieg passieren
+  automatisch, sobald die LP eine Stufengrenze über- bzw. unterschreiten.
+- Neue Ranked-Spieler starten bei 0 LP in Bronze (keine separaten Platzierungsspiele —
+  bewusst einfach gehalten fürs MVP).
+
+### Uhrzeit-Abgleich zwischen den Handys (bereits implementiert)
+
+`src/ranking/clockSync.ts`: klassischer NTP-Ansatz — Anfrage senden, Serverzeit
+empfangen, daraus Zeit-Offset zum eigenen Gerät schätzen (mehrere Messungen möglich,
+die mit der kürzesten Netzwerklaufzeit „gewinnt"). Wichtig zu verstehen: die eigentliche
+Fehlerquelle sind **nicht Zeitzonen** — `Date.now()` liefert immer UTC-Millisekunden,
+unabhängig von der Zeitzonen-Einstellung des Geräts —, sondern schlicht ungenau gehende
+Handy-Uhren plus Netzwerklaufzeit. Sobald beide Geräte ihren Offset zur Serverzeit
+kennen, berechnet jedes Gerät den exakt gleichen Startzeitpunkt in seiner *eigenen*
+Lokalzeit — beide 60-Sekunden-Countdowns enden dann zur selben realen Sekunde.
+
+### Faire Zählung / Anti-Cheat — ehrliche Grenzen
+
+Die Wiederholungszählung nutzt dieselbe geprüfte Zustandsmaschine wie im Solo-Training
+(`src/pose/formAnalysis.ts`) — nichts Neues zu bauen, und beide Spieler unterliegen
+exakt denselben Regeln. Was das **nicht** abdeckt: ein manipuliertes Gerät (gerootet,
+modifizierter Client) könnte theoretisch gefälschte Wiederholungen an den Server
+melden. Echte, wasserdichte Anti-Cheat-Prüfung würde bedeuten, die Kamera-/Pose-Daten
+laufend zum Server zu streamen und dort serverseitig zu validieren — das sprengt für
+diese App Bandbreite, Infrastruktur und Kosten bei Weitem und ist nicht geplant. Fürs
+Erste: Klartext-Ansage, keine falschen Versprechen, plus zwei einfache
+Plausibilitätsprüfungen beim Server-Empfang (geplant, noch nicht implementiert): eine
+Ober­grenze für Wiederholungen/Sekunde (physiologisch unmöglich schnelle Serien
+verwerfen) und dass beide Spieler während des gesamten Duells den Kamera-Screen aktiv
+sehen (sichtbar für den jeweils anderen Spieler — auffälliges Verhalten wird also live
+bemerkt, nicht erst hinterher).
+
+### Firebase-Projekt einrichten
+
+1. https://console.firebase.google.com/ → neues Projekt anlegen.
+2. **Android-App registrieren** (Paketname wie in `app.json` → `android.package`) →
+   `google-services.json` herunterladen → ins **Projekt-Wurzelverzeichnis** legen
+   (nicht nach `android/` — das wird bei jedem Prebuild neu erzeugt und automatisch
+   dorthin kopiert, siehe `plugins/withFirebaseConfig.js`). Die Datei ist bereits in
+   `.gitignore` eingetragen, wird also nie versehentlich committet.
+3. **(nur falls du auch für iOS baust)** iOS-App registrieren (Bundle-ID wie
+   `ios.bundleIdentifier`) → `GoogleService-Info.plist` herunterladen → ebenfalls ins
+   Projekt-Wurzelverzeichnis (auch bereits gitignored).
+4. **Firestore aktivieren** (Build → Firestore Database → Datenbank erstellen,
+   Produktionsmodus) und die Regeln aus `firestore.rules` deployen — entweder per
+   Firebase-CLI (`firebase deploy --only firestore:rules`, braucht einmalig
+   `firebase init`) oder die Datei einfach im Firebase-Console-Regel-Editor einfügen.
+5. **Realtime Database aktivieren** (Build → Realtime Database → Datenbank erstellen)
+   und `database.rules.json` genauso deployen/einfügen.
+6. Danach `npm run prebuild` (bzw. `npm run android`) erneut ausführen — ab jetzt sind
+   `expo.extra.firebaseConfigured` automatisch `true` und alle Firebase-Aufrufe im Code
+   sicher nutzbar (vorher zeigt die App an entsprechender Stelle nur einen
+   „Noch nicht eingerichtet"-Hinweis, stürzt aber nirgends ab).
+
 ## Play-Store-Veröffentlichung
 
 Ziel ist ein signiertes `.aab` (Android App Bundle — der Play Store verlangt zwingend
@@ -388,6 +504,11 @@ src/
     profileStorage.ts           verschlüsselte Ablage/Lesen/Löschen (expo-secure-store)
     googleSignInConfig.ts       einmaliges GoogleSignin.configure() (webClientId aus app.json)
     AuthContext.tsx              React-Context: signIn/signOut/Status, für HomeScreen
+  ranking/
+    lp.ts                      LP-Vergabe (Elo-inspiriert, 12-35 Gewinn / 40-60% Verlust)
+    ranks.ts                     Bronze/Silber/Gold/Diamant/Challenger, reine Ableitung der LP
+    clockSync.ts                  NTP-artiger Uhrzeit-Abgleich für den synchronisierten Duell-Start
+  firebase/firebaseConfig.ts     isFirebaseConfigured() - liest expo.extra.firebaseConfigured
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
     WorkoutScreen.tsx    Kamera + Skelett-Overlay + Zähl-/Bewertungslogik (Kernscreen)
@@ -403,7 +524,9 @@ src/
 plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
   withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
+  withFirebaseConfig.js            Config-Plugin: bindet Firebase nur ein, wenn google-services.json/GoogleService-Info.plist existieren
 keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)
+firestore.rules, database.rules.json  Security-Rules-Entwürfe fürs Ranking-System, deploybereit
 docs/
   index.html                     Datenschutzerklärung, fertig zum Hosten via GitHub Pages
   terms.html                       Nutzungsbedingungen, selbes Hosting
@@ -429,16 +552,17 @@ ist die Grundlage für alles Folgende:
    `AchievementsScreen.tsx`): 6 Meilensteine (10/100/500 Liegestütze, 3-/7-Tage-Streak,
    perfekte Session) — ein neu freigeschaltetes Abzeichen wird direkt nach dem Workout
    auf dem Zusammenfassungs-Screen gefeiert.
-4. **Online-Ranking-Modus (geplant, noch nicht begonnen)**: ein 60-Sekunden-Kopf-an-Kopf-
-   Duell — wer schafft in der Zeit mehr (saubere) Liegestütze. Braucht zwingend ein
-   Backend: Nutzerkonten, Matchmaking (zwei Spieler gleichzeitig finden), einen
-   Realtime-Layer für den Live-Punktestand (z. B. Firebase, Supabase Realtime oder ein
-   eigenes WebSocket-Backend) und serverseitig validierte Ergebnisse (ein Rep-Count, der
-   nur lokal auf dem Gerät entsteht, ist sonst leicht zu manipulieren). Das ist ein
-   eigenes Architektur-Thema (Anbieter, Datenmodell, Authentifizierung,
-   Anti-Cheat/Validierung der Wiederholungszählung) und sollte in einem eigenen Gespräch
-   geplant werden, bevor loscodiert wird.
-5. **Leaderboards**: baut auf Punkt 4 auf (braucht dieselbe Backend-Anbindung mit
-   serverseitig validierten Scores).
+4. **Online-Ranking-Modus (in Arbeit)** 🚧: ein 60-Sekunden-Kopf-an-Kopf-Duell — wer
+   schafft in der Zeit mehr (saubere) Liegestütze, jeder sieht sein eigenes Kamerabild +
+   Zähler oben links, das des Gegners oben rechts. Fundament steht bereits (siehe
+   „Ranking-System einrichten" für Details und offene Punkte): LP-/Rangsystem
+   (Bronze–Challenger, `src/ranking/lp.ts` + `ranks.ts`), Uhrzeit-Abgleich für den
+   synchronisierten Start (`src/ranking/clockSync.ts`), Firebase als Backend
+   (installiert, Config-Plugin geschrieben), Security-Rules-Entwürfe. Noch offen:
+   Matchmaking-Warteschlange, die Duell-/Kamera-Screens selbst, Home-Screen-Einstieg
+   („Ranked" getrennt von „Freundschaftsspiel").
+5. **Leaderboards**: baut auf Punkt 4 auf (dieselbe Backend-Anbindung, serverseitig
+   validierte Scores).
 
-Punkte 1–3 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins.
+Punkte 1–3 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins (siehe
+„Ranking-System einrichten").
