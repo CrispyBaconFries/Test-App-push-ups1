@@ -649,9 +649,39 @@ unabhängige Pipeline:
   rendert das Skia-Frame-Processor-Ergebnis intern über eine eigene
   `SkiaCameraCanvas`-Komponente, die `useFrameCallback` aus Reanimated nutzt - ohne
   Reanimated käme also gar kein Bild auf den Schirm, obwohl Skia selbst Reanimated nur
-  als optionale Peer-Dependency deklariert. Bewusst `3.19.1` (nicht 4.x) gewählt, weil
-  Reanimated 4 ein eigenes `react-native-worklets`-Paket verlangt, das mit dem hier
-  bereits genutzten (und unabhängigen) `react-native-worklets-core` kollidieren würde.
+  als optionale Peer-Dependency deklariert.
+  **Korrektur nach dem ersten echten Geräte-Build** (siehe unten): ursprünglich wurde
+  hier bewusst `3.19.1` (nicht 4.x) gewählt, um das zusätzliche `react-native-worklets`-
+  Paket zu vermeiden, das Reanimated 4 braucht. Das ließ sich ohne echten nativen Build
+  nicht prüfen (peer-dependency-Metadaten allein reichen nicht) - beim ersten echten
+  `npm run android` auf einem Windows-PC stellte sich heraus, dass Reanimated 3.19.x
+  noch Java-Code für React Natives *alte* Architektur enthält
+  (`ReaLayoutAnimator`/`ReanimatedUIManager`, Paket `layoutReanimation`), der Klassen
+  wie `LayoutAnimationController`/`UIManagerModuleListener` referenziert - und React
+  Native 0.86.3 hat diese Alte-Architektur-Klassen bereits vollständig entfernt (nur
+  noch neue Architektur). Der Build brach mit `20 Fehler` beim Kompilieren von
+  `react-native-reanimated:compileDebugJavaWithJavac` ab.
+  **Fix**: Upgrade auf `react-native-reanimated@^4.6.0` + neu
+  `react-native-worklets@^0.12.1` (Reanimated 4 hat das komplette
+  `layoutReanimation`-Paket entfernt, keine der alten Klassen mehr referenziert; die
+  peer-dependency-Spanne `react-native: '0.83 - 0.87'` von Reanimated 4.6.0 passt exakt
+  zu RN 0.86.3). `babel.config.js`s `'react-native-reanimated/plugin'`-Eintrag musste
+  *nicht* geändert werden - er ist in 4.x nur noch ein dünner Re-Export von
+  `'react-native-worklets/plugin'`. Die befürchtete Kollision mit dem bereits
+  installierten `react-native-worklets-core` (für VisionCamera/MediaPipe) trat nicht
+  ein - unterschiedliche Java-Package-Namen (`com.swmansion.worklets` vs. `com.worklets`),
+  beide koexistieren nebeneinander, jeweils für ihre eigene Bibliothek zuständig.
+  **Bekannte, aber wohl unschädliche Inkonsistenz**: `expo-modules-core` (Teil von
+  Expo SDK 57) deklariert seine eigene `react-native-worklets`-Peer-Dependency noch
+  auf `^0.7.4 || ^0.8.0 || ^0.9.0 || ^0.10.0` - älter als das hier installierte
+  `0.12.1`. `npm ls` markiert das als `invalid`, aber es gibt (anders als zunächst
+  befürchtet) nur eine einzige physische Kopie von `react-native-worklets` im Baum,
+  keine doppelten nativen Klassen - der reale Android-Build lief nach dem Upgrade
+  durch. Ein `package.json`-`overrides`-Eintrag wurde testweise probiert, um auch
+  diese Meldung verschwinden zu lassen, aber wieder verworfen: er brachte das
+  Hoisting von `expo-modules-core` selbst durcheinander (Jest fand das Modul danach
+  nicht mehr) - ein Risiko, das größer war als die harmlose Versions-Warnung, die er
+  beheben sollte.
 - **`vision-camera-resize-plugin`** verkleinert/konvertiert den quadratischen
   Kamera-Ausschnitt synchron auf die vom Modell erwartete `256×256`-Auflösung.
 - **`react-native-nitro-modules`**: `react-native-fast-tflite` baut auf Nitro Modules
@@ -677,16 +707,16 @@ die native `PoseDetection`-Modul-Form ändert, würde diese Datei brechen.
 passieren nur in diesem Quadrat, die Ränder (oben/unten bei Portrait) zeigen also nie
 Kamerabild, sondern immer den Boss dahinter.
 
-**Nicht verifiziert - wichtigster offener Punkt**: Diese gesamte Pipeline (Skia-Compositing,
-TFLite-Inferenz, Nitro-Boxing, das Zusammenspiel zweier verschiedener Worklet-Runtimes
-`react-native-worklets-core` + Reanimated, und ob VisionCamera's natives Kamera-View
-tatsächlich transparent statt opak rendert) konnte in dieser Sandbox **nicht auf einem
-echten Gerät getestet werden** (kein Android-SDK, kein Xcode, kein physisches Gerät
-verfügbar) - nur `tsc --noEmit`, `jest` und `expo prebuild` (Struktur-/Manifest-Prüfung)
-liefen erfolgreich durch. Das tatsächliche visuelle Ergebnis, Timing/Performance auf dem
-Gerät und ob die Freistellung wie erwartet aussieht, müssen beim ersten echten Build
-geprüft werden - das ist die riskanteste, am wenigsten abgesicherte Änderung in diesem
-Projekt bisher.
+**Teilweise verifiziert, wichtigster offener Punkt bleibt aber offen**: Der native
+Android-Build (Gradle/Kotlin/Java-Kompilierung aller nativen Module) läuft inzwischen
+auf einem echten Windows-PC mit echtem Handy erfolgreich durch - das hat bereits einen
+echten Fehler aufgedeckt und behoben (siehe „react-native-reanimated musste zusätzlich
+installiert werden" oben: Reanimated 3.19.1 → 4.6.0 nötig). Was aber weiterhin
+**nicht** getestet ist: das tatsächliche visuelle Ergebnis der Segmentierung
+(Skia-Compositing, TFLite-Inferenz, Nitro-Boxing, ob VisionCamera's natives Kamera-View
+tatsächlich transparent statt opak rendert), Timing/Performance auf dem Gerät, und ob
+die Freistellung wie erwartet aussieht - das lässt sich nur durch tatsächliches Öffnen
+des Boss-Modus auf dem Handy prüfen, nicht durch einen erfolgreichen Build allein.
 
 **Boss-Grafiken**: aktuell ein einfaches, eingefärbtes Platzhalter-Icon (Totenkopf) -
 die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
