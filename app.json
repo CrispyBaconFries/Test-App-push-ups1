@@ -50,6 +50,7 @@
         }
       ],
       "./plugins/withPoseLandmarkerModel.js",
+      "./plugins/withUncompressedModelAssets.js",
       "./plugins/withReleaseSigning.js",
       "./plugins/withCameraXVersionAlignment.js",
       "./plugins/withGradleJavaHome.js",

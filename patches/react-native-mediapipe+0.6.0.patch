@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
-index 3412357..9989776 100644
+index 3412357..e9e2def 100644
 --- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
 +++ b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
 @@ -33,6 +33,10 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
@@ -13,7 +13,31 @@ index 3412357..9989776 100644
    }
  
    @ReactMethod
-@@ -141,6 +145,13 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
+@@ -61,6 +65,23 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
+             context = reactApplicationContext.applicationContext,
+             poseDetectorListener = PoseDetectorListener(this, id)
+         )
++    // setupPoseLandmarker() runs inside the helper's constructor and only *reports* a
++    // failure through the listener - it leaves the helper alive with a null
++    // poseLandmarker. Handing that dead helper back as a valid handle used to turn a
++    // fatal init failure (e.g. the .task model asset failing to load) into permanent
++    // silence: every later detectAsync is a null-safe no-op, so no result, no error and
++    // no onEmpty ever reaches JS again. Reject instead, so the failure is impossible to
++    // miss - usePoseDetection already logs a createDetector rejection.
++    if (helper.isClosed()) {
++      promise.reject(
++          "POSE_DETECTOR_SETUP_FAILED",
++          "Pose Landmarker konnte nicht initialisiert werden (Modell '$model', delegate=$delegate). " +
++              "Häufigste Ursache: die .task-Modelldatei fehlt in android/app/src/main/assets/ " +
++              "oder wurde von AAPT komprimiert gepackt (siehe plugins/withUncompressedModelAssets.js). " +
++              "Details im Android-Logcat unter dem Tag 'PoseDetectorHelper'."
++      )
++      return
++    }
+     PoseDetectorMap.detectorMap[id] = helper
+     promise.resolve(id)
+   }
+@@ -141,6 +162,13 @@ class PoseDetectionModule(reactContext: ReactApplicationContext) :
          .emit("onError", errorArgs)
    }
  
@@ -61,10 +85,25 @@ index 4764c1d..b1ca5a4 100644
  export interface DetectionCallbackState<TResultBundle> extends DetectionCallbacks<TResultBundle> {
      viewCoordinator: ViewCoordinator;
 diff --git a/node_modules/react-native-mediapipe/src/poseDetection/index.ts b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-index 8225ea5..e7a7079 100644
+index 8225ea5..4f0ba65 100644
 --- a/node_modules/react-native-mediapipe/src/poseDetection/index.ts
 +++ b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-@@ -114,6 +114,10 @@ eventEmitter.addListener(
+@@ -111,9 +111,25 @@ eventEmitter.addListener(
+     const callbacks = detectorMap.get(args.handle);
+     if (callbacks) {
+       callbacks.onError(args);
++    } else {
++      // Setup errors (e.g. the model asset failing to load) are raised from inside the
++      // native PoseDetectorHelper *constructor* - that is, before createDetector's
++      // promise resolves and before this map has an entry for the handle. Dropping them
++      // silently, as this used to, hides a fatal init failure completely: the native
++      // poseLandmarker stays null and every later detectAsync call is a silent no-op,
++      // so nothing ever reaches onResults/onEmpty/onError again either.
++      console.warn(
++        `[react-native-mediapipe] Detector error for unregistered handle ${args.handle} ` +
++          `(likely raised during detector setup - the detector is probably dead): ` +
++          `code=${args.code} message=${args.message}`
++      );
      }
    }
  );

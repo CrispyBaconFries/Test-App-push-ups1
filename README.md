@@ -224,6 +224,36 @@ durch die tatsächlich übergebene `orientation`. **Das ist eine native Änderun
 `npm install` ist ein vollständiger `expo prebuild --clean` + `npm run android` nötig,
 reines Metro-Reload reicht hier nicht (siehe Kommando-Block unten).
 
+### Native Bugfix 2: komprimiertes Modell-Asset + unsichtbarer Initialisierungsfehler
+
+Zweite, wahrscheinlich eigentliche Ursache derselben Symptomatik — und der Grund, warum
+sie so schwer zu finden war: MediaPipe lädt das `.task`-Modell über
+`BaseOptions.setModelAssetPath()` per **Memory-Mapping** aus dem APK-Asset-Verzeichnis.
+Das funktioniert nur, wenn das Asset **unkomprimiert** gepackt ist. AAPT komprimiert aber
+jede Dateiendung, die es nicht kennt, und `.task` steht auf keiner Ausnahmeliste — weder
+`react-native-mediapipe`s eigenes `build.gradle` noch Expos Android-Template setzen
+`noCompress` dafür. Ergebnis: `PoseLandmarker.createFromOptions()` scheitert beim Start.
+
+Warum davon nie etwas zu sehen war (die eigentliche Falle):
+`setupPoseLandmarker()` läuft im **Konstruktor** von `PoseDetectorHelper` — also *bevor*
+`createDetector` sein Promise auflöst und damit bevor die JS-Seite den Handle in ihrer
+`detectorMap` registriert hat. Das ausgelöste `onError`-Event wird auf der JS-Seite per
+Handle nachgeschlagen, findet nichts und wird **kommentarlos verworfen**. `poseLandmarker`
+bleibt anschließend für immer `null`, und jeder weitere `poseLandmarker?.detectAsync(...)`
+ist ein stiller No-op — kein Ergebnis, kein Fehler, kein `onEmpty`. Also exakt die
+beobachtete totale Stille, dauerhaft.
+
+Drei Gegenmaßnahmen, damit das weder auftritt noch je wieder unsichtbar bleibt:
+
+1. `plugins/withUncompressedModelAssets.js` (neu, in `app.json` registriert) hängt einen
+   `androidResources { noCompress "task" }`-Block an `android/app/build.gradle` an, damit
+   das Modell unkomprimiert in der APK landet.
+2. Der Patch lässt `createDetector` das Promise **ablehnen**, wenn der Helper nach dem
+   Konstruktor keinen lebenden `poseLandmarker` hat (`isClosed()`), statt einen toten
+   Handle zurückzugeben — `usePoseDetection` loggt eine solche Ablehnung bereits selbst.
+3. Der Patch loggt außerdem `onError`-Events für unbekannte Handles, statt sie zu
+   verwerfen — damit ist ein Setup-Fehler samt Meldung in der Metro-Konsole sichtbar.
+
 Zusätzlich verdrahtet derselbe Patch `DetectorListener.onEmpty()` (Kotlin) auf ein neues
 `"onEmpty"`-Event, das über `usePoseDetection({ ..., onEmpty })` auch auf der JS-Seite
 ankommt (siehe `onEmpty` in `src/screens/WorkoutScreen.tsx`, dev-only Logging). Das
@@ -990,6 +1020,7 @@ src/
   navigation/RootNavigator.tsx
 plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
+  withUncompressedModelAssets.js  Config-Plugin: noCompress "task", sonst kann MediaPipe das Modell nicht laden
   withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
   withFirebaseConfig.js            Config-Plugin: bindet Firebase nur ein, wenn google-services.json/GoogleService-Info.plist existieren
 keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)
