@@ -42,6 +42,7 @@
         }
       ],
       "./plugins/withPoseLandmarkerModel.js",
+      "./plugins/withReleaseSigning.js",
       [
         "expo-audio",
         {

@@ -296,8 +296,8 @@ besitzen darfst — ich kann und darf ihn nicht für dich erzeugen oder aufbewah
    `android.package`/`ios.bundleIdentifier`) ist aktuell nur ein Platzhalter. Einmal im
    Play Store veröffentlicht, lässt sich der Android-Paketname **nicht mehr ändern** —
    vorher final entscheiden.
-2. **Release-Keystore erzeugen** (einmalig; Verlust bedeutet, dass die App nie wieder
-   aktualisiert werden kann):
+2. **Release-Keystore erzeugen** (einmalig, **im Projekt-Wurzelverzeichnis**; Verlust
+   bedeutet, dass die App nie wieder aktualisiert werden kann):
    ```bash
    keytool -genkeypair -v -keystore release.keystore -alias pushup-coach \
      -keyalg RSA -keysize 2048 -validity 10000
@@ -305,17 +305,26 @@ besitzen darfst — ich kann und darf ihn nicht für dich erzeugen oder aufbewah
    `release.keystore` **niemals committen** (liegt bereits in `.gitignore` via
    `*.jks`/`*.keystore`) — zusätzlich an einem zweiten, sicheren Ort aufbewahren
    (Passwort-Manager, externes Backup).
-3. **Signing in Gradle hinterlegen**: Keystore-Pfad/Passwörter in
-   `android/gradle.properties` (ebenfalls nicht committen) und einen
-   `signingConfigs.release`-Block in `android/app/build.gradle` — Standard-Android-
-   Doku, ich helfe gerne konkret weiter, sobald der Keystore existiert und du an dem
-   Schritt bist.
+3. **Signing-Daten hinterlegen**: `keystore.properties.example` (liegt im
+   Projekt-Wurzelverzeichnis, ist Teil des Repos) zu `keystore.properties` kopieren und
+   die echten Passwörter/den Alias eintragen:
+   ```bash
+   cp keystore.properties.example keystore.properties
+   ```
+   `keystore.properties` ist bereits in `.gitignore` — wird also **nie** committet. Mehr
+   musst du hier nicht tun: `plugins/withReleaseSigning.js` trägt bei jedem
+   `npm run prebuild`/`npm run android` automatisch einen `signingConfigs.release`-Block
+   in das (sonst bei jedem Prebuild neu generierte, daher nicht von Hand editierbare)
+   `android/app/build.gradle` ein, der diese Datei ausliest. Ohne `keystore.properties`
+   fällt der Release-Build automatisch auf den Debug-Schlüssel zurück (baut weiterhin,
+   ist dann aber nicht Play-Store-signiert) — nichts bricht, wenn du diesen Schritt
+   vorerst überspringst.
 4. **SHA-1 des Release-Keystores ermitteln** (`keytool -list -v -keystore
    release.keystore -alias pushup-coach`) und wie oben beschrieben einen zweiten
    Android-OAuth-Client dafür in der Google Cloud Console anlegen, sonst funktioniert
    „Mit Google anmelden" im signierten Release-Build nicht.
-5. **Bundle bauen**: `cd android && ./gradlew bundleRelease` → Ergebnis unter
-   `android/app/build/outputs/bundle/release/app-release.aab`.
+5. **Bundle bauen**: `npm run prebuild && cd android && ./gradlew bundleRelease` →
+   Ergebnis unter `android/app/build/outputs/bundle/release/app-release.aab`.
 6. **Play Console**: Datenschutzerklärung (URL, siehe unten), Data-Safety-Formular
    (siehe unten), Store-Eintrag (Screenshots/Beschreibung), interner Test →
    geschlossener Test → Produktion.
@@ -323,10 +332,9 @@ besitzen darfst — ich kann und darf ihn nicht für dich erzeugen oder aufbewah
 ### Datenschutzerklärung (Privacy Policy)
 
 Pflicht für jede Play-Store-App, sobald Berechtigungen wie Kamera oder eine
-Google-Anmeldung genutzt werden. Ich kann den Text entwerfen, aber **nicht hosten** —
-die Play Console verlangt eine öffentlich erreichbare URL (z. B. eine einfache
-GitHub-Pages-Seite oder ein Google Doc mit Freigabe „Jeder mit Link"). Inhaltlich gehört
-rein (Stand der App):
+Google-Anmeldung genutzt werden. Der fertige Text liegt bereits im Repo unter
+`docs/index.html` (eigenständige, statische HTML-Seite, kein Build-Schritt nötig) —
+zusammengefasst:
 
 - **Kamerabilder**: werden ausschließlich lokal auf dem Gerät verarbeitet
   (MediaPipe-Posenerkennung on-device), verlassen das Gerät nie, werden nicht
@@ -338,6 +346,19 @@ rein (Stand der App):
   eigenen Server (existiert noch nicht) und keine Weitergabe an Dritte.
 - **Benachrichtigungen**: nur lokal geplante Erinnerungen, kein Push-Server.
 - Keine Werbung, kein Tracking, keine Analytics-SDKs.
+
+**Damit du eine öffentliche URL für die Play Console bekommst** (Pflichtfeld):
+
+1. In `docs/index.html` die Platzhalter-Kontaktadresse `KONTAKT-E-MAIL@ersetzen.de`
+   durch eine echte, erreichbare E-Mail-Adresse ersetzen (die Play Console verlangt eine
+   Kontaktmöglichkeit für Datenschutzanfragen). Ich habe hier bewusst einen Platzhalter
+   gelassen statt eine E-Mail-Adresse zu raten oder automatisch einzusetzen.
+2. Im GitHub-Repo: **Settings → Pages → Build and deployment → Source: „Deploy from a
+   branch"**, Branch auf diesen Branch (bzw. später `main`) und Ordner `/docs` stellen,
+   speichern.
+3. GitHub zeigt dir danach die fertige URL (Form
+   `https://<dein-github-name>.github.io/<repo-name>/`) — genau diese URL in der Play
+   Console beim Store-Eintrag unter „Datenschutzerklärung" eintragen.
 
 ### Data-Safety-Formular (Play Console)
 
@@ -381,7 +402,11 @@ src/
     badges.ts         Abzeichen-Definitionen + Freischalt-Logik (reine Funktionen, testbar)
     challenges.ts      Tages-/Wochenziel-Fortschritt (reine Funktionen, testbar)
   navigation/RootNavigator.tsx
-plugins/withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
+plugins/
+  withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
+  withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
+keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)
+docs/index.html                     Datenschutzerklärung, fertig zum Hosten via GitHub Pages
 scripts/
   download-pose-model.js        lädt das MediaPipe-Modell herunter
   generate-rep-sounds.js          erzeugt assets/sounds/*.wav (synthetische Töne)

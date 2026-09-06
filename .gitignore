@@ -24,6 +24,9 @@ expo-env.d.ts
 google-services.json
 GoogleService-Info.plist
 
+# Real release-signing credentials (see keystore.properties.example, which IS committed)
+keystore.properties
+
 # Metro
 .metro-health-check*
 

@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
-import { ensureGoogleSignInConfigured } from './googleSignInConfig';
+import { ensureGoogleSignInConfigured, isGoogleSignInConfigured } from './googleSignInConfig';
 import { toAuthProfile } from './mapGoogleUser';
 import { saveProfile, loadProfile, clearProfile } from './profileStorage';
 import type { AuthProfile } from './types';
@@ -35,6 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async () => {
     setError(null);
+    if (!isGoogleSignInConfigured()) {
+      setError(
+        'Google-Anmeldung ist noch nicht eingerichtet (Platzhalter in app.json). Siehe README, Abschnitt „Google-Anmeldung einrichten".'
+      );
+      return;
+    }
     try {
       ensureGoogleSignInConfigured();
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });

@@ -1,7 +1,25 @@
 import Constants from 'expo-constants';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
+// Matches the placeholder values shipped in app.json until a developer swaps in their
+// own Google Cloud Console project (see README "Google-Anmeldung einrichten").
+const PLACEHOLDER_PREFIX = 'REPLACE_WITH_YOUR_';
+
 let configured = false;
+
+function readWebClientId(): string | undefined {
+  const value = Constants.expoConfig?.extra?.googleSignInWebClientId;
+  return typeof value === 'string' && value.length > 0 && !value.startsWith(PLACEHOLDER_PREFIX) ? value : undefined;
+}
+
+/**
+ * False until the placeholder `googleSignInWebClientId` in app.json has been replaced
+ * with a real one - lets the UI show a clear "not set up yet" message instead of
+ * letting a placeholder ID reach the native module and fail with a cryptic error.
+ */
+export function isGoogleSignInConfigured(): boolean {
+  return readWebClientId() !== undefined;
+}
 
 /**
  * `webClientId` comes from app.json's `extra` block (see README "Google-Anmeldung
@@ -12,9 +30,8 @@ let configured = false;
  */
 export function ensureGoogleSignInConfigured(): void {
   if (configured) return;
-  const webClientId = Constants.expoConfig?.extra?.googleSignInWebClientId;
   GoogleSignin.configure({
-    webClientId: typeof webClientId === 'string' && webClientId.length > 0 ? webClientId : undefined,
+    webClientId: readWebClientId(),
     offlineAccess: false,
   });
   configured = true;

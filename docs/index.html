@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Datenschutzerklärung – Liegestütz Coach</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 20px 64px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e8e8e8; background: #121212; }
+    a { color: #6fb8ff; }
+    code { background: #232323; }
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  .meta { opacity: 0.7; font-size: 0.9rem; margin-bottom: 32px; }
+  h2 { font-size: 1.15rem; margin-top: 32px; }
+  code { background: rgba(127,127,127,0.15); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { padding-left: 1.2em; }
+  .todo {
+    border: 1px dashed #d08a00;
+    background: rgba(255, 180, 0, 0.12);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin: 24px 0;
+  }
+</style>
+</head>
+<body>
+
+<h1>Datenschutzerklärung – Liegestütz Coach</h1>
+<p class="meta">Stand: <span id="date"></span></p>
+
+<div class="todo">
+  <strong>Vor der Veröffentlichung ausfüllen:</strong> Kontakt-E-Mail unten
+  (<code>KONTAKT-E-MAIL@ersetzen.de</code>) durch eine echte, erreichbare Adresse ersetzen
+  — die Play Console verlangt eine Kontaktmöglichkeit für Datenschutzanfragen.
+</div>
+
+<p>
+  Diese Datenschutzerklärung gilt für die App „Liegestütz Coach" (im Folgenden „die App").
+  Sie beschreibt, welche Daten die App verarbeitet und wie.
+</p>
+
+<h2>Kamerabilder</h2>
+<p>
+  Die App nutzt die Frontkamera, um deine Liegestütz-Form live zu analysieren. Die
+  Bildverarbeitung (Pose-Erkennung) läuft <strong>ausschließlich auf deinem Gerät</strong>
+  (on-device, via Google MediaPipe). Kamerabilder verlassen dein Gerät nie, werden nicht
+  an einen Server übertragen, nicht gespeichert und nicht an Dritte weitergegeben.
+</p>
+
+<h2>Trainingsdaten</h2>
+<p>
+  Anzahl der Wiederholungen, Datum/Uhrzeit, Form-Bewertung und Punktestand werden lokal
+  auf deinem Gerät gespeichert, um deinen Trainingsverlauf, deine Statistiken und
+  Auszeichnungen anzuzeigen. Es gibt keinen Server und keine Übertragung dieser Daten an
+  Dritte.
+</p>
+
+<h2>Google-Anmeldung (optional)</h2>
+<p>
+  Du kannst dich optional mit deinem Google-Konto anmelden. Dabei werden Name, E-Mail-
+  Adresse und Profilbild von Google abgerufen und <strong>ausschließlich verschlüsselt
+  auf deinem Gerät</strong> gespeichert (Android Keystore / iOS Schlüsselbund), um dich
+  in der App wiederzuerkennen. Diese Daten werden nicht an einen eigenen Server
+  übertragen (die App betreibt aktuell keinen) und nicht an Dritte weitergegeben. Die
+  Anmeldung ist jederzeit über „Abmelden" in der App widerrufbar; zusätzlich kannst du den
+  App-Zugriff jederzeit in deinem
+  <a href="https://myaccount.google.com/permissions">Google-Konto</a> entfernen.
+</p>
+
+<h2>Benachrichtigungen</h2>
+<p>
+  Auf Wunsch plant die App lokale, tägliche Erinnerungen. Dafür wird kein Push-Server
+  genutzt, es verlassen keine Daten dein Gerät.
+</p>
+
+<h2>Werbung, Tracking, Analyse</h2>
+<p>
+  Die App zeigt keine Werbung und enthält keine Tracking- oder Analyse-SDKs Dritter.
+</p>
+
+<h2>Deine Rechte</h2>
+<p>
+  Da alle Daten lokal auf deinem Gerät gespeichert werden, kannst du sie jederzeit
+  vollständig löschen, indem du die App-Daten in den Geräteeinstellungen löschst oder die
+  App deinstallierst. Für Fragen zu dieser Datenschutzerklärung erreichst du uns unter:
+  <strong>KONTAKT-E-MAIL@ersetzen.de</strong>
+</p>
+
+<script>
+  document.getElementById('date').textContent = new Date().toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' });
+</script>
+
+</body>
+</html>
