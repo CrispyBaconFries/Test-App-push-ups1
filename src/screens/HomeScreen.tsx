@@ -247,15 +247,14 @@ export function HomeScreen({ navigation }: Props) {
               </Pressable>
             </View>
           ) : auth.status === 'signedOut' ? (
-            <View style={styles.accountRow}>
-              <View style={styles.accountTextWrap}>
-                <Text style={styles.accountName}>Fortschritt sichern</Text>
-                <Text style={styles.accountEmail}>Optional mit Google anmelden</Text>
-              </View>
+            <View style={styles.accountSignedOut}>
+              <Text style={[styles.accountName, styles.accountTextCentered]}>Fortschritt sichern</Text>
+              <Text style={[styles.accountEmail, styles.accountTextCentered]}>Optional mit Google anmelden</Text>
               <GoogleSigninButton
-                size={GoogleSigninButton.Size.Wide}
+                size={GoogleSigninButton.Size.Standard}
                 color={GoogleSigninButton.Color.Dark}
                 onPress={auth.signIn}
+                style={styles.googleButton}
               />
             </View>
           ) : null}
@@ -479,6 +478,19 @@ const styles = StyleSheet.create({
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  // Google's "Wide" button is a fixed ~312dp - crammed into a row next to explanatory
+  // text it either overflowed or squeezed the text to nothing, and read as "not
+  // centered" with an oddly empty-looking card behind it. A centered column with the
+  // smaller "Standard" button avoids both.
+  accountSignedOut: {
+    alignItems: 'center',
+  },
+  accountTextCentered: {
+    textAlign: 'center',
+  },
+  googleButton: {
+    marginTop: 12,
   },
   avatar: {
     width: 40,
