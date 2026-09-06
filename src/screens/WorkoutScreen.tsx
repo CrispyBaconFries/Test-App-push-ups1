@@ -24,6 +24,9 @@ import { claimCompletedMissions } from '../gamification/currencyStore';
 import { loadDuelLog } from '../duel/duelLog';
 import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
 import { useAuth } from '../auth/AuthContext';
+// DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
+// die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
+import { recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -80,6 +83,8 @@ export function WorkoutScreen({ navigation }: Props) {
       setLastRep(completedRep);
       setRepCount(repsRef.current.length);
       playRepSoundRef.current(completedRep.issues.length === 0);
+      // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+      recordCalibrationRep(completedRep, 'training').catch(() => {});
     }
 
     // Rebuilt every frame (no throttling) so the overlay tracks the camera in

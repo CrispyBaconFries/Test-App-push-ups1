@@ -22,6 +22,9 @@ import {
   refreshDailyReminderContent,
 } from '../notifications/dailyReminder';
 import { useAuth } from '../auth/AuthContext';
+// DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
+// die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
+import { shareCalibrationLog } from '../pose/calibrationLogger';
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
 import { colors } from '../theme/colors';
@@ -218,6 +221,17 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={styles.subtitle}>Handy vor dir auf dem Boden – die Frontkamera prüft deine Form live.</Text>
           </View>
         </View>
+
+        {/* DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - Button
+            entfernen, sobald die Schwellwert-Kalibrierung abgeschlossen ist. */}
+        <Pressable
+          style={({ pressed }) => [styles.devCalibrationButton, pressed && styles.pressed]}
+          onPress={() =>
+            shareCalibrationLog().catch((e: Error) => Alert.alert('Kalibrierungsdaten', e.message))
+          }
+        >
+          <Text style={styles.devCalibrationButtonText}>🧪 Kalibrierungsdaten teilen (DEV)</Text>
+        </Pressable>
 
         <View style={styles.accountCard}>
           {auth.status === 'signedIn' && auth.profile ? (
@@ -466,6 +480,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     lineHeight: 18,
+  },
+  // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - Styles entfernen,
+  // sobald die Schwellwert-Kalibrierung abgeschlossen ist.
+  devCalibrationButton: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  devCalibrationButtonText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   accountCard: {
     backgroundColor: colors.surface,

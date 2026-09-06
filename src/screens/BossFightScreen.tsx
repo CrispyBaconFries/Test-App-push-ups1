@@ -27,6 +27,9 @@ import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
 import { useAuth } from '../auth/AuthContext';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
+// DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
+// die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
+import { recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -97,6 +100,8 @@ export function BossFightScreen({ navigation }: Props) {
     if (completedRep && bossRef.current) {
       repsRef.current = [...repsRef.current, completedRep];
       playRepSoundRef.current(completedRep.issues.length === 0);
+      // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+      recordCalibrationRep(completedRep, 'boss').catch(() => {});
 
       let { bossNumber, currentHp } = bossRef.current;
       currentHp -= REP_DAMAGE_HP;

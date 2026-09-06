@@ -200,6 +200,26 @@ reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS`
 (`src/pose/formAnalysis.ts`) und lassen sich leicht anpassen/kalibrieren, sobald du
 gesehen hast, wie sich die App bei dir anfühlt.
 
+### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
+
+**`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler
+Ellenbogenwinkel, Hüftgeradheit, Ellenbogen-Abspreizung, Nackenwinkel, Dauer, Form-Score)
+jeder abgeschlossenen Wiederholung aus Training **und** Boss-Modus lokal (`AsyncStorage`),
+damit `DEFAULT_THRESHOLDS` anhand echter Gerätedaten statt Schätzungen kalibriert werden
+kann, solange die App noch in aktiver Entwicklung ist. Auf dem Home-Screen gibt es dafür
+einen Button „🧪 Kalibrierungsdaten teilen (DEV)", der die gesammelten Daten als JSON über
+das Betriebssystem-Teilen-Menü verschickt (z. B. per Mail an sich selbst, dann am PC
+auswerten).
+
+**Wieder entfernen, sobald die Kalibrierung abgeschlossen ist:**
+1. `src/pose/calibrationLogger.ts` löschen.
+2. Die mit `DEV CALIBRATION` kommentierten Zeilen in `WorkoutScreen.tsx` und
+   `BossFightScreen.tsx` entfernen (jeweils ein Import + ein Aufruf).
+3. Den mit `DEV CALIBRATION` kommentierten Button + die zugehörigen Styles in
+   `HomeScreen.tsx` entfernen.
+
+Kein anderer Teil der App hängt von diesem Modul ab - die drei Schritte oben reichen.
+
 ## Tests & Typecheck
 
 ```bash
