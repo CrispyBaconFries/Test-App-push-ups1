@@ -1,16 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useCameraPermission } from 'react-native-vision-camera';
-import {
-  usePoseDetection,
-  MediapipeCamera,
-  RunningMode,
-  Delegate,
-  type PoseDetectionResultBundle,
-  type ViewCoordinator,
-  type DetectionError,
-} from 'react-native-mediapipe';
+import { Camera } from 'react-native-vision-camera';
+import type { PoseDetectionResultBundle, ViewCoordinator, DetectionError } from 'react-native-mediapipe';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
@@ -22,10 +14,10 @@ import { buildSession, computeStats, loadSessions, saveSession } from '../storag
 import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badges';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
+import { useBossFightCamera } from '../bossmode/useBossFightCamera';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-const POSE_MODEL = 'pose_landmarker_lite.task';
 const OVERLAY_FRAME_SKIP = 2;
 const BOSS_DEFEATED_BANNER_MS = 1800;
 
@@ -36,7 +28,6 @@ const BOSS_TINTS = [colors.danger, colors.accent, '#B23AFF', '#5AC8E8'];
 type Props = NativeStackScreenProps<RootStackParamList, 'BossFight'>;
 
 export function BossFightScreen({ navigation }: Props) {
-  const { hasPermission, requestPermission } = useCameraPermission();
   const analyzerRef = useRef(new PushUpAnalyzer());
   const startedAtRef = useRef(new Date().toISOString());
   const frameCounterRef = useRef(0);
@@ -60,10 +51,6 @@ export function BossFightScreen({ navigation }: Props) {
       setBoss(progress);
     });
   }, []);
-
-  useEffect(() => {
-    if (!hasPermission) requestPermission();
-  }, [hasPermission, requestPermission]);
 
   const onResults = useCallback((result: PoseDetectionResultBundle, vc: ViewCoordinator) => {
     const bundle = result.results[0];
@@ -109,13 +96,14 @@ export function BossFightScreen({ navigation }: Props) {
     console.warn('[BossFightScreen] pose detection error', error.code, error.message);
   }, []);
 
-  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, {
-    delegate: Delegate.GPU,
-    numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-    mirrorMode: 'mirror-front-only',
-  });
+  const {
+    hasPermission,
+    requestPermission,
+    device,
+    frameProcessor,
+    cameraViewLayoutChangeHandler,
+    cameraViewDimensions,
+  } = useBossFightCamera({ onPoseResults: onResults, onError });
 
   // Genau wie WorkoutScreen: die in dieser Sitzung gemachten Liegestütze zählen ganz
   // normal fürs Trainingsverlauf/Punkte/Auszeichnungen - der Boss-Modus ist eine andere
@@ -170,6 +158,17 @@ export function BossFightScreen({ navigation }: Props) {
     );
   }
 
+  if (device == null) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.permissionText}>Keine Frontkamera gefunden.</Text>
+        <Pressable style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]} onPress={() => navigation.goBack()}>
+          <Text style={styles.linkButtonText}>Zurück</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   const activeIssue: FormIssue | null = live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null;
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
   const bossTint = boss ? BOSS_TINTS[(boss.bossNumber - 1) % BOSS_TINTS.length] : colors.danger;
@@ -177,20 +176,28 @@ export function BossFightScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <MediapipeCamera style={StyleSheet.absoluteFill} solution={solution} activeCamera="front" resizeMode="cover" />
-
-      {/* Platzhalter-"Boss" hinter dem Nutzer - nur per Transparenz simuliert, siehe
-          README "Boss-Modus einrichten" für die Grenzen dieses Ansatzes ohne echte
-          Personen-Freistellung. Die eigentliche Grafik kommt in einem späteren Schritt. */}
+      {/* Platzhalter-"Boss" - echte Personen-Freistellung (siehe README "Boss-Modus"):
+          die <Camera> darüber zeichnet nur noch die per Segmentierung freigestellten
+          Nutzer-Pixel auf einer sonst transparenten Fläche, sodass dieser Hintergrund
+          überall sonst durchscheint. Die eigentliche Boss-Grafik kommt in einem
+          späteren Schritt - aktuell ein eingefärbtes Platzhalter-Icon. */}
       {boss && (
         <View style={styles.bossArtwork} pointerEvents="none">
-          <Ionicons name="skull" size={220} color={bossTint} style={{ opacity: 0.32 }} />
+          <Ionicons name="skull" size={220} color={bossTint} />
         </View>
       )}
 
+      <Camera
+        style={StyleSheet.absoluteFill}
+        device={device}
+        isActive
+        frameProcessor={frameProcessor}
+        onLayout={cameraViewLayoutChangeHandler}
+      />
+
       <SkeletonOverlay
-        width={solution.cameraViewDimensions.width}
-        height={solution.cameraViewDimensions.height}
+        width={cameraViewDimensions.width}
+        height={cameraViewDimensions.height}
         points={skeletonPoints}
         activeIssue={activeIssue}
       />

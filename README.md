@@ -523,17 +523,73 @@ Firebase, kein Google-Login nötig, funktioniert also für jeden sofort. Home-Sc
 - **Boss besiegt** → kurzes Banner, danach automatisch weiter zum nächsten (stärkeren)
   Boss bei voller Lebensanzeige - kein Bruch im Trainingsfluss.
 
-**Zur Darstellung ("Boss im Hintergrund, Nutzer im Vordergrund")** - ehrliche
-Einordnung: Die App hat aktuell **keine Personen-Freistellung** (kein
-Segmentierungsmodell wie MediaPipes Selfie Segmentation im Einsatz), kann den Nutzer
-also nicht wirklich "vor" dem Boss freistellen. Umgesetzt ist stattdessen der
-naheliegende, ohne neue Kamera-Technik sofort umsetzbare Kompromiss: die
-Kamera-Vorschau bleibt wie gewohnt vollflächig im Vordergrund, der Boss (aktuell ein
-Platzhalter-Icon, siehe unten) wird mit reduzierter Deckkraft **darüber** eingeblendet
-und wirkt dadurch wie eine verblasste Präsenz im Hintergrund, während Lebensbalken,
-Zähler und Skelett-Overlay in voller Deckkraft klar im Vordergrund bleiben. Eine echte
-Freistellung wäre ein späteres, separates Feature (neues ML-Modell nötig) - hier
-transparent als Grenze benannt, nicht verschwiegen.
+### Personen-Freistellung ("echtes" Video-Ausschneiden)
+
+Die anfängliche Version (halbtransparentes Icon über opaker Kamera) wurde durch eine
+echte Personen-Freistellung ersetzt - der Nutzer wird als Video-Ausschnitt vor dem Boss
+freigestellt, statt nur ein Overlay mit reduzierter Deckkraft zu sein.
+
+**Warum eine zweite ML-Bibliothek nötig war**: `react-native-mediapipe@0.6.0` (bereits
+für die Pose-Erkennung im Einsatz) bietet zwar eine `shouldOutputSegmentationMasks`-Option,
+deren Ergebnis ist aber in der installierten Version auf beiden Plattformen toter Code
+(Android liefert in `ConvertHelpers.kt` immer ein leeres Array zurück, iOS hat die
+Konvertierung in `PdConvertHelpers.swift` auskommentiert). Ein Patch der Bibliothek selbst
+wäre blind riskant gewesen; stattdessen läuft die Segmentierung über eine zweite,
+unabhängige Pipeline:
+
+- **`react-native-fast-tflite`** (`useTensorflowModel`) lädt Googles offizielles
+  „Selfie Segmenter"-TFLite-Modell (`assets/models/selfie_segmenter.tflite`,
+  per `npm run model:download` geladen wie das Pose-Modell, `256×256×3` RGB rein,
+  `256×256×1` Personen-Konfidenz raus) und führt es synchron (`runSync`) direkt im
+  Frame Processor aus.
+- **`@shopify/react-native-skia`** (`useSkiaFrameProcessor`) zeichnet pro Frame: das
+  Kamerabild (auf ein zentriertes Quadrat zugeschnitten, wie es das Modell erwartet)
+  in einen Layer, danach die Maske als `Alpha_8`-Bild mit `BlendMode.DstIn` darüber -
+  das lässt nur die als „Person" erkannten Pixel übrig. Alles andere bleibt transparent,
+  sodass der `Boss`-Platzhalter (jetzt in voller Deckkraft, `src/screens/BossFightScreen.tsx`)
+  dahinter durchscheint.
+- **`react-native-reanimated`** musste zusätzlich installiert werden: VisionCamera
+  rendert das Skia-Frame-Processor-Ergebnis intern über eine eigene
+  `SkiaCameraCanvas`-Komponente, die `useFrameCallback` aus Reanimated nutzt - ohne
+  Reanimated käme also gar kein Bild auf den Schirm, obwohl Skia selbst Reanimated nur
+  als optionale Peer-Dependency deklariert. Bewusst `3.19.1` (nicht 4.x) gewählt, weil
+  Reanimated 4 ein eigenes `react-native-worklets`-Paket verlangt, das mit dem hier
+  bereits genutzten (und unabhängigen) `react-native-worklets-core` kollidieren würde.
+- **`vision-camera-resize-plugin`** verkleinert/konvertiert den quadratischen
+  Kamera-Ausschnitt synchron auf die vom Modell erwartete `256×256`-Auflösung.
+- **`react-native-nitro-modules`**: `react-native-fast-tflite` baut auf Nitro Modules
+  auf; da VisionCamera v4 einen anderen (nicht Nitro-basierten) Worklet-Runtime nutzt,
+  muss das geladene Modell explizit mit `NitroModules.box()` auf dem JS-Thread verpackt
+  und im Worklet wieder mit `.unbox()` entpackt werden (offiziell so von
+  `react-native-fast-tflite` dokumentiert).
+
+Die neue Logik sitzt in **`src/bossmode/useBossFightCamera.ts`**, das zusätzlich zur
+Segmentierung auch die Pose-Erkennung für die Wiederholungszählung übernimmt - eine
+`<Camera>`-Komponente kann nämlich nur *einen* Frame Processor gleichzeitig haben.
+Da `react-native-mediapipe`'s eigener `usePoseDetection()`-Hook nicht neben einem
+zweiten Frame Processor lief, ruft dieser Hook das intern von der Bibliothek unter dem
+Namen `"poseDetection"` registrierte native Plugin direkt auf (`VisionCameraProxy.
+initFrameProcessorPlugin('poseDetection', {})`) und repliziert die (kleine) Menge an
+Native-Modul-/Event-Emitter-Plumbing, die der Hook sonst kapselt. Das ist bewusst eine
+Abhängigkeit von einem undokumentierten Implementierungsdetail statt einer öffentlichen
+API - ein künftiges Upgrade von `react-native-mediapipe`, das diesen Plugin-Namen oder
+die native `PoseDetection`-Modul-Form ändert, würde diese Datei brechen.
+
+**Bekannte Einschränkung**: Das Modell sieht nur ein zentriertes Quadrat des
+(im Portrait-Modus nicht quadratischen) Kamerabilds - Freistellung und Zuschnitt
+passieren nur in diesem Quadrat, die Ränder (oben/unten bei Portrait) zeigen also nie
+Kamerabild, sondern immer den Boss dahinter.
+
+**Nicht verifiziert - wichtigster offener Punkt**: Diese gesamte Pipeline (Skia-Compositing,
+TFLite-Inferenz, Nitro-Boxing, das Zusammenspiel zweier verschiedener Worklet-Runtimes
+`react-native-worklets-core` + Reanimated, und ob VisionCamera's natives Kamera-View
+tatsächlich transparent statt opak rendert) konnte in dieser Sandbox **nicht auf einem
+echten Gerät getestet werden** (kein Android-SDK, kein Xcode, kein physisches Gerät
+verfügbar) - nur `tsc --noEmit`, `jest` und `expo prebuild` (Struktur-/Manifest-Prüfung)
+liefen erfolgreich durch. Das tatsächliche visuelle Ergebnis, Timing/Performance auf dem
+Gerät und ob die Freistellung wie erwartet aussieht, müssen beim ersten echten Build
+geprüft werden - das ist die riskanteste, am wenigsten abgesicherte Änderung in diesem
+Projekt bisher.
 
 **Boss-Grafiken**: aktuell ein einfaches, eingefärbtes Platzhalter-Icon (Totenkopf) -
 die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
@@ -656,6 +712,7 @@ src/
   bossmode/
     bossDefinitions.ts              Boss-HP-Formel (Boss 1-4 fest, danach +2/+3 Reps je Boss), testbar
     bossProgressStorage.ts            aktueller Boss + Rest-HP (AsyncStorage, überlebt App-Neustarts)
+    useBossFightCamera.ts             Kamera-Hook: Pose-Erkennung + Skia/TFLite-Personenfreistellung
   components/RankFrame.tsx        Avatar + Rang-Rahmen, überall im Ranking-System verwendet
   screens/
     HomeScreen.tsx      Menü + Level/Challenges/Bestleistungen-Übersicht
@@ -719,8 +776,9 @@ ist die Grundlage für alles Folgende:
    gegen immer stärkere Bosse - Boss 1-4 mit 100/120/150/180 HP, danach steigt die
    nötige Wiederholungszahl abwechselnd um 2/3 pro Boss; ein Liegestütz zieht 15 HP ab.
    Nicht besiegte Bosse merken sich ihre Rest-HP lokal fürs nächste Mal. Zählt normal
-   fürs Trainingsverlauf/Punkte/Auszeichnungen mit — siehe „Boss-Modus" für Details und
-   die ehrliche Einordnung zur aktuellen (Platzhalter-)Darstellung.
+   fürs Trainingsverlauf/Punkte/Auszeichnungen mit; echte Personen-Freistellung per
+   TFLite/Skia (noch nicht auf echtem Gerät getestet) — siehe „Boss-Modus" für Details
+   und die offenen Punkte.
 
 Punkte 1–3 und 6 sind reine On-Device-Features ohne Backend; Punkte 4–5 brauchen eins
 (siehe „Ranking-System einrichten").
