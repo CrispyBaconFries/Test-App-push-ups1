@@ -17,6 +17,23 @@
   `plugins/withGradleJavaHome.js` — AGP/Prefab bricht auf JDK 22+ mit einer harmlosen
   "WARNING: A restricted method..."-Zeile den Build ab.
 
+# Feste Anweisung: Befehle immer vollständig ausgeben
+
+Wenn chris etwas selbst ausführen muss, gehören die **kompletten** Befehle in die Antwort —
+kein „einfach neu laden", keine ausgelassenen Zwischenschritte, keine Platzhalter.
+
+- **Nie Platzhalter wie `<DEIN-PFAD>`.** Das wurde schon einmal wörtlich eingefügt; die spitzen
+  Klammern sind in `cmd.exe` Umleitungszeichen und erzeugten einen „Syntaxfehler". Immer den
+  echten Wert einsetzen (JDK-Pfad und Branch-Name stehen in dieser Datei).
+- **Ein Befehl pro Codeblock.** Mehrere Befehle in einer Zeile sind schon einmal
+  zusammengerutscht und wurden dadurch beide nicht ausgeführt.
+- **`$env:JAVA_HOME` gehört in jeden Block mit Gradle-Beteiligung**, weil es nur für die
+  jeweilige PowerShell-Sitzung gilt.
+- Dazusagen, **was danach zu erwarten ist** (welche Log-Zeile, welche Ausgabe) — sonst lässt
+  sich nicht unterscheiden, ob ein Schritt gewirkt hat.
+- Ändert ein Commit nichts am App-Verhalten (z. B. nur Dokumentation), das **ausdrücklich sagen**,
+  statt einen unnötigen Rebuild anzustoßen.
+
 # Feste Anweisung: jede Änderung gilt für BEIDE Builds
 
 Es gibt zwei Installationen desselben Codes, und beide sollen immer auf demselben Stand sein:
