@@ -6,11 +6,11 @@ import {
   usePoseDetection,
   MediapipeCamera,
   RunningMode,
-  Delegate,
   type PoseDetectionResultBundle,
   type ViewCoordinator,
   type DetectionError,
 } from 'react-native-mediapipe';
+import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
@@ -33,7 +33,6 @@ import { recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-const POSE_MODEL = 'pose_landmarker_lite.task';
 /** The boss artwork renders semi-transparent *over* the (fully opaque) camera feed - a
  * much simpler stand-in for true person-segmentation cutout compositing (see README
  * "Boss-Modus" for why that approach - Skia frame processor + a separate TFLite
@@ -127,13 +126,7 @@ export function BossFightScreen({ navigation }: Props) {
     console.warn('[BossFightScreen] pose detection error', error.code, error.message);
   }, []);
 
-  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, {
-    delegate: Delegate.GPU,
-    numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-    mirrorMode: 'mirror-front-only',
-  });
+  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, POSE_DETECTION_OPTIONS);
 
   // Genau wie WorkoutScreen: die in dieser Sitzung gemachten Liegestütze zählen ganz
   // normal fürs Trainingsverlauf/Punkte/Auszeichnungen - der Boss-Modus ist eine andere

@@ -6,11 +6,11 @@ import {
   usePoseDetection,
   MediapipeCamera,
   RunningMode,
-  Delegate,
   type PoseDetectionResultBundle,
   type ViewCoordinator,
   type DetectionError,
 } from 'react-native-mediapipe';
+import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
@@ -29,8 +29,6 @@ import { useAuth } from '../auth/AuthContext';
 import { recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
-
-const POSE_MODEL = 'pose_landmarker_lite.task';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Workout'>;
 
@@ -144,13 +142,7 @@ export function WorkoutScreen({ navigation }: Props) {
     }
   }, []);
 
-  const solution = usePoseDetection({ onResults, onError, onEmpty }, RunningMode.LIVE_STREAM, POSE_MODEL, {
-    delegate: Delegate.GPU,
-    numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-    mirrorMode: 'mirror-front-only',
-  });
+  const solution = usePoseDetection({ onResults, onError, onEmpty }, RunningMode.LIVE_STREAM, POSE_MODEL, POSE_DETECTION_OPTIONS);
 
   const finishWorkout = useCallback(async () => {
     if (finishingRef.current) return;

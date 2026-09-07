@@ -329,6 +329,31 @@ Absicherung bestehen, falls eine andere Bibliothek denselben Import mitbringt.
 prüfen, ob das Bundle überhaupt lädt (`adb logcat` statt nur der Metro-Konsole) und ob
 mehrere Metro-Instanzen laufen.
 
+### Warum die Kamera-Orientierung festgenagelt ist
+
+Im ersten Lauf, in dem die Erkennung nachweislich funktionierte, zeigte der Log eine
+eindeutige Korrelation:
+
+| Gemeldete `orientation` | Ergebnis |
+|---|---|
+| `portrait` | `[DIAG]` mit gültigen Winkeln — Erkennung läuft |
+| `landscape-left` | `onEmpty` am Stück, über 500 Frames ohne jede Pose |
+
+Sobald VisionCameras Lagesensor auf `landscape-left` umsprang, fand MediaPipe **gar keine
+Person mehr**. Beim Liegestütz schwankt dieser Sensorwert ständig, weil das Handy bewegt
+oder gekippt wird — die Erkennung fiel also im Betrieb regelmäßig komplett aus.
+
+Da die App in `app.json` fest auf `orientation: "portrait"` gesperrt ist und sich die
+Oberfläche nie dreht, ist `forceOutputOrientation: 'portrait'` hier nicht nur unschädlich,
+sondern korrekt: MediaPipe bekommt eine stabile Rotation, und der `BaseViewCoordinator`
+rechnet die Landmarks gegen genau die Ausrichtung um, die die Ansicht tatsächlich hat —
+was nebenbei das Skelett-Overlay ruhigstellt.
+
+Die Einstellung liegt zusammen mit Modellname und Konfidenz-Schwellen in
+`src/pose/poseDetectionOptions.ts` und wird von allen drei Kamera-Screens (Training,
+Boss-Modus, Duell) geteilt, damit eine Nachjustierung nicht in drei Dateien einzeln
+nachgezogen werden muss.
+
 ### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
 
 **`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler

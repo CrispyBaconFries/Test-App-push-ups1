@@ -5,11 +5,11 @@ import {
   usePoseDetection,
   MediapipeCamera,
   RunningMode,
-  Delegate,
   type PoseDetectionResultBundle,
   type ViewCoordinator,
   type DetectionError,
 } from 'react-native-mediapipe';
+import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { PushUpAnalyzer, type FormIssue } from '../pose/formAnalysis';
@@ -29,7 +29,6 @@ import {
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
-const POSE_MODEL = 'pose_landmarker_lite.task';
 const OVERLAY_FRAME_SKIP = 2;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
@@ -150,13 +149,7 @@ export function DuelScreen({ route, navigation }: Props) {
     console.warn('[DuelScreen] pose detection error', error.code, error.message);
   }, []);
 
-  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, {
-    delegate: Delegate.GPU,
-    numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-    mirrorMode: 'mirror-front-only',
-  });
+  const solution = usePoseDetection({ onResults, onError }, RunningMode.LIVE_STREAM, POSE_MODEL, POSE_DETECTION_OPTIONS);
 
   const remainingSeconds = useMemo(() => Math.max(0, Math.ceil(remainingMs / 1000)), [remainingMs]);
 
