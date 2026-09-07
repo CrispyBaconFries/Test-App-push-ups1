@@ -294,6 +294,41 @@ der stillen Ausstiege), und das Modul gibt beim Laden eine Zeile mit der Patch-V
 aus — damit auf einen Blick belegt ist, dass der laufende Build den Patch überhaupt
 enthält.
 
+### Der `buffer`-Absturz: warum die App gar nicht erst startete
+
+Ein Logcat-Mitschnitt hat gezeigt, dass die App beim Start abstürzte, **bevor auch nur
+eine Zeile eigener Code lief**:
+
+```
+Process: com.pushupcoach.app
+com.facebook.react.common.DebugServerException: The development server returned response error code: 500
+"type":"UnableToResolveError", "targetModuleName":"buffer"
+Unable to resolve module buffer from node_modules/react-native-svg/src/utils/fetchData.ts
+```
+
+`react-native-svg` importiert dort das Node-Modul `buffer`, ohne es als eigene Abhängigkeit
+zu deklarieren. Metro behandelt einen nackten `buffer`-Import als Node-Builtin und
+verweigert die Auflösung — womit das **gesamte Bundle** scheitert, nicht nur dieser eine
+Codepfad. Das erklärt rückwirkend eine ganze Reihe scheinbar unerklärlicher Testläufe, in
+denen keinerlei Diagnose-Ausgabe erschien: Es lief schlicht kein JavaScript.
+
+Der Alias in `metro.config.js` behebt das zwar, aber nur solange diese Konfiguration
+tatsächlich geladen ist **und** Metros Auflösungs-Cache frisch ist. Eine veraltete
+Metro-Instanz (im betroffenen Log liefen Metro-Server auf Port 8081, 8082, 8083 *und* ein
+Tunnel gleichzeitig) bringt den Fehler sofort zurück — und er sieht dann wie ein App-Bug
+aus, nicht wie ein Bundler-Problem.
+
+Deshalb ist der `buffer`-Import jetzt zusätzlich per `patches/react-native-svg+15.14.0.patch`
+ganz entfernt: `decodeBase64Image` dekodiert base64 direkt über `atob` plus eine
+UTF-8-Umwandlung. Das ist verhaltensgleich, betrifft ohnehin nur base64-SVG-Daten-URIs
+(diese App nutzt `react-native-svg` nur für das Skelett-Overlay aus Linien und Kreisen) —
+und macht die Fehlerklasse dauerhaft unmöglich. Der Metro-Alias bleibt als zweite
+Absicherung bestehen, falls eine andere Bibliothek denselben Import mitbringt.
+
+**Merke für die Fehlersuche:** Wenn gar keine erwartete Konsolenausgabe erscheint, zuerst
+prüfen, ob das Bundle überhaupt lädt (`adb logcat` statt nur der Metro-Konsole) und ob
+mehrere Metro-Instanzen laufen.
+
 ### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
 
 **`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler

@@ -1,0 +1,73 @@
+diff --git a/node_modules/react-native-svg/src/utils/fetchData.ts b/node_modules/react-native-svg/src/utils/fetchData.ts
+index d141be3..345b7f1 100644
+--- a/node_modules/react-native-svg/src/utils/fetchData.ts
++++ b/node_modules/react-native-svg/src/utils/fetchData.ts
+@@ -1,5 +1,4 @@
+ import { Platform } from 'react-native';
+-import { Buffer } from 'buffer';
+ 
+ export async function fetchText(uri?: string): Promise<string | null> {
+   if (!uri) {
+@@ -14,13 +13,60 @@ export async function fetchText(uri?: string): Promise<string | null> {
+   }
+ }
+ 
++/**
++ * Upstream decodes this with `Buffer.from(content, dataType)` and imports Buffer from
++ * the Node "buffer" module, which react-native-svg does not declare as a dependency.
++ * Metro treats a bare "buffer" import as a Node builtin and refuses to resolve it, so
++ * the whole bundle fails to build with "Unable to resolve module buffer" - taking the
++ * entire app down at startup, not just this one code path. Working around that with a
++ * Metro alias (see metro.config.js) does fix it, but only as long as that config is
++ * actually loaded and its resolution cache is fresh: a stale Metro instance brings the
++ * failure right back, and it then looks like an app bug rather than a bundler one.
++ *
++ * Decoding base64 here directly removes the dependency entirely. `atob` is part of
++ * React Native's standard globals; the byte loop after it turns atob's binary string
++ * into proper UTF-8, which is what Buffer.toString('utf-8') did.
++ */
+ const decodeBase64Image = (uri: string) => {
+   const decoded = decodeURIComponent(uri);
+   const splitContent = decoded.split(';')[1].split(',');
+-  const dataType = splitContent[0] as BufferEncoding;
++  const dataType = splitContent[0];
+   const content = splitContent.slice(1).join(',');
+ 
+-  return Buffer.from(content, dataType).toString('utf-8');
++  if (dataType !== 'base64' || typeof global.atob !== 'function') {
++    return content;
++  }
++
++  const binary = global.atob(content);
++  let result = '';
++  let i = 0;
++  while (i < binary.length) {
++    const byte = binary.charCodeAt(i);
++    if (byte < 0x80) {
++      result += String.fromCharCode(byte);
++      i += 1;
++    } else if (byte >= 0xc0 && byte < 0xe0) {
++      result += String.fromCharCode(((byte & 0x1f) << 6) | (binary.charCodeAt(i + 1) & 0x3f));
++      i += 2;
++    } else if (byte >= 0xe0 && byte < 0xf0) {
++      result += String.fromCharCode(
++        ((byte & 0x0f) << 12) |
++          ((binary.charCodeAt(i + 1) & 0x3f) << 6) |
++          (binary.charCodeAt(i + 2) & 0x3f)
++      );
++      i += 3;
++    } else {
++      // 4-byte sequence -> surrogate pair
++      const codePoint =
++        ((byte & 0x07) << 18) |
++        ((binary.charCodeAt(i + 1) & 0x3f) << 12) |
++        ((binary.charCodeAt(i + 2) & 0x3f) << 6) |
++        (binary.charCodeAt(i + 3) & 0x3f);
++      result += String.fromCodePoint(codePoint);
++      i += 4;
++    }
++  }
++  return result;
+ };
+ 
+ function dataUriToXml(uri: string): string | null {
