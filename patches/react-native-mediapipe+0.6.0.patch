@@ -135,22 +135,24 @@ index 4764c1d..b1ca5a4 100644
  export interface DetectionCallbackState<TResultBundle> extends DetectionCallbacks<TResultBundle> {
      viewCoordinator: ViewCoordinator;
 diff --git a/node_modules/react-native-mediapipe/src/poseDetection/index.ts b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-index 8225ea5..ee549f5 100644
+index 8225ea5..c96a28f 100644
 --- a/node_modules/react-native-mediapipe/src/poseDetection/index.ts
 +++ b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-@@ -95,6 +95,11 @@ function getPoseDetectionModule(): PoseDetectionModule {
+@@ -95,6 +95,13 @@ function getPoseDetectionModule(): PoseDetectionModule {
    return PoseDetection as PoseDetectionModule;
  }
  
 +// Proves at a glance whether the running build actually contains
 +// patches/react-native-mediapipe+0.6.0.patch - an assumption that has cost several
 +// build cycles to re-establish otherwise.
-+console.log("[MP] react-native-mediapipe patch v4 aktiv (Frame-Diagnose + Number-Handle-Fix)");
++if (__DEV__) {
++  console.log("[MP] react-native-mediapipe patch v4 aktiv (Frame-Diagnose + Number-Handle-Fix)");
++}
 +
  const detectorMap = new Map<number, PoseDetectionCallbackState>();
  eventEmitter.addListener(
    "onResults",
-@@ -111,9 +116,25 @@ eventEmitter.addListener(
+@@ -111,9 +118,25 @@ eventEmitter.addListener(
      const callbacks = detectorMap.get(args.handle);
      if (callbacks) {
        callbacks.onError(args);
@@ -176,7 +178,7 @@ index 8225ea5..ee549f5 100644
  
  export function usePoseDetection(
    callbacks: DetectionCallbacks<PoseDetectionResultBundle>,
-@@ -141,6 +162,8 @@ export function usePoseDetection(
+@@ -141,6 +164,8 @@ export function usePoseDetection(
    );
    const outputOrientation = useSharedValue<Orientation>("portrait");
    const frameOrientation = useSharedValue<Orientation>("portrait");
@@ -185,7 +187,7 @@ index 8225ea5..ee549f5 100644
  
    const forceOutputOrientation = useSharedValue<ImageOrientation | undefined>(
      undefined
-@@ -179,7 +202,7 @@ export function usePoseDetection(
+@@ -179,7 +204,7 @@ export function usePoseDetection(
  
    const [resizeMode, setResizeMode] = React.useState<ResizeMode>("cover");
  
@@ -194,7 +196,7 @@ index 8225ea5..ee549f5 100644
  
    const updateDetectorMap = React.useCallback(() => {
      if (detectorHandle !== undefined) {
-@@ -193,6 +216,7 @@ export function usePoseDetection(
+@@ -193,6 +218,7 @@ export function usePoseDetection(
        detectorMap.set(detectorHandle, {
          onResults,
          onError,
@@ -202,7 +204,7 @@ index 8225ea5..ee549f5 100644
          viewCoordinator,
        });
      }
-@@ -203,6 +227,7 @@ export function usePoseDetection(
+@@ -203,6 +229,7 @@ export function usePoseDetection(
      forceOutputOrientation.value,
      frameOrientation.value,
      mirrored,
@@ -210,7 +212,7 @@ index 8225ea5..ee549f5 100644
      onError,
      onResults,
      outputOrientation.value,
-@@ -287,22 +312,29 @@ export function usePoseDetection(
+@@ -287,22 +314,32 @@ export function usePoseDetection(
          forceOutputOrientation.value ?? outputOrientation.value;
        // const orientation: ImageOrientation = frameOrientation.value;
        const fpsMode = options?.fpsMode ?? "none";
@@ -221,11 +223,14 @@ index 8225ea5..ee549f5 100644
 +      const callPlugin = () => {
 +        "worklet";
 +        const handled = plugin?.call(frame, { detectorHandle, orientation });
-+        diagFrameCounter.value += 1;
-+        if (diagFrameCounter.value % 30 === 0) {
-+          console.log(
-+            `[MP] Frame #${diagFrameCounter.value} handle=${detectorHandle} orientation=${orientation} anMediaPipeUebergeben=${handled}`
-+          );
++        // Nur in Entwicklungs-Builds: im Release liefe das sonst bei jedem Frame mit.
++        if (__DEV__) {
++          diagFrameCounter.value += 1;
++          if (diagFrameCounter.value % 30 === 0) {
++            console.log(
++              `[MP] Frame #${diagFrameCounter.value} handle=${detectorHandle} orientation=${orientation} anMediaPipeUebergeben=${handled}`
++            );
++          }
 +        }
 +      };
        if (fpsMode === "none") {

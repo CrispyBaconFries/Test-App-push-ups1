@@ -74,10 +74,12 @@ export function WorkoutScreen({ navigation }: Props) {
 
     if (!imageLandmarks || !worldLandmarks) {
       // DEV DIAGNOSTIC (temporär) - entfernen.
-      console.log('[DIAG] Kein Pose-Ergebnis diesen Frame', {
-        hasImageLandmarks: !!imageLandmarks,
-        hasWorldLandmarks: !!worldLandmarks,
-      });
+      if (__DEV__) {
+        console.log('[DIAG] Kein Pose-Ergebnis diesen Frame', {
+          hasImageLandmarks: !!imageLandmarks,
+          hasWorldLandmarks: !!worldLandmarks,
+        });
+      }
       setSkeletonPoints(null);
       setLive((prev) => (prev ? { ...prev, trackingOk: false } : prev));
       return;
@@ -91,21 +93,27 @@ export function WorkoutScreen({ navigation }: Props) {
     // unter elbowUpDeg (160°) oder das Minimum über elbowAttemptDeg (140°), kann die
     // Zustandsmaschine gar keine Wiederholung abschließen - dann sind die Schwellwerte
     // schuld, nicht die Erkennung. Beides sieht sonst identisch aus ("zählt nicht").
-    diagFrameCounterRef.current += 1;
-    diagElbowRangeRef.current = {
-      min: Math.min(diagElbowRangeRef.current.min, liveResult.elbowAngleDeg),
-      max: Math.max(diagElbowRangeRef.current.max, liveResult.elbowAngleDeg),
-    };
-    if (diagFrameCounterRef.current % 15 === 0) {
-      console.log('[DIAG]', {
-        phase: liveResult.phase,
-        trackingOk: liveResult.trackingOk,
-        elbowAngleDeg: Math.round(liveResult.elbowAngleDeg),
-        beobachtetMin: Math.round(diagElbowRangeRef.current.min),
-        beobachtetMax: Math.round(diagElbowRangeRef.current.max),
-        schwellen: 'attempt<=140, up>=160',
-        cue: liveResult.cue,
-      });
+    //
+    // Komplett hinter __DEV__, damit im Release-Build (der eigenständigen Demo-APK)
+    // nichts davon im Frame-Pfad mitläuft - das hier liefe sonst bei jedem einzelnen
+    // Frame mit, nicht nur beim geloggten fünfzehnten.
+    if (__DEV__) {
+      diagFrameCounterRef.current += 1;
+      diagElbowRangeRef.current = {
+        min: Math.min(diagElbowRangeRef.current.min, liveResult.elbowAngleDeg),
+        max: Math.max(diagElbowRangeRef.current.max, liveResult.elbowAngleDeg),
+      };
+      if (diagFrameCounterRef.current % 15 === 0) {
+        console.log('[DIAG]', {
+          phase: liveResult.phase,
+          trackingOk: liveResult.trackingOk,
+          elbowAngleDeg: Math.round(liveResult.elbowAngleDeg),
+          beobachtetMin: Math.round(diagElbowRangeRef.current.min),
+          beobachtetMax: Math.round(diagElbowRangeRef.current.max),
+          schwellen: 'attempt<=140, up>=160',
+          cue: liveResult.cue,
+        });
+      }
     }
 
     if (completedRep) {
@@ -134,6 +142,7 @@ export function WorkoutScreen({ navigation }: Props) {
   // onResults feuert). Entfernen, sobald die Zählung nachweislich funktioniert.
   const diagEmptyCounterRef = useRef(0);
   const onEmpty = useCallback(() => {
+    if (!__DEV__) return;
     diagEmptyCounterRef.current += 1;
     if (diagEmptyCounterRef.current % 15 === 0) {
       console.log('[DIAG] onEmpty - MediaPipe hat den Frame verarbeitet, aber keine Pose gefunden', {

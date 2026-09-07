@@ -102,24 +102,50 @@ sie. Danach läuft im Hintergrund ein lokaler Metro-Server: Wenn du (oder ich) C
 dabei auf deinem eigenen Rechner, das Handy ist per Kabel verbunden — kein Tunnel, kein
 Cloud-Dienst nötig. Zum erneuten Starten des Servers ohne Neubau: `npm run start`.
 
-**Variante B — eine echte, verschickbare APK-Datei:**
+**Variante B — eigenständige App, die ohne PC läuft (zum Vorführen):**
+
+```bash
+npm run android:release
+```
+
+**Wichtig zum Verständnis:** Variante A und ein `assembleDebug` erzeugen einen
+*Debug*-Build. Der enthält das JavaScript-Bundle **nicht**, sondern lädt es bei jedem
+Start vom Metro-Server deines Rechners. Ohne PC bleibt der Bildschirm deshalb leer und
+man kann nichts auswählen — das ist kein Fehler, sondern die Bauart. Nur ein
+**Release**-Build backt das Bundle fest in die APK und läuft dadurch eigenständig.
+
+`npm run android:release` baut genau das und installiert es direkt aufs angeschlossene
+Handy. Danach kannst du das Kabel abziehen, Metro beenden und den PC ausschalten — die
+App startet weiterhin, „Training starten" und die Zählung funktionieren vollständig
+offline (Kamera, Posenerkennung, Wiederholungszählung, Trainingsverlauf, Punkte,
+Missionen, Münzen, Boss-Modus und Profil laufen alle rein lokal auf dem Gerät).
+
+Nur diese Funktionen brauchen zusätzlich Firebase und bleiben ohne Einrichtung inaktiv
+(sie zeigen einen entsprechenden Hinweis statt zu crashen): Google-Anmeldung, Rangliste,
+Freundesliste und Duelle. Für eine reine Funktionsdemo ist das ohne Belang.
+
+**Als verschickbare Datei** (statt direkt aufs Handy zu installieren):
 
 ```bash
 cd android
-./gradlew assembleDebug          # Windows: gradlew.bat assembleDebug
+./gradlew assembleRelease        # Windows: gradlew.bat assembleRelease
 ```
 
 Die fertige Datei liegt danach unter:
 
 ```
-android/app/build/outputs/apk/debug/app-debug.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
-Das ist eine ganz normale APK-Datei, die du z. B. per Kabel, Cloud-Speicher oder Messenger
-aufs Handy bekommst. Dort antippen → **Installieren**. Falls das System das erste Mal
-blockiert: **Einstellungen → Apps → [Datei-App, z. B. "Dateien"] → Unbekannte Apps
-installieren** → erlauben, dann erneut versuchen. Das ist normal für Apps außerhalb des
-Play Stores und für einen reinen Test-Build so gedacht (kein Play-Store-Signing nötig).
+Die bekommst du per Kabel, Cloud-Speicher oder Messenger aufs Handy, dort antippen →
+**Installieren**. Falls das System das erste Mal blockiert: **Einstellungen → Apps →
+[Datei-App, z. B. „Dateien"] → Unbekannte Apps installieren** → erlauben, dann erneut
+versuchen. Das ist normal für Apps außerhalb des Play Stores.
+
+Solange keine `keystore.properties` existiert, wird dieser Release-Build mit dem
+Debug-Schlüssel signiert (siehe `plugins/withReleaseSigning.js`) — völlig ausreichend zum
+Vorführen und Weitergeben, nur nicht Play-Store-tauglich. Für die Veröffentlichung siehe
+den Abschnitt „Play-Store-Veröffentlichung" weiter unten.
 
 ### Worauf zu achten ist
 
