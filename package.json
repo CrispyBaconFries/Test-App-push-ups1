@@ -61,7 +61,8 @@
     "model:download": "node scripts/download-pose-model.js",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "clean:native": "node scripts/clean-native-build.js"
   },
   "private": true,
   "jest": {

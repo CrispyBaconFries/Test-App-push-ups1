@@ -30,6 +30,14 @@
 const { withGradleProperties } = require('@expo/config-plugins');
 
 const NATIVE_ACCESS_FLAG = '--enable-native-access=ALL-UNNAMED';
+/**
+ * Expos Vorgabe ist 512 MiB Metaspace. Bei diesem Projekt (Firebase, VisionCamera,
+ * MediaPipe, Reanimated, Worklets - alle mit eigenen Kotlin-/CMake-Schritten) reicht das
+ * nicht: Gradle meldet mitten im Release-Build "Daemon will be stopped at the end of the
+ * build after running out of JVM Metaspace" und startet den Daemon danach neu, was
+ * Folgebuilds verlangsamt und sie unnötig störanfällig macht.
+ */
+const METASPACE_FLAG = '-XX:MaxMetaspaceSize=1g';
 const JAVA_HOME_PIN_COMMENT =
   "Pinned by plugins/withGradleJavaHome.js from this machine's JAVA_HOME env var at " +
   '`expo prebuild` time - see that file for why.';
@@ -60,11 +68,23 @@ module.exports = function withGradleJavaHome(config) {
     }
 
     const jvmargsIndex = props.findIndex((item) => item.type === 'property' && item.key === 'org.gradle.jvmargs');
-    if (jvmargsIndex >= 0 && !props[jvmargsIndex].value.includes(NATIVE_ACCESS_FLAG)) {
-      props[jvmargsIndex] = {
-        ...props[jvmargsIndex],
-        value: `${props[jvmargsIndex].value} ${NATIVE_ACCESS_FLAG}`,
-      };
+    if (jvmargsIndex >= 0) {
+      let jvmargs = props[jvmargsIndex].value;
+
+      // Expos Vorlage setzt bereits `-XX:MaxMetaspaceSize=512m`. Die Option darf nicht
+      // einfach ein zweites Mal angehängt werden (dann gewönne stillschweigend die
+      // letzte) - der vorhandene Wert wird ersetzt.
+      const metaspaceKey = METASPACE_FLAG.split('=')[0];
+      const existingMetaspace = new RegExp(`${metaspaceKey}=\\S+`);
+      jvmargs = existingMetaspace.test(jvmargs)
+        ? jvmargs.replace(existingMetaspace, METASPACE_FLAG)
+        : `${jvmargs} ${METASPACE_FLAG}`;
+
+      if (!jvmargs.includes(NATIVE_ACCESS_FLAG)) {
+        jvmargs = `${jvmargs} ${NATIVE_ACCESS_FLAG}`;
+      }
+
+      props[jvmargsIndex] = { ...props[jvmargsIndex], value: jvmargs };
     }
 
     return modConfig;

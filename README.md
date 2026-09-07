@@ -147,6 +147,33 @@ Debug-Schlüssel signiert (siehe `plugins/withReleaseSigning.js`) — völlig au
 Vorführen und Weitergeben, nur nicht Play-Store-tauglich. Für die Veröffentlichung siehe
 den Abschnitt „Play-Store-Veröffentlichung" weiter unten.
 
+### Wenn der Build mit „build.ninja still dirty" abbricht
+
+```
+Execution failed for task ':react-native-vision-camera:buildCMakeRelWithDebInfo[arm64-v8a]'.
+> ninja: error: manifest 'build.ninja' still dirty after 100 tries
+```
+
+Das liegt nicht am Projektcode, sondern an veraltetem CMake-Zustand: CMake schreibt
+`build.ninja` bei jedem Durchlauf neu, ninja ruft daraufhin wieder CMake auf, und nach 100
+Runden bricht der Build ab. Im Log erkennbar an hunderten Wiederholungen derselben
+CMake-Statusmeldung (`VisionCamera: Linking react-native-worklets...`).
+
+Die Falle dabei: **`expo prebuild --clean` räumt nur `android/` ab.** Die
+CMake-Arbeitsverzeichnisse der nativen Module liegen in
+`node_modules/<paket>/android/.cxx/` und überleben deshalb jeden „sauberen" Rebuild —
+auch ein `npm install`, das die Dateien darunter austauscht.
+
+Dagegen gibt es:
+
+```bash
+npm run clean:native
+```
+
+Löscht ausschließlich Build-Artefakte (`.cxx` und `build` unterhalb von
+`node_modules/<paket>/android/`), die beim nächsten Build automatisch neu entstehen.
+Danach normal weiterbauen — der nächste Build dauert dadurch einmalig länger.
+
 ### Worauf zu achten ist
 
 - **Physisches Handy statt Emulator** für den eigentlichen Test — ein Android-Emulator
