@@ -65,6 +65,19 @@ Bei nativen Änderungen (Patches in `patches/`, Config-Plugins, `app.json`, nati
 zusätzlich `npm install` und `npx expo prebuild --clean` davor, und die Entwickler-App über
 `npm run android` statt nur Metro neu bauen.
 
+**Wenn sich eine Datei in `patches/` geändert hat**, gehört das Entfernen des betroffenen Pakets
+mit in den Befehlsblock — sonst hält npm es für „up to date", installiert es nicht neu, und
+patch-package scheitert daran, den neuen Patch auf die noch alt-gepatchten Dateien anzuwenden:
+
+```powershell
+Remove-Item -Recurse -Force node_modules\react-native-mediapipe
+npm install
+```
+
+Ebenso gehört nach einer Patch-Änderung `npm run clean:native` dazu, weil der CMake-Zustand in
+`node_modules/<paket>/android/.cxx/` sonst veraltet weiterlebt (siehe README, „build.ninja still
+dirty").
+
 **Hinweis zur Koexistenz:** Beide Builds nutzen dieselbe `applicationId`
 (`com.pushupcoach.app`), können also nicht gleichzeitig auf dem Gerät liegen — die zuletzt
 installierte ersetzt die andere. Soll das geändert werden, braucht der Debug-Build einen

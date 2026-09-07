@@ -147,6 +147,29 @@ Debug-Schlüssel signiert (siehe `plugins/withReleaseSigning.js`) — völlig au
 Vorführen und Weitergeben, nur nicht Play-Store-tauglich. Für die Veröffentlichung siehe
 den Abschnitt „Play-Store-Veröffentlichung" weiter unten.
 
+### Wenn `npm install` einen Patch nicht anwenden kann
+
+```
+**ERROR** Failed to apply patch for package react-native-mediapipe at path
+    node_modules/react-native-mediapipe
+```
+
+Passiert, wenn sich eine Datei in `patches/` geändert hat, npm das betroffene Paket aber
+für „up to date" hält und deshalb **nicht** neu installiert. In `node_modules` liegt dann
+noch die alte, bereits gepatchte Fassung, auf die der neue Patch nicht mehr passt.
+
+Das betroffene Paket einmal entfernen und neu installieren lassen — im Beispiel
+`react-native-mediapipe`, den Namen aus der Fehlermeldung übernehmen:
+
+```powershell
+Remove-Item -Recurse -Force node_modules\react-native-mediapipe
+npm install
+```
+
+Danach müssen in der Ausgabe wieder alle Patches mit `✔` erscheinen. Hilft das nicht,
+räumt `npm ci` alles ab und installiert streng nach `package-lock.json` neu (dauert
+länger, ist aber garantiert sauber).
+
 ### Wenn der Build mit „build.ninja still dirty" abbricht
 
 ```
