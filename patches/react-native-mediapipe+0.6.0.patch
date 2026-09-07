@@ -1,3 +1,38 @@
+diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionFrameProcessorPlugin.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionFrameProcessorPlugin.kt
+index 0f76d18..699e1eb 100644
+--- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionFrameProcessorPlugin.kt
++++ b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionFrameProcessorPlugin.kt
+@@ -12,20 +12,19 @@ class PoseDetectionFrameProcessorPlugin() : FrameProcessorPlugin() {
+   }
+ 
+   override fun callback(frame: Frame, params: MutableMap<String, Any>?): Any? {
+-    val detectorHandle = (params?.get("detectorHandle") as? Double) ?: return false
+-    val detector = PoseDetectorMap.detectorMap[detectorHandle.toInt()] ?: return false
+-    val orientation = params["orientation"] as String
+-    val mappedOrientation = imageOrientation(orientation)
+-    mappedOrientation ?: return false
++    // `as? Double` is too narrow: depending on how the bridge boxes the JS number
++    // (notably under the new architecture) the handle can arrive as Int or Long, and
++    // `as? Double` then yields null and this returns before MediaPipe is ever asked -
++    // no result, no error, no onEmpty, i.e. completely silent. Accept any Number.
++    val detectorHandle = (params?.get("detectorHandle") as? Number)?.toInt() ?: return false
++    val detector = PoseDetectorMap.detectorMap[detectorHandle] ?: return false
++    // Unchecked `as String` would throw a ClassCastException straight into the frame
++    // processor, where it only ever surfaces in logcat.
++    val orientation = params["orientation"] as? String ?: return false
++    val mappedOrientation = imageOrientation(orientation) ?: return false
+ 
+     val mpImage = MediaImageBuilder(frame.image).build()
+     detector.detectLiveStream(mpImage, mappedOrientation)
+-    // val bitmap = imageToBitmap(frame.imageProxy)
+-    // if (bitmap != null) {
+-    //   val rotated = rotateBitmap(bitmap, orientationToDegrees(frame.orientation).toFloat())
+-    //   val mpImage = BitmapImageBuilder(rotated).build()
+-    //   detector.detectLiveStream(mpImage, frame.orientation)
+-    // }
+     return true
+   }
+ 
 diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
 index 3412357..e9e2def 100644
 --- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectionModule.kt
@@ -100,10 +135,22 @@ index 4764c1d..b1ca5a4 100644
  export interface DetectionCallbackState<TResultBundle> extends DetectionCallbacks<TResultBundle> {
      viewCoordinator: ViewCoordinator;
 diff --git a/node_modules/react-native-mediapipe/src/poseDetection/index.ts b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-index 8225ea5..4f0ba65 100644
+index 8225ea5..ee549f5 100644
 --- a/node_modules/react-native-mediapipe/src/poseDetection/index.ts
 +++ b/node_modules/react-native-mediapipe/src/poseDetection/index.ts
-@@ -111,9 +111,25 @@ eventEmitter.addListener(
+@@ -95,6 +95,11 @@ function getPoseDetectionModule(): PoseDetectionModule {
+   return PoseDetection as PoseDetectionModule;
+ }
+ 
++// Proves at a glance whether the running build actually contains
++// patches/react-native-mediapipe+0.6.0.patch - an assumption that has cost several
++// build cycles to re-establish otherwise.
++console.log("[MP] react-native-mediapipe patch v4 aktiv (Frame-Diagnose + Number-Handle-Fix)");
++
+ const detectorMap = new Map<number, PoseDetectionCallbackState>();
+ eventEmitter.addListener(
+   "onResults",
+@@ -111,9 +116,25 @@ eventEmitter.addListener(
      const callbacks = detectorMap.get(args.handle);
      if (callbacks) {
        callbacks.onError(args);
@@ -129,6 +176,80 @@ index 8225ea5..4f0ba65 100644
  
  export function usePoseDetection(
    callbacks: DetectionCallbacks<PoseDetectionResultBundle>,
+@@ -141,6 +162,8 @@ export function usePoseDetection(
+   );
+   const outputOrientation = useSharedValue<Orientation>("portrait");
+   const frameOrientation = useSharedValue<Orientation>("portrait");
++  // DIAGNOSTIC: counts frames actually reaching the frame processor.
++  const diagFrameCounter = useSharedValue<number>(0);
+ 
+   const forceOutputOrientation = useSharedValue<ImageOrientation | undefined>(
+     undefined
+@@ -179,7 +202,7 @@ export function usePoseDetection(
+ 
+   const [resizeMode, setResizeMode] = React.useState<ResizeMode>("cover");
+ 
+-  const { onResults, onError } = callbacks;
++  const { onResults, onError, onEmpty } = callbacks;
+ 
+   const updateDetectorMap = React.useCallback(() => {
+     if (detectorHandle !== undefined) {
+@@ -193,6 +216,7 @@ export function usePoseDetection(
+       detectorMap.set(detectorHandle, {
+         onResults,
+         onError,
++        onEmpty,
+         viewCoordinator,
+       });
+     }
+@@ -203,6 +227,7 @@ export function usePoseDetection(
+     forceOutputOrientation.value,
+     frameOrientation.value,
+     mirrored,
++    onEmpty,
+     onError,
+     onResults,
+     outputOrientation.value,
+@@ -287,22 +312,29 @@ export function usePoseDetection(
+         forceOutputOrientation.value ?? outputOrientation.value;
+       // const orientation: ImageOrientation = frameOrientation.value;
+       const fpsMode = options?.fpsMode ?? "none";
++      // DIAGNOSTIC: the plugin returns true once it has actually handed the frame to
++      // MediaPipe, and false for each of its silent early returns (unusable handle,
++      // unknown orientation). Discarding that answer, as this used to, makes "the
++      // detector is never called" look exactly like "MediaPipe found nothing".
++      const callPlugin = () => {
++        "worklet";
++        const handled = plugin?.call(frame, { detectorHandle, orientation });
++        diagFrameCounter.value += 1;
++        if (diagFrameCounter.value % 30 === 0) {
++          console.log(
++            `[MP] Frame #${diagFrameCounter.value} handle=${detectorHandle} orientation=${orientation} anMediaPipeUebergeben=${handled}`
++          );
++        }
++      };
+       if (fpsMode === "none") {
+-        plugin?.call(frame, {
+-          detectorHandle,
+-          orientation,
+-        });
++        callPlugin();
+       } else {
+-        runAtTargetFps(fpsMode, () => {
+-          plugin?.call(frame, {
+-            detectorHandle,
+-            orientation,
+-          });
+-        });
++        runAtTargetFps(fpsMode, callPlugin);
+       }
+     },
+     [
+       detectorHandle,
++      diagFrameCounter,
+       forceOutputOrientation.value,
+       frameOrientation,
+       options?.fpsMode,
 diff --git a/node_modules/react-native-mediapipe/src/shared/types.ts b/node_modules/react-native-mediapipe/src/shared/types.ts
 index 4b5e6c7..8af61b1 100644
 --- a/node_modules/react-native-mediapipe/src/shared/types.ts

@@ -267,6 +267,33 @@ findet aber keine Pose" (jetzt sichtbar als `[DIAG] onEmpty`-Logs) vs. "es komme
 Frames beim Detektor an" (dann bleiben auch die `onEmpty`-Logs aus). Temporär, siehe
 Kommentare in `WorkoutScreen.tsx` zum Entfernen.
 
+### Native Bugfix 3: der Frame-Processor rief MediaPipe nie auf
+
+Die eigentliche Ursache. Auf dem Gerät war belegt: Der Detektor wurde erfolgreich erzeugt
+(`createDetector` löst auf — mit Fix 2 oben würde es sonst ablehnen), das Modell lud also
+sauber, und Frames erreichten den Frame-Processor (dessen eigenes
+`changing frame orientation` wurde geloggt). Trotzdem feuerte weder `onResults` noch
+`onEmpty` noch `onError` — und **eines davon muss** feuern, sobald `detectAsync` läuft.
+Der Aufruf erreichte MediaPipe also gar nicht.
+
+Grund: `PoseDetectionFrameProcessorPlugin.callback()` las den Detektor-Handle als
+`params?.get("detectorHandle") as? Double`. Je nachdem, wie die Bridge die JS-Zahl
+verpackt — unter der New Architecture (RN 0.86 ist new-arch-only) durchaus als `Int` oder
+`Long` — liefert `as? Double` schlicht `null`, und die Funktion steigt in genau dieser
+Zeile aus, bevor MediaPipe je gefragt wird. Kein Ergebnis, kein Fehler, keine Spur.
+Jetzt: `as? Number)?.toInt()`.
+
+Direkt daneben lag eine zweite Falle: `params["orientation"] as String` war ein
+*ungeprüfter* Cast, der bei einem anderen Typ eine `ClassCastException` in den
+Frame-Processor wirft — sichtbar nur in Logcat, nie in der Metro-Konsole. Jetzt `as?
+String ?: return false`.
+
+Damit so etwas nicht wieder unsichtbar bleibt, loggt der Frame-Processor jetzt zusätzlich
+den Rückgabewert von `plugin.call(...)` (`true` = an MediaPipe übergeben, `false` = einer
+der stillen Ausstiege), und das Modul gibt beim Laden eine Zeile mit der Patch-Version
+aus — damit auf einen Blick belegt ist, dass der laufende Build den Patch überhaupt
+enthält.
+
 ### Kalibrierungs-Datensammlung (temporär, nur für die Entwicklung)
 
 **`src/pose/calibrationLogger.ts`** sammelt die gemessenen Werte (`RepResult`: minimaler
