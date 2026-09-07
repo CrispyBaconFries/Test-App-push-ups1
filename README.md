@@ -177,30 +177,52 @@ Execution failed for task ':react-native-vision-camera:buildCMakeRelWithDebInfo[
 > ninja: error: manifest 'build.ninja' still dirty after 100 tries
 ```
 
-Das liegt nicht am Projektcode. **Eigentliche Ursache** war ein Wettlauf zwischen mehreren
-CPU-Architekturen, behoben durch `plugins/withAndroidAbiFilter.js`:
+Das liegt nicht am Projektcode. Der Debug-Build derselben Quellen lief durch, nur der
+Release-Build brach ab.
 
-`expo run:android` überschreibt beim **Debug**-Build die Architekturliste mit der des
-angeschlossenen Geräts (`-PreactNativeArchitectures=arm64-v8a`) — beim **Release**-Build
-nicht. Dort wurden alle vier Architekturen parallel konfiguriert, und deren CMake-Läufe
-griffen gleichzeitig auf dieselben Prefab-Dateien von `react-native-worklets-core` zu, die
-`react-native-vision-camera` per `find_package` einbindet. Deren Zeitstempel änderte sich
-dadurch fortlaufend; CMake schrieb `build.ninja` aber inhaltsgleich und damit ohne neuen
-Zeitstempel zurück, ninja hielt die Datei weiterhin für veraltet und rief erneut CMake auf.
-Nach 100 Runden bricht es ab. Genau deshalb lief der Debug-Build durch und nur der
-Release-Build scheiterte — im Log an hunderten Wiederholungen von
-`VisionCamera: Linking react-native-worklets...` erkennbar.
+**Was im Log passiert:** CMake läuft 100-mal vollständig und fehlerfrei durch (im Log an
+hunderten Wiederholungen von `VisionCamera: Frame Processors: ON!` /
+`VisionCamera: Linking react-native-worklets...` erkennbar), ninja hält das Manifest aber
+weiterhin für veraltet. Grund: CMake schreibt `build.ninja` nur neu, wenn sich der *Inhalt*
+ändert. Bleibt der Inhalt gleich, bleibt auch der Zeitstempel stehen — und ist damit
+weiterhin älter als die Eingabedatei, die den Neulauf ausgelöst hat. Ninja versucht es 100-mal
+und gibt dann auf.
 
-Das Plugin beschränkt den Build deshalb auf `arm64-v8a`. Nebeneffekt: nur noch ein Viertel
-des nativen Codes wird kompiliert, der Build ist spürbar schneller und die APK kleiner.
-**Für die Play-Store-Veröffentlichung muss die Liste wieder verbreitert werden** — dann
-aber als `.aab`, das Google pro Gerät passend ausliefert. `arm64-v8a` deckt praktisch alle
-aktuellen Geräte ab, aber keine Emulatoren (x86_64) und keine alten 32-Bit-Geräte.
+**Auslöser** ist ein Fehler im Workaround `fix-prefab.gradle` von
+`react-native-worklets-core`. Der stempelt die `prefab_config.json` der Module um, die
+worklets-core per `find_package` einbinden (also VisionCamera), damit AGP die
+Prefab-Konfiguration inklusive `.so` neu erzeugt. Er sucht dafür in `.cxx/<variantenname>` —
+AGP benennt diese Ordner aber nach dem CMake-Build-Typ: aus `debug` wird `.cxx/Debug`
+(unter Windows case-insensitiv, findet er also), aus `release` wird `.cxx/RelWithDebInfo`
+(findet er nicht). Im Release-Build lief der Workaround deshalb still ins Leere. Behoben in
+`patches/react-native-worklets-core+1.6.3.patch`: es werden jetzt alle Build-Typ-Ordner
+unterhalb von `.cxx` durchsucht.
 
-**Zweite mögliche Ursache** derselben Fehlermeldung ist veralteter CMake-Zustand. Die Falle
-dabei: `expo prebuild --clean` räumt nur `android/` ab, die CMake-Arbeitsverzeichnisse
-liegen aber in `node_modules/<paket>/android/.cxx/` und überleben jeden „sauberen" Rebuild —
-auch ein `npm install`, das die Dateien darunter austauscht. Dagegen:
+**Zusätzlich abgesichert** durch `plugins/withCmakeSuppressRegeneration.js`: Es setzt für
+alle nativen Module `-DCMAKE_SUPPRESS_REGENERATION=ON`, wodurch CMake die
+„Build-System selbst nachgenerieren"-Regel gar nicht erst in `build.ninja` schreibt. Ohne
+diese Regel *kann* ninja das Manifest nicht mehr für veraltet halten, unabhängig von
+Zeitstempeln. Das ist ungefährlich, weil Gradles eigene Task `configureCMake<Variante>` die
+CMake-Dateien als deklarierte Eingaben hat und ohnehin neu konfiguriert, sobald sich eine
+`CMakeLists.txt` ändert.
+
+**Widerlegte Vermutungen** (damit sie niemand erneut verfolgt):
+
+- *Veralteter CMake-Zustand in `node_modules/<paket>/android/.cxx/`.* `npm run clean:native`
+  entfernte 31 solcher Verzeichnisse — der Fehler kam unverändert wieder. Das Skript bleibt
+  trotzdem nützlich (siehe unten), es ist nur nicht die Lösung für diesen Fehler.
+- *Wettlauf zwischen vier parallel gebauten CPU-Architekturen.*
+  `plugins/withAndroidAbiFilter.js` beschränkt den Build seither auf `arm64-v8a`, im Log
+  tauchte danach nur noch `[arm64-v8a]` auf — und der Fehler trat identisch weiter auf. Das
+  Plugin bleibt bestehen, aber nur noch wegen Bauzeit und APK-Größe: nur ein Viertel des
+  nativen Codes wird kompiliert. **Für die Play-Store-Veröffentlichung muss die Liste wieder
+  verbreitert werden** — dann aber als `.aab`, das Google pro Gerät passend ausliefert.
+  `arm64-v8a` deckt praktisch alle aktuellen Geräte ab, aber keine Emulatoren (x86_64) und
+  keine alten 32-Bit-Geräte.
+
+`npm run clean:native` ist trotzdem das richtige Mittel gegen andere unerklärliche
+CMake-Fehler, die ein `expo prebuild --clean` überleben: Das räumt nämlich nur `android/`
+ab, die CMake-Arbeitsverzeichnisse liegen aber in `node_modules/<paket>/android/.cxx/`.
 
 ```bash
 npm run clean:native
@@ -1202,7 +1224,8 @@ src/
 plugins/
   withPoseLandmarkerModel.js   Config-Plugin: bündelt das .task-Modell nativ
   withUncompressedModelAssets.js  Config-Plugin: noCompress "task", sonst kann MediaPipe das Modell nicht laden
-  withAndroidAbiFilter.js         Config-Plugin: baut nur arm64-v8a (sonst bricht der Release-Build von VisionCamera ab)
+  withAndroidAbiFilter.js         Config-Plugin: baut nur arm64-v8a (kuerzere Bauzeit, kleinere APK)
+  withCmakeSuppressRegeneration.js Config-Plugin: schaltet CMakes RERUN_CMAKE-Regel ab (Release-Build von VisionCamera)
   withReleaseSigning.js          Config-Plugin: trägt Release-Signing aus keystore.properties in build.gradle ein
   withFirebaseConfig.js            Config-Plugin: bindet Firebase nur ein, wenn google-services.json/GoogleService-Info.plist existieren
 keystore.properties.example       Vorlage für keystore.properties (echte Datei bleibt ungetrackt)

@@ -1,25 +1,26 @@
 /**
  * Beschränkt den Android-Build auf eine einzige CPU-Architektur (`arm64-v8a`).
  *
- * Warum das nötig ist: Expos Vorgabe ist
+ * Warum das sinnvoll ist: Expos Vorgabe ist
  * `reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64`. `expo run:android`
  * überschreibt das beim **Debug**-Build mit der Architektur des angeschlossenen Geräts
- * (`-PreactNativeArchitectures=arm64-v8a`) - beim **Release**-Build nicht. Dort werden
- * deshalb alle vier Architekturen konfiguriert und gebaut, und react-native-vision-camera
- * bricht dabei reproduzierbar ab:
+ * (`-PreactNativeArchitectures=arm64-v8a`) - beim **Release**-Build nicht. Dort wurde
+ * deshalb der komplette native Code viermal übersetzt. Mit dieser Beschränkung baut der
+ * Release-Build nur noch ein Viertel davon: deutlich schneller, und die APK wird deutlich
+ * kleiner.
+ *
+ * HISTORIE, damit es niemand noch einmal falsch herum aufrollt: Dieses Plugin entstand als
+ * Behebungsversuch für
  *
  *   Execution failed for task ':react-native-vision-camera:buildCMakeRelWithDebInfo[arm64-v8a]'.
  *   > ninja: error: manifest 'build.ninja' still dirty after 100 tries
  *
- * Ursache ist ein Wettlauf: Die vier CMake-Konfigurationsläufe greifen parallel auf
- * dieselben Prefab-Dateien von `react-native-worklets-core` zu, die VisionCamera per
- * `find_package` einbindet. Deren Zeitstempel ändert sich dadurch fortlaufend, CMake
- * schreibt `build.ninja` aber inhaltsgleich und damit ohne neuen Zeitstempel zurück - also
- * hält ninja die Datei weiterhin für veraltet, ruft erneut CMake auf und gibt nach 100
- * Runden auf. Genau deshalb lief der Debug-Build durch und nur der Release-Build scheiterte.
- *
- * Nebeneffekt, der hier erwünscht ist: Der Build kompiliert nur noch ein Viertel des
- * nativen Codes und wird dadurch deutlich schneller, die APK deutlich kleiner.
+ * unter der Annahme, die vier parallelen CMake-Läufe würden sich um dieselben
+ * Prefab-Dateien von `react-native-worklets-core` streiten. Diese Annahme ist **widerlegt**:
+ * Mit nur noch `arm64-v8a` im Log trat exakt derselbe Fehler weiter auf. Die tatsächliche
+ * Ursache steht in `plugins/withCmakeSuppressRegeneration.js` und
+ * `patches/react-native-worklets-core+1.6.3.patch`. Dieses Plugin bleibt trotzdem
+ * bestehen - nicht als Fehlerbehebung, sondern wegen Bauzeit und APK-Größe.
  *
  * ACHTUNG für später: `arm64-v8a` deckt praktisch alle aktuellen Android-Geräte ab, aber
  * **keine Emulatoren** (die sind x86_64) und keine sehr alten 32-Bit-Geräte. Für eine

@@ -1,0 +1,45 @@
+diff --git a/node_modules/react-native-worklets-core/android/fix-prefab.gradle b/node_modules/react-native-worklets-core/android/fix-prefab.gradle
+index adff5af..9e2a4aa 100644
+--- a/node_modules/react-native-worklets-core/android/fix-prefab.gradle
++++ b/node_modules/react-native-worklets-core/android/fix-prefab.gradle
+@@ -32,22 +32,28 @@ afterEvaluate {
+       return
+     }
+ 
+-    def variants = proj.android.hasProperty('applicationVariants') ? proj.android.applicationVariants : proj.android.libraryVariants
+     // Touch the prefab_config.json files to ensure that in ExternalNativeJsonGenerator.kt we will re-trigger the prefab CLI to
+     // generate a libnameConfig.cmake file that will contain our native library (.so).
+     // See this condition: https://cs.android.com/android-studio/platform/tools/base/+/mirror-goog-studio-main:build-system/gradle-core/src/main/java/com/android/build/gradle/tasks/ExternalNativeJsonGenerator.kt;l=207-219?q=createPrefabBuildSystemGlue
+-    variants.all { variant ->
+-      def variantName = variant.name
+-      abis.each { abi ->
+-        def searchDir = new File(proj.projectDir, ".cxx/${variantName}")
+-        if (!searchDir.exists()) return
+-        def matches = []
+-        searchDir.eachDir { randomDir ->
++    // PATCH (siehe patches/react-native-worklets-core+1.6.3.patch):
++    // AGP benennt die Unterordner von .cxx nach dem CMAKE_BUILD_TYPE, nicht nach dem
++    // Gradle-Variantennamen. Aus "debug" wird .cxx/Debug, aus "release" aber
++    // .cxx/RelWithDebInfo. Der urspruengliche Code suchte in ".cxx/${variantName}" und
++    // fand deshalb nur im Debug-Build etwas (Windows-Dateisystem ist case-insensitiv,
++    // "debug" == "Debug"). Im Release-Build lief dieser Workaround still ins Leere, die
++    // prefab_config.json wurde nie angefasst, AGP erzeugte die Prefab-Konfiguration
++    // nicht neu - und der Release-Build brach in react-native-vision-camera mit
++    // "ninja: error: manifest 'build.ninja' still dirty after 100 tries" ab.
++    // Deshalb: alle vorhandenen Build-Typ-Ordner unterhalb von .cxx durchsuchen.
++    def cxxRoot = new File(proj.projectDir, ".cxx")
++    if (!cxxRoot.exists()) return
++    cxxRoot.eachDir { buildTypeDir ->
++      buildTypeDir.eachDir { randomDir ->
++        abis.each { abi ->
+           def prefabFile = new File(randomDir, "${abi}/prefab_config.json")
+-          if (prefabFile.exists()) matches << prefabFile
+-        }
+-        matches.each { prefabConfig ->
+-          prefabConfig.setLastModified(System.currentTimeMillis())
++          if (prefabFile.exists()) {
++            prefabFile.setLastModified(System.currentTimeMillis())
++          }
+         }
+       }
+     }

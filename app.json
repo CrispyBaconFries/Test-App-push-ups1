@@ -55,6 +55,7 @@
       "./plugins/withCameraXVersionAlignment.js",
       "./plugins/withGradleJavaHome.js",
       "./plugins/withAndroidAbiFilter.js",
+      "./plugins/withCmakeSuppressRegeneration.js",
       [
         "expo-audio",
         {

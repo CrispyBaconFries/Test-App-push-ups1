@@ -8,14 +8,19 @@
  * Rebuild - inklusive `npm install`, das die Dateien darunter unter den Füßen
  * austauscht.
  *
- * Typisches Symptom, wenn dieser Zustand veraltet ist:
+ * Typisches Symptom, wenn dieser Zustand veraltet ist: unerklärliche CMake-/ninja-Fehler,
+ * die nach einem `expo prebuild --clean` unverändert wiederkehren, obwohl das Projekt
+ * angeblich frisch generiert wurde.
+ *
+ * Nicht dafür zuständig ist dagegen
  *
  *   Execution failed for task ':react-native-vision-camera:buildCMakeRelWithDebInfo[arm64-v8a]'.
  *   > ninja: error: manifest 'build.ninja' still dirty after 100 tries
  *
- * CMake schreibt `build.ninja` dann bei jedem Durchlauf neu, ninja ruft daraufhin
- * wieder CMake auf, und nach 100 Runden bricht der Build ab. Zu erkennen an
- * hunderten Wiederholungen derselben CMake-Statusmeldung im Log.
+ * - das war die ursprüngliche Vermutung, sie ist aber widerlegt: Der Fehler trat auch nach
+ * einem vollständigen `clean:native` unverändert auf. Die echte Ursache und ihre Behebung
+ * stehen in `plugins/withCmakeSuppressRegeneration.js` und
+ * `patches/react-native-worklets-core+1.6.3.patch`.
  *
  * Gelöscht werden ausschließlich Build-Artefakte (`.cxx` und `build` unterhalb von
  * `node_modules/<paket>/android/`), die beim nächsten Build automatisch neu
