@@ -253,6 +253,11 @@ Drei Gegenmaßnahmen, damit das weder auftritt noch je wieder unsichtbar bleibt:
    Handle zurückzugeben — `usePoseDetection` loggt eine solche Ablehnung bereits selbst.
 3. Der Patch loggt außerdem `onError`-Events für unbekannte Handles, statt sie zu
    verwerfen — damit ist ein Setup-Fehler samt Meldung in der Metro-Konsole sichtbar.
+4. Der Patch normalisiert die Rotation auf `[0, 360)`. `OrientationHelpers.orientationToDegrees`
+   bildet `LANDSCAPE_RIGHT` auf **`-90`** ab, was `ImageProcessingOptions.setRotationDegrees()`
+   ablehnt. Solange die Rotation hartkodiert auf `PORTRAIT` (= 0) stand, war das folgenlos —
+   erst durch Fix 1 wurde dieser Wert überhaupt erreichbar, und `detectAsync` hat kein
+   try/catch, der Wurf landete also ungefangen im Frame-Processor.
 
 Zusätzlich verdrahtet derselbe Patch `DetectorListener.onEmpty()` (Kotlin) auf ein neues
 `"onEmpty"`-Event, das über `usePoseDetection({ ..., onEmpty })` auch auf der JS-Seite

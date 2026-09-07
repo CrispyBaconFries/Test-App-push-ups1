@@ -36,18 +36,60 @@ export function getLandmark(pose: Pose, index: number): PoseLandmark | undefined
  * is currently more confident about, using shoulder+elbow+wrist+hip visibility as a
  * proxy for "is this side usable for angle math right now".
  */
+const LEFT_SIDE_ARM = [
+  PoseLandmarkIndex.leftShoulder,
+  PoseLandmarkIndex.leftElbow,
+  PoseLandmarkIndex.leftWrist,
+  PoseLandmarkIndex.leftHip,
+];
+const RIGHT_SIDE_ARM = [
+  PoseLandmarkIndex.rightShoulder,
+  PoseLandmarkIndex.rightElbow,
+  PoseLandmarkIndex.rightWrist,
+  PoseLandmarkIndex.rightHip,
+];
+
+function sumVisibility(pose: Pose, indices: number[]): number {
+  return indices.reduce((sum, i) => sum + visibility(getLandmark(pose, i)), 0);
+}
+
+function hasRealVisibilityData(pose: Pose, indices: number[]): boolean {
+  return indices.some((i) => typeof getLandmark(pose, i)?.visibility === 'number');
+}
+
+/** Mean z of the given landmarks; smaller = closer to the camera in MediaPipe's convention. */
+function meanDepth(pose: Pose, indices: number[]): number {
+  let sum = 0;
+  let count = 0;
+  for (const i of indices) {
+    const z = getLandmark(pose, i)?.z;
+    if (typeof z === 'number' && Number.isFinite(z)) {
+      sum += z;
+      count += 1;
+    }
+  }
+  return count === 0 ? 0 : sum / count;
+}
+
 export function pickMoreVisibleSide(pose: Pose): BodySide {
-  const leftScore =
-    visibility(getLandmark(pose, PoseLandmarkIndex.leftShoulder)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.leftElbow)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.leftWrist)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.leftHip));
-  const rightScore =
-    visibility(getLandmark(pose, PoseLandmarkIndex.rightShoulder)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.rightElbow)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.rightWrist)) +
-    visibility(getLandmark(pose, PoseLandmarkIndex.rightHip));
-  return rightScore >= leftScore ? 'right' : 'left';
+  // Preferred signal, whenever the pose actually carries confidence scores.
+  if (hasRealVisibilityData(pose, [...LEFT_SIDE_ARM, ...RIGHT_SIDE_ARM])) {
+    const leftScore = sumVisibility(pose, LEFT_SIDE_ARM);
+    const rightScore = sumVisibility(pose, RIGHT_SIDE_ARM);
+    if (leftScore !== rightScore) {
+      return rightScore > leftScore ? 'right' : 'left';
+    }
+  }
+
+  // react-native-mediapipe never sends visibility (see the note on `visibility` above),
+  // which made the score comparison a tie on every single frame and therefore always
+  // picked 'right' - even when the user's left side was the one facing the camera, so
+  // the arm being measured was the far, fully occluded one. MediaPipe still estimates
+  // the occluded side, but from far less evidence. Fall back to depth instead: the side
+  // nearer the camera is the better-observed one.
+  const leftDepth = meanDepth(pose, LEFT_SIDE_ARM);
+  const rightDepth = meanDepth(pose, RIGHT_SIDE_ARM);
+  return rightDepth <= leftDepth ? 'right' : 'left';
 }
 
 export type SideLandmarkIndices = {

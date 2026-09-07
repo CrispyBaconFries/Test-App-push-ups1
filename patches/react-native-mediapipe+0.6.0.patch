@@ -52,10 +52,10 @@ index 3412357..e9e2def 100644
      val resultArgs = convertResultBundleToWritableMap(bundle)
      resultArgs.putInt("handle", handle)
 diff --git a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
-index 2641054..7abae92 100644
+index 2641054..bf29727 100644
 --- a/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
 +++ b/node_modules/react-native-mediapipe/android/src/main/java/com/reactnativemediapipe/posedetection/PoseDetectorHelper.kt
-@@ -235,10 +235,12 @@ class PoseDetectorHelper(
+@@ -235,18 +235,26 @@ class PoseDetectorHelper(
        )
      }
      val frameTime = SystemClock.uptimeMillis()
@@ -72,6 +72,21 @@ index 2641054..7abae92 100644
      detectAsync(mpImage, frameTime, this.imageRotation)
    }
  
+   // Run face pose landmark using MediaPipe pose Landmarker API
+   @VisibleForTesting
+   fun detectAsync(mpImage: MPImage, frameTime: Long, imageRotation: Int) {
++    // MediaPipe requires rotationDegrees to be a multiple of 90 within [0, 360), but
++    // OrientationHelpers.orientationToDegrees maps LANDSCAPE_RIGHT to -90. That only
++    // became reachable once detectLiveStream started honouring the real orientation
++    // instead of hardcoding PORTRAIT, and ImageProcessingOptions.build() would reject
++    // it - uncaught here, i.e. straight into the frame processor.
++    val normalizedRotation = ((imageRotation % 360) + 360) % 360
+     val imageProcessingOptions =
+-            ImageProcessingOptions.builder().setRotationDegrees(imageRotation).build()
++            ImageProcessingOptions.builder().setRotationDegrees(normalizedRotation).build()
+     poseLandmarker?.detectAsync(mpImage, imageProcessingOptions, frameTime)
+     // As we're using running mode LIVE_STREAM, the landmark result will
+     // be returned in returnLivestreamResult function
 diff --git a/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts b/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts
 index 4764c1d..b1ca5a4 100644
 --- a/node_modules/react-native-mediapipe/lib/typescript/src/shared/types.d.ts

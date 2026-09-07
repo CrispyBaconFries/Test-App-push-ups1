@@ -61,6 +61,7 @@ export function WorkoutScreen({ navigation }: Props) {
   // Metro-Konsole, um zu sehen, woran die Zählung auf einem echten Gerät genau
   // scheitert. Entfernen, sobald das geklärt ist.
   const diagFrameCounterRef = useRef(0);
+  const diagElbowRangeRef = useRef({ min: Infinity, max: -Infinity });
 
   useEffect(() => {
     if (!hasPermission) {
@@ -88,12 +89,23 @@ export function WorkoutScreen({ navigation }: Props) {
     setLive(liveResult);
 
     // DEV DIAGNOSTIC (temporär) - entfernen, sobald die Zählung nachweislich funktioniert.
+    // Der beobachtete Winkelbereich ist der wichtigste Wert hier: bleibt das Maximum
+    // unter elbowUpDeg (160°) oder das Minimum über elbowAttemptDeg (140°), kann die
+    // Zustandsmaschine gar keine Wiederholung abschließen - dann sind die Schwellwerte
+    // schuld, nicht die Erkennung. Beides sieht sonst identisch aus ("zählt nicht").
     diagFrameCounterRef.current += 1;
+    diagElbowRangeRef.current = {
+      min: Math.min(diagElbowRangeRef.current.min, liveResult.elbowAngleDeg),
+      max: Math.max(diagElbowRangeRef.current.max, liveResult.elbowAngleDeg),
+    };
     if (diagFrameCounterRef.current % 15 === 0) {
       console.log('[DIAG]', {
         phase: liveResult.phase,
         trackingOk: liveResult.trackingOk,
         elbowAngleDeg: Math.round(liveResult.elbowAngleDeg),
+        beobachtetMin: Math.round(diagElbowRangeRef.current.min),
+        beobachtetMax: Math.round(diagElbowRangeRef.current.max),
+        schwellen: 'attempt<=140, up>=160',
         cue: liveResult.cue,
       });
     }

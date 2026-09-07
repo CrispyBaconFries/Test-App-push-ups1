@@ -22,10 +22,18 @@ export interface RepResult {
   index: number;
   formScore: number;
   issues: FormIssue[];
+  /** Always measured - shoulder/elbow/wrist are required for a rep to be counted at all. */
   minElbowAngleDeg: number;
-  minHipStraightnessDeg: number;
-  maxElbowFlareDeg: number;
-  minNeckAngleDeg: number;
+  /**
+   * `null` when the landmarks that check needs were never visible during the rep (e.g.
+   * feet out of frame for the hip/ankle-based checks). Deliberately not a number: these
+   * are persisted via JSON.stringify (workout history, calibration log), and a
+   * non-finite sentinel like Infinity silently becomes `null` there anyway - but typed
+   * as `number`, which would then feed NaN into any later averaging.
+   */
+  minHipStraightnessDeg: number | null;
+  maxElbowFlareDeg: number | null;
+  minNeckAngleDeg: number | null;
   durationMs: number;
 }
 
@@ -72,6 +80,15 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * The optional-check accumulators start at ±Infinity and stay there if the landmarks
+ * that check needs were never visible during the rep. Report that as "not measured"
+ * instead of leaking a non-finite number into persisted JSON.
+ */
+function roundOrNull(value: number): number | null {
+  return Number.isFinite(value) ? Math.round(value) : null;
 }
 
 interface RepAccumulator {
@@ -300,9 +317,9 @@ export class PushUpAnalyzer {
       formScore: Math.round(clamp(score, 0, 100)),
       issues,
       minElbowAngleDeg: Math.round(acc.minElbowAngleDeg),
-      minHipStraightnessDeg: Math.round(acc.minHipStraightnessDeg),
-      maxElbowFlareDeg: Math.round(acc.maxElbowFlareDeg),
-      minNeckAngleDeg: Math.round(acc.minNeckAngleDeg),
+      minHipStraightnessDeg: roundOrNull(acc.minHipStraightnessDeg),
+      maxElbowFlareDeg: roundOrNull(acc.maxElbowFlareDeg),
+      minNeckAngleDeg: roundOrNull(acc.minNeckAngleDeg),
       durationMs: timestampMs - acc.startTimeMs,
     };
 

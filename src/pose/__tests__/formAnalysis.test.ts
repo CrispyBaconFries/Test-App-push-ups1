@@ -1,5 +1,7 @@
 import { PushUpAnalyzer } from '../formAnalysis';
 import { buildFrame, mergePoses } from '../testing/poseBuilder';
+import { pickMoreVisibleSide } from '../landmarks';
+import { PoseLandmarkIndex } from '../blazePoseLandmarks';
 
 describe('PushUpAnalyzer', () => {
   it('counts a clean, deep rep with a perfect form score', () => {
@@ -120,6 +122,30 @@ describe('PushUpAnalyzer', () => {
     expect(analyzer.getPhase()).toBe('up');
   });
 
+  it('reports unmeasurable form metrics as null, not as a non-finite number', () => {
+    // Same out-of-frame setup as above. The optional-check accumulators start at
+    // ±Infinity, and a rep that never saw hip/ankle/ear leaves them there. RepResults are
+    // persisted with JSON.stringify (workout history, calibration log), where Infinity
+    // silently turns into null - so anything reading those numbers back would get a
+    // null typed as `number` and quietly compute NaN. Report "not measured" honestly.
+    const analyzer = new PushUpAnalyzer();
+    const sequence = [180, 150, 90, 90, 120, 150, 165];
+    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+
+    sequence.forEach((elbowAngleDeg, i) => {
+      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, extendedVisibility: 0.1 }), i * 33);
+    });
+
+    const rep = lastResult!.completedRep!;
+    expect(rep.minHipStraightnessDeg).toBeNull();
+    expect(rep.maxElbowFlareDeg).toBeNull();
+    expect(rep.minNeckAngleDeg).toBeNull();
+    // The elbow is always measured - a rep cannot be counted without it.
+    expect(Number.isFinite(rep.minElbowAngleDeg)).toBe(true);
+    // Survives the persistence round-trip unchanged.
+    expect(JSON.parse(JSON.stringify(rep))).toEqual(rep);
+  });
+
   it('reports trackingOk: false and skips analysis when the pose is barely visible', () => {
     const analyzer = new PushUpAnalyzer();
     const { live, completedRep } = analyzer.processFrame(buildFrame({ elbowAngleDeg: 90, visibility: 0.1 }), 0);
@@ -154,5 +180,48 @@ describe('PushUpAnalyzer', () => {
     expect(lastResult!.completedRep).not.toBeNull();
     expect(lastResult!.completedRep!.issues).not.toContain('ELBOWS_FLARED');
     expect(lastResult!.completedRep!.formScore).toBe(100);
+  });
+});
+
+describe('pickMoreVisibleSide', () => {
+  const ARM = {
+    left: [
+      PoseLandmarkIndex.leftShoulder,
+      PoseLandmarkIndex.leftElbow,
+      PoseLandmarkIndex.leftWrist,
+      PoseLandmarkIndex.leftHip,
+    ],
+    right: [
+      PoseLandmarkIndex.rightShoulder,
+      PoseLandmarkIndex.rightElbow,
+      PoseLandmarkIndex.rightWrist,
+      PoseLandmarkIndex.rightHip,
+    ],
+  };
+
+  /** 33 landmarks carrying only depth - exactly the shape react-native-mediapipe sends. */
+  function poseWithDepthOnly(leftZ: number, rightZ: number) {
+    const pose = new Array(33).fill(null).map(() => ({ x: 0, y: 0, z: 0 }));
+    ARM.left.forEach((i) => (pose[i] = { x: 0, y: 0, z: leftZ }));
+    ARM.right.forEach((i) => (pose[i] = { x: 0, y: 0, z: rightZ }));
+    return pose;
+  }
+
+  it('prefers the side nearer the camera when no visibility data is available', () => {
+    // react-native-mediapipe never populates visibility, which used to make the
+    // left/right comparison a tie on every frame and therefore always pick 'right' -
+    // even when the left side was the one facing the camera and 'right' was the fully
+    // occluded, purely estimated arm. Smaller z = closer to the camera in MediaPipe's
+    // convention.
+    expect(pickMoreVisibleSide(poseWithDepthOnly(-0.4, 0.4))).toBe('left');
+    expect(pickMoreVisibleSide(poseWithDepthOnly(0.4, -0.4))).toBe('right');
+  });
+
+  it('still prefers real visibility scores when the pose actually carries them', () => {
+    const pose = poseWithDepthOnly(0.4, -0.4).map((p) => ({ ...p, visibility: 0.9 }));
+    // Right side is nearer the camera but barely tracked - visibility must win.
+    ARM.right.forEach((i) => (pose[i] = { ...pose[i], visibility: 0.1 }));
+
+    expect(pickMoreVisibleSide(pose)).toBe('left');
   });
 });
