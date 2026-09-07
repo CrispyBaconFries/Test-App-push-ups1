@@ -52,3 +52,6 @@ yarn-error.*
 # downloaded ML models (fetched via `npm run model:download`, see README.md)
 assets/models/*.task
 assets/models/*.tflite
+
+# Android Studio / IntelliJ project settings (machine-specific)
+.idea/
