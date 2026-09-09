@@ -8,6 +8,7 @@ import {
   type BodySide,
   type Pose,
 } from './landmarks';
+import { nthSmallest, percentile } from './stats';
 
 export type RepPhase = 'up' | 'descending' | 'down' | 'ascending';
 
@@ -18,6 +19,42 @@ export type FormIssue =
   | 'ELBOWS_FLARED'
   | 'HEAD_MISALIGNED';
 
+/**
+ * Warum eine gezählte Bewegung doch nicht als Wiederholung durchgeht.
+ *
+ * - `TOO_SHORT`  - schneller als `minRepDurationMs`, also körperlich keine Wiederholung
+ *                  (in den Messdaten vom 09.09.2026: 6 von 124 unter 500 ms).
+ * - `TOO_LONG`   - länger als `maxRepDurationMs`; der Zähler hing, während sich jemand
+ *                  hinlegte oder Pause machte (16 von 124, bis zu 34 Sekunden).
+ * - `TRACKING_LOST` - über einen zu großen Teil der Wiederholung war keine verwertbare
+ *                  Pose da, die Formwerte wären geraten.
+ */
+export type RepDiscardReason = 'TOO_SHORT' | 'TOO_LONG' | 'TRACKING_LOST';
+
+/**
+ * Eine verworfene Wiederholung. Wird nicht gezählt und nicht bewertet, aber gemeldet -
+ * ohne diese Meldung wäre für die Aufrufer (und für spätere Kalibrierläufe) nicht
+ * unterscheidbar, ob gerade niemand trainiert oder ob die Erkennung Wiederholungen
+ * wegwirft.
+ */
+export interface DiscardedRep {
+  reason: RepDiscardReason;
+  durationMs: number;
+  /** Frames mit verwertbarer Pose bzw. ohne, während dieser Wiederholung. */
+  trackedFrames: number;
+  untrackedFrames: number;
+}
+
+/**
+ * Eine gezählte und bewertete Wiederholung.
+ *
+ * Zu den vier Winkel-Kennzahlen: Sie sind seit dem 09.09.2026 bewusst **keine**
+ * Extremwerte mehr, sondern robuste Kennzahlen über alle Frames der Wiederholung (siehe
+ * `PushUpThresholds.formPercentile` / `depthOutlierFrames` und `src/pose/stats.ts`). Die
+ * Feldnamen bleiben, weil sie so in der gespeicherten Trainingshistorie und im
+ * Kalibrier-Log stehen: "min" heißt jetzt "unteres Perzentil bzw. abgesichertes
+ * Minimum", "max" entsprechend "oberes Perzentil".
+ */
 export interface RepResult {
   index: number;
   formScore: number;
@@ -66,6 +103,38 @@ export interface PushUpThresholds {
   minNeckAngleDeg: number;
   /** Minimum landmark visibility (0..1) required to trust a frame. */
   minVisibility: number;
+  /**
+   * Perzentil (0..100), mit dem die Formwerte statt des schlechtesten Einzelframes
+   * gebildet werden: `formPercentile` für die "je kleiner desto schlechter"-Werte
+   * (Tiefe, Hüftgerade, Nacken), `100 - formPercentile` für den Ellbogen-Flare, wo es
+   * andersherum ist. 10 bedeutet: die schlechtesten 10 % der Frames einer Wiederholung
+   * dürfen das Urteil nicht mehr allein bestimmen.
+   */
+  formPercentile: number;
+  /**
+   * Wie viele Ausreißer-Frames bei der Tiefenmessung übersprungen werden. Die Tiefe ist
+   * der Umkehrpunkt einer Bewegung und nicht wie die übrigen Kennzahlen ein Plateau -
+   * ein Perzentil über den ganzen Bewegungsbogen würde sie systematisch zu flach
+   * schätzen. Siehe `nthSmallest` in `src/pose/stats.ts`.
+   */
+  depthOutlierFrames: number;
+  /**
+   * Kürzeste Dauer (ms), die eine Wiederholung haben muss. Alles darunter ist keine
+   * Wiederholung, sondern eine Doppelzählung durch Winkelrauschen an der Schwelle.
+   */
+  minRepDurationMs: number;
+  /**
+   * Längste Dauer (ms), nach der eine laufende Wiederholung abgebrochen wird. Eine
+   * bewusst langsam ausgeführte Wiederholung dauert rund 4 Sekunden; alles jenseits
+   * davon ist der hängende Zähler, nicht der Sportler.
+   */
+  maxRepDurationMs: number;
+  /**
+   * Mindestanteil (0..1) der Frames einer Wiederholung, in denen eine verwertbare Pose
+   * da war. Darunter wird die Wiederholung verworfen, statt aus Bruchstücken eine
+   * Formnote zu erfinden.
+   */
+  minTrackedFrameRatio: number;
 }
 
 export const DEFAULT_THRESHOLDS: PushUpThresholds = {
@@ -76,6 +145,11 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   maxElbowFlareDeg: 80,
   minNeckAngleDeg: 140,
   minVisibility: 0.5,
+  formPercentile: 10,
+  depthOutlierFrames: 2,
+  minRepDurationMs: 600,
+  maxRepDurationMs: 8000,
+  minTrackedFrameRatio: 0.6,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -83,33 +157,50 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * The optional-check accumulators start at ±Infinity and stay there if the landmarks
- * that check needs were never visible during the rep. Report that as "not measured"
- * instead of leaking a non-finite number into persisted JSON.
+ * `percentile()` liefert `NaN`, wenn die Messreihe leer blieb - also wenn die
+ * Landmarken, die diese Prüfung braucht, während der ganzen Wiederholung nie sichtbar
+ * waren (typisch: Füße außerhalb des Bildes). Das wird hier zu "nicht gemessen"
+ * (`null`), statt einen nicht-endlichen Wert in die gespeicherte Historie oder das
+ * Kalibrier-Log durchzulassen, wo `JSON.stringify` ihn ohnehin still zu `null` machen
+ * würde - dann aber als `number` typisiert, was später NaN in jede Mittelwertbildung
+ * trägt.
  */
 function roundOrNull(value: number): number | null {
   return Number.isFinite(value) ? Math.round(value) : null;
 }
 
+/**
+ * Sammelt alle Messwerte einer laufenden Wiederholung. Bewusst die vollständigen
+ * Reihen statt laufender Minima/Maxima: Erst damit lässt sich am Ende ein Perzentil
+ * bilden. Eine Wiederholung dauert ein bis vier Sekunden, bei ~30 Frames/s sind das
+ * einige Dutzend Zahlen - vernachlässigbar, und die Arrays werden mit jeder
+ * Wiederholung neu angelegt.
+ */
 interface RepAccumulator {
   startTimeMs: number;
-  minElbowAngleDeg: number;
-  minHipStraightnessDeg: number;
-  maxElbowFlareDeg: number;
-  minNeckAngleDeg: number;
+  elbowAngles: number[];
+  hipStraightness: number[];
+  elbowFlare: number[];
+  neckAngles: number[];
   hipSagDeviationAtDeepest: number;
   deepestElbowAngleSoFar: number;
+  /** Frames mit verwertbarer Pose seit Beginn dieser Wiederholung. */
+  trackedFrames: number;
+  /** Frames ohne verwertbare Pose seit Beginn dieser Wiederholung. */
+  untrackedFrames: number;
 }
 
 function freshAccumulator(timeMs: number): RepAccumulator {
   return {
     startTimeMs: timeMs,
-    minElbowAngleDeg: Infinity,
-    minHipStraightnessDeg: Infinity,
-    maxElbowFlareDeg: -Infinity,
-    minNeckAngleDeg: Infinity,
+    elbowAngles: [],
+    hipStraightness: [],
+    elbowFlare: [],
+    neckAngles: [],
     hipSagDeviationAtDeepest: 0,
     deepestElbowAngleSoFar: Infinity,
+    trackedFrames: 0,
+    untrackedFrames: 0,
   };
 }
 
@@ -136,6 +227,17 @@ export class PushUpAnalyzer {
    */
   private lockedSide: BodySide | null = null;
   private readonly thresholds: PushUpThresholds;
+  /**
+   * Wie oft in dieser Sitzung eine Bewegung verworfen wurde, nach Grund. Rein
+   * diagnostisch: Steigt hier etwas auffällig, stimmt etwas mit der Aufnahmesituation
+   * nicht (Handy zu nah, Person halb aus dem Bild, Bildrate eingebrochen) - und nicht
+   * mit der Ausführung.
+   */
+  private discardCounts: Record<RepDiscardReason, number> = {
+    TOO_SHORT: 0,
+    TOO_LONG: 0,
+    TRACKING_LOST: 0,
+  };
 
   constructor(thresholds: Partial<PushUpThresholds> = {}) {
     this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
@@ -146,6 +248,12 @@ export class PushUpAnalyzer {
     this.repIndex = 0;
     this.acc = null;
     this.lockedSide = null;
+    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0 };
+  }
+
+  /** Kopie der Verwurf-Zähler dieser Sitzung (siehe `discardCounts`). */
+  getDiscardCounts(): Record<RepDiscardReason, number> {
+    return { ...this.discardCounts };
   }
 
   getPhase(): RepPhase {
@@ -158,8 +266,21 @@ export class PushUpAnalyzer {
    * live feedback (and no rep updates) when the pose isn't confidently visible enough
    * to trust, e.g. the user stepped partly out of frame.
    */
-  processFrame(pose: Pose, timestampMs: number): { live: LiveFeedback; completedRep: RepResult | null } {
+  processFrame(
+    pose: Pose,
+    timestampMs: number
+  ): { live: LiveFeedback; completedRep: RepResult | null; discardedRep: DiscardedRep | null } {
     const t = this.thresholds;
+
+    // Der Zeitablauf wird VOR der Sichtbarkeitsprüfung ausgewertet. Sonst könnte eine
+    // Wiederholung, die genau deshalb hängt, weil das Tracking weggebrochen ist, nie
+    // ablaufen - der Zweig unten kehrt ja vorzeitig zurück. Genau dieser Fall steckt in
+    // den Messdaten vom 09.09.2026 als 26-, 30- und 34-Sekunden-"Wiederholung".
+    let discardedRep: DiscardedRep | null = null;
+    if (this.acc && timestampMs - this.acc.startTimeMs > t.maxRepDurationMs) {
+      discardedRep = this.discardRep('TOO_LONG', timestampMs);
+    }
+
     const side = this.lockedSide ?? pickMoreVisibleSide(pose);
     const idx = sideIndices(side);
 
@@ -171,9 +292,14 @@ export class PushUpAnalyzer {
     // advanced past 'up' whenever that happened - no rep ever counted, regardless of how
     // clean the push-up itself was.
     if (!allVisible(pose, [idx.shoulder, idx.elbow, idx.wrist], t.minVisibility)) {
+      // Mitzählen, statt den Ausfall stillschweigend zu überspringen: Am Ende der
+      // Wiederholung entscheidet dieser Anteil darüber, ob die Formwerte überhaupt
+      // belastbar sind.
+      if (this.acc) this.acc.untrackedFrames += 1;
       return {
         live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null },
         completedRep: null,
+        discardedRep,
       };
     }
 
@@ -229,7 +355,12 @@ export class PushUpAnalyzer {
         if (elbowAngleDeg <= t.elbowAttemptDeg) {
           this.phase = 'down';
         } else if (elbowAngleDeg >= t.elbowUpDeg) {
-          completedRep = this.finishRep(timestampMs);
+          const outcome = this.finishRep(timestampMs);
+          completedRep = outcome.rep;
+          // Ein bereits gesetztes `discardedRep` (Zeitablauf) kann hier nicht mehr
+          // stehen: Der Zeitablauf hat `this.acc` geleert, dann gäbe es keine laufende
+          // Wiederholung mehr abzuschließen.
+          if (outcome.discarded) discardedRep = outcome.discarded;
           this.phase = 'up';
           this.lockedSide = null;
         }
@@ -237,16 +368,11 @@ export class PushUpAnalyzer {
     }
 
     if (this.acc && this.phase !== 'up') {
-      this.acc.minElbowAngleDeg = Math.min(this.acc.minElbowAngleDeg, elbowAngleDeg);
-      if (hipStraightnessDeg !== null) {
-        this.acc.minHipStraightnessDeg = Math.min(this.acc.minHipStraightnessDeg, hipStraightnessDeg);
-      }
-      if (elbowFlareDeg !== null) {
-        this.acc.maxElbowFlareDeg = Math.max(this.acc.maxElbowFlareDeg, elbowFlareDeg);
-      }
-      if (neckAngleDeg !== null) {
-        this.acc.minNeckAngleDeg = Math.min(this.acc.minNeckAngleDeg, neckAngleDeg);
-      }
+      this.acc.trackedFrames += 1;
+      this.acc.elbowAngles.push(elbowAngleDeg);
+      if (hipStraightnessDeg !== null) this.acc.hipStraightness.push(hipStraightnessDeg);
+      if (elbowFlareDeg !== null) this.acc.elbowFlare.push(elbowFlareDeg);
+      if (neckAngleDeg !== null) this.acc.neckAngles.push(neckAngleDeg);
       if (elbowAngleDeg < this.acc.deepestElbowAngleSoFar) {
         this.acc.deepestElbowAngleSoFar = elbowAngleDeg;
         if (hipSagDeviation !== null) {
@@ -260,7 +386,28 @@ export class PushUpAnalyzer {
     return {
       live: { phase: this.phase, trackingOk: true, elbowAngleDeg, hipStraightnessDeg: hipStraightnessDeg ?? 0, cue },
       completedRep,
+      discardedRep,
     };
+  }
+
+  /**
+   * Bricht die laufende Wiederholung ab, ohne sie zu zählen oder zu bewerten. Der
+   * Wiederholungszähler wird bewusst nicht erhöht - eine verworfene Wiederholung darf
+   * keine Nummer verbrauchen, sonst klaffen später Lücken in der Historie.
+   */
+  private discardRep(reason: RepDiscardReason, timestampMs: number): DiscardedRep {
+    const acc = this.acc!;
+    const discarded: DiscardedRep = {
+      reason,
+      durationMs: timestampMs - acc.startTimeMs,
+      trackedFrames: acc.trackedFrames,
+      untrackedFrames: acc.untrackedFrames,
+    };
+    this.discardCounts[reason] += 1;
+    this.acc = null;
+    this.phase = 'up';
+    this.lockedSide = null;
+    return discarded;
   }
 
   private liveCue(
@@ -282,48 +429,80 @@ export class PushUpAnalyzer {
     return 'GOOD_FORM';
   }
 
-  private finishRep(timestampMs: number): RepResult {
+  /**
+   * Schließt die laufende Wiederholung ab. Liefert entweder eine bewertete
+   * Wiederholung **oder** - wenn sie die Plausibilitätsprüfungen nicht besteht - den
+   * Grund, aus dem sie verworfen wurde. Nie beides.
+   */
+  private finishRep(timestampMs: number): { rep: RepResult | null; discarded: DiscardedRep | null } {
     const t = this.thresholds;
     const acc = this.acc!;
+    const durationMs = timestampMs - acc.startTimeMs;
+
+    // --- Plausibilitätsprüfungen vor jeder Bewertung -------------------------------
+    if (durationMs < t.minRepDurationMs) {
+      return { rep: null, discarded: this.discardRep('TOO_SHORT', timestampMs) };
+    }
+
+    const totalFrames = acc.trackedFrames + acc.untrackedFrames;
+    const trackedRatio = totalFrames === 0 ? 0 : acc.trackedFrames / totalFrames;
+    if (acc.elbowAngles.length === 0 || trackedRatio < t.minTrackedFrameRatio) {
+      return { rep: null, discarded: this.discardRep('TRACKING_LOST', timestampMs) };
+    }
+
+    // --- Robuste Kennzahlen statt schlechtester Einzelframe -------------------------
+    // Zwei unterschiedliche Verfahren, aus gutem Grund: Die Tiefe ist der Umkehrpunkt
+    // einer Bewegung (n-kleinster Wert), Hüfte/Flare/Nacken sind Plateaus über die
+    // Wiederholung (Perzentil). Warum das nicht dasselbe ist, steht in src/pose/stats.ts.
+    // NaN bedeutet "nie gemessen" (leere Reihe). Jeder Vergleich mit NaN ist false, die
+    // betroffene Prüfung fällt damit still aus - genau das gewünschte Verhalten, wenn
+    // z. B. die Füße nie im Bild waren.
+    const lowP = t.formPercentile;
+    const highP = 100 - t.formPercentile;
+    const elbowDepthDeg = nthSmallest(acc.elbowAngles, t.depthOutlierFrames);
+    const hipStraightnessDeg = percentile(acc.hipStraightness, lowP);
+    const elbowFlareDeg = percentile(acc.elbowFlare, highP);
+    const neckAngleDeg = percentile(acc.neckAngles, lowP);
+
     const issues: FormIssue[] = [];
     let score = 100;
 
-    if (acc.minElbowAngleDeg > t.goodDepthElbowDeg) {
-      const deficit = acc.minElbowAngleDeg - t.goodDepthElbowDeg;
+    if (elbowDepthDeg > t.goodDepthElbowDeg) {
+      const deficit = elbowDepthDeg - t.goodDepthElbowDeg;
       score -= clamp(deficit * 1.5, 0, 40);
       issues.push('INSUFFICIENT_DEPTH');
     }
 
-    if (acc.minHipStraightnessDeg < t.minHipStraightnessDeg) {
-      const deficit = t.minHipStraightnessDeg - acc.minHipStraightnessDeg;
+    if (hipStraightnessDeg < t.minHipStraightnessDeg) {
+      const deficit = t.minHipStraightnessDeg - hipStraightnessDeg;
       score -= clamp(deficit * 1.2, 0, 35);
       issues.push(acc.hipSagDeviationAtDeepest >= 0 ? 'HIPS_SAGGING' : 'HIPS_PIKING');
     }
 
-    if (acc.maxElbowFlareDeg > t.maxElbowFlareDeg) {
-      const deficit = acc.maxElbowFlareDeg - t.maxElbowFlareDeg;
+    if (elbowFlareDeg > t.maxElbowFlareDeg) {
+      const deficit = elbowFlareDeg - t.maxElbowFlareDeg;
       score -= clamp(deficit * 0.8, 0, 20);
       issues.push('ELBOWS_FLARED');
     }
 
-    if (acc.minNeckAngleDeg < t.minNeckAngleDeg) {
-      const deficit = t.minNeckAngleDeg - acc.minNeckAngleDeg;
+    if (neckAngleDeg < t.minNeckAngleDeg) {
+      const deficit = t.minNeckAngleDeg - neckAngleDeg;
       score -= clamp(deficit * 0.5, 0, 15);
       issues.push('HEAD_MISALIGNED');
     }
 
-    const result: RepResult = {
+    const rep: RepResult = {
       index: this.repIndex++,
       formScore: Math.round(clamp(score, 0, 100)),
       issues,
-      minElbowAngleDeg: Math.round(acc.minElbowAngleDeg),
-      minHipStraightnessDeg: roundOrNull(acc.minHipStraightnessDeg),
-      maxElbowFlareDeg: roundOrNull(acc.maxElbowFlareDeg),
-      minNeckAngleDeg: roundOrNull(acc.minNeckAngleDeg),
-      durationMs: timestampMs - acc.startTimeMs,
+      minElbowAngleDeg: Math.round(elbowDepthDeg),
+      minHipStraightnessDeg: roundOrNull(hipStraightnessDeg),
+      maxElbowFlareDeg: roundOrNull(elbowFlareDeg),
+      minNeckAngleDeg: roundOrNull(neckAngleDeg),
+      durationMs,
     };
 
     this.acc = null;
-    return result;
+    return { rep, discarded: null };
   }
 }

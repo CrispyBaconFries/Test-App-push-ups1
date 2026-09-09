@@ -7,43 +7,68 @@ untersucht wurde.
 
 ---
 
-## 1. HIPS_SAGGING-Fehlalarm beheben
+## 1. Fehlalarme bei Hüfte und Kopf
 
-**Beobachtung von chris (07.09.2026):** Ganzkörper vollständig im Bild, gerader Rücken,
-Blick geradeaus in die Kamera — trotzdem dauerhaft „Hüfte sackt durch".
+**Beobachtung von chris (07.–09.09.2026):** Ganzkörper vollständig im Bild, gerader
+Rücken, Blick geradeaus in die Kamera — trotzdem dauerhaft „Hüfte sackt durch" und
+„Kopfhaltung". Bestätigt durch 124 aufgezeichnete Wiederholungen aus 10 Sitzungen
+(`docs/messdaten/2026-09-09-reps.json`, auswertbar mit `npm run analyze:reps`):
+`HEAD_MISALIGNED` schlägt bei **93,5 %** an, irgendeine Hüftmeldung bei **91 %**.
 
-Zwei konkrete Verdachtspunkte in `src/pose/formAnalysis.ts`, beide vor dem Kalibrieren zu
-prüfen. **Nicht einfach die Schwelle hochdrehen** — das würde echte Formfehler mit
-verstecken:
+### ✅ Erledigt (09.09.2026)
 
-1. **Falscher Referenzpunkt.**
+- **Robuste Kennzahlen statt schlechtestem Einzelframe.** Hüfte/Nacken/Flare als
+  Perzentil, Tiefe als n-kleinster Wert — siehe `src/pose/stats.ts` und README,
+  „Warum die Formwerte keine Extremwerte mehr sind".
+- **Plausibilitätsprüfung der Segmentierung.** Zu kurze, zu lange und schlecht
+  getrackte Bewegungen werden verworfen statt gezählt (19 % des alten Datensatzes).
+- **Verworfene Bewegungen werden mitprotokolliert** (`discardedRep`,
+  `getDiscardCounts()`, Eintragstyp `discarded` im Kalibrier-Log).
+- **Auswertungsskript** `scripts/analyze-rep-log.js`, damit jede weitere Aufzeichnung
+  identisch ausgewertet wird.
+
+### Noch offen
+
+1. **Falscher Referenzpunkt bei der Hüfte.**
    ```ts
    const hipStraightnessDeg = hip && ankle ? angleAtPoint(shoulder, hip, ankle) : null;
    ```
    Beim Liegestütz steht der Fuß auf den Zehen, der Knöchel liegt also deutlich
    *unterhalb* der Körperlinie Schulter–Hüfte–Knie. Der Winkel Schulter–Hüfte–Knöchel ist
-   damit auch bei perfekt geradem Rücken systematisch kleiner als 180° — und rutscht ohne
-   jedes Zutun unter die Schwelle von 160°. Kandidat: **Schulter–Hüfte–Knie** messen (das
-   Knie liegt auf der Körperlinie), den Knöchel nur noch für die Sichtbarkeitsprüfung
+   damit auch bei perfekt geradem Rücken systematisch kleiner als 180°. Kandidat:
+   **Schulter–Hüfte–Knie** messen, den Knöchel nur noch für die Sichtbarkeitsprüfung
    verwenden.
 
-2. **Live-Hinweis ignoriert die Richtung.**
+2. **Der Live-Hinweis ignoriert die Richtung.**
    ```ts
    if (hipStraightnessDeg !== null && hipStraightnessDeg < t.minHipStraightnessDeg) {
      return 'HIPS_SAGGING';
    }
    ```
-   `liveCue()` wertet das Vorzeichen von `hipSagDeviation` überhaupt nicht aus. Der
-   Live-Hinweis kann deshalb **niemals** `HIPS_PIKING` melden und nennt jede Abweichung
-   „sackt durch" — auch ein hochgestrecktes Gesäß. `finishRep()` macht es richtig
-   (`acc.hipSagDeviationAtDeepest >= 0 ? 'HIPS_SAGGING' : 'HIPS_PIKING'`), `liveCue()`
-   nicht. Das erklärt zusätzlich, warum die Meldung sich „falsch" anfühlt.
+   `liveCue()` wertet das Vorzeichen von `hipSagDeviation` nicht aus, kann deshalb
+   **niemals** `HIPS_PIKING` melden und nennt jede Abweichung „sackt durch".
+   `finishRep()` macht es richtig, `liveCue()` nicht.
 
-**Danach erst kalibrieren:** `minHipStraightnessDeg` (aktuell 160) und `minNeckAngleDeg`
-(aktuell 140) anhand echter Aufzeichnungen von chris neu setzen. Werkzeug ist vorhanden:
-`calibrationLogger` plus der DEV-Teilen-Knopf auf dem HomeScreen. Reihenfolge:
-erst 1. und 2. beheben, dann neu aufzeichnen, dann Zahlen festlegen — sonst kalibriert man
-auf einen Messfehler.
+3. **Schwellen neu setzen** — `minHipStraightnessDeg` (160) und `minNeckAngleDeg` (140)
+   liegen beide oberhalb des 90. Perzentils aller je gemessenen Werte. Aber erst nach
+   1. und 2. **und** nach einer neuen Aufzeichnung, sonst kalibriert man auf den
+   Messfehler.
+
+4. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
+   Konfidenzwerte im nativen Bridge-Code (`ConvertHelpers.kt`); `visibility` ist bei uns
+   auf jedem Frame `undefined`. Solange das so bleibt, können schlechte Landmarken gar
+   nicht aussortiert werden — `minTrackedFrameRatio` greift derzeit nur, wenn ein
+   Landmark ganz fehlt. Für dieses Paket gibt es bereits einen Patch, in den das mit
+   hineinkann.
+
+5. **Sitzungskontext erfassen** — Person, Abstand, Handyhöhe, frontal oder seitlich, und
+   eine Selbsteinschätzung nach dem Satz. Ohne das mischen sich mehrere Personen aus
+   unbekannten Perspektiven in einem Datensatz; genau daher stammt die enorme Streuung
+   (Flare-Median je Sitzung zwischen 58° und 101° — das ist die Kameraperspektive, nicht
+   die Technik).
+
+6. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen
+   nicht, um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
 
 ## 2. Kalibrierung mit Kopf-Rahmen vor dem Training
 

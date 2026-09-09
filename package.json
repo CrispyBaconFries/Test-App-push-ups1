@@ -62,7 +62,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "postinstall": "patch-package",
-    "clean:native": "node scripts/clean-native-build.js"
+    "clean:native": "node scripts/clean-native-build.js",
+    "analyze:reps": "node scripts/analyze-rep-log.js"
   },
   "private": true,
   "jest": {

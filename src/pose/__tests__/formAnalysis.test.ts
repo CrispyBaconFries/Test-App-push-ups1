@@ -1,84 +1,198 @@
-import { PushUpAnalyzer } from '../formAnalysis';
-import { buildFrame, mergePoses } from '../testing/poseBuilder';
-import { pickMoreVisibleSide } from '../landmarks';
+import { PushUpAnalyzer, type DiscardedRep, type LiveFeedback, type RepResult } from '../formAnalysis';
+import { buildFrame, mergePoses, type SyntheticFrameParams } from '../testing/poseBuilder';
+import { pickMoreVisibleSide, type Pose } from '../landmarks';
 import { PoseLandmarkIndex } from '../blazePoseLandmarks';
+
+/** ~30 Frames/s - die Bildrate, die die Kamera tatsächlich liefert. */
+const FRAME_MS = 33;
+
+/**
+ * Realistischer Winkelverlauf einer Wiederholung: 170° -> `bottomDeg` -> 170°, weich
+ * (Kosinus) und dicht abgetastet.
+ *
+ * Warum das sein muss: Seit der Umstellung auf robuste Kennzahlen (09.09.2026) sind die
+ * Formwerte Perzentile bzw. der n-kleinste Wert über die Frames einer Wiederholung. Eine
+ * Testsequenz aus fünf Stützstellen ist dafür keine gültige Eingabe mehr - "überspringe
+ * die zwei größten Ausreißer" wäre dort die Hälfte aller Messwerte. Eine echte
+ * Wiederholung dauert rund 1,5 Sekunden und besteht damit bei 30 fps aus etwa 45 Frames.
+ */
+function repSweep(bottomDeg: number, frames = 45): number[] {
+  return Array.from({ length: frames }, (_, i) => {
+    const phase = 1 - Math.cos((2 * Math.PI * i) / (frames - 1)); // 0 an den Enden, 2 in der Mitte
+    return 170 - ((170 - bottomDeg) * phase) / 2;
+  });
+}
+
+/**
+ * Spielt Frames im Kameratakt ab und sammelt alles ein, was dabei herauskommt.
+ *
+ * Bewusst nicht "gib das Ergebnis des letzten Frames zurück": Eine Wiederholung endet
+ * dort, wo der Arm wieder gestreckt ist - bei einem realistischen Bewegungsverlauf also
+ * einige Frames vor dem Ende der Sequenz. `reps.length` ist außerdem die Prüfung, die
+ * Doppelzählungen auffliegen lässt.
+ */
+function runFrames(
+  analyzer: PushUpAnalyzer,
+  poses: Pose[],
+  startMs = 0
+): { reps: RepResult[]; discards: DiscardedRep[]; live: LiveFeedback } {
+  const reps: RepResult[] = [];
+  const discards: DiscardedRep[] = [];
+  let last: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+  poses.forEach((pose, i) => {
+    last = analyzer.processFrame(pose, startMs + i * FRAME_MS);
+    if (last.completedRep) reps.push(last.completedRep);
+    if (last.discardedRep) discards.push(last.discardedRep);
+  });
+  return { reps, discards, live: last!.live };
+}
+
+/** Eine Wiederholung mit gleichbleibenden Körperparametern über den ganzen Verlauf. */
+function repFrames(bottomDeg: number, params: Omit<SyntheticFrameParams, 'elbowAngleDeg'> = {}): Pose[] {
+  return repSweep(bottomDeg).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg, ...params }));
+}
 
 describe('PushUpAnalyzer', () => {
   it('counts a clean, deep rep with a perfect form score', () => {
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 90, 90, 120, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const { reps, discards } = runFrames(analyzer, repFrames(90));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg }), i * 33);
-    });
-
-    expect(lastResult!.completedRep).not.toBeNull();
-    expect(lastResult!.completedRep!.formScore).toBe(100);
-    expect(lastResult!.completedRep!.issues).toEqual([]);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].formScore).toBe(100);
+    expect(reps[0].issues).toEqual([]);
+    expect(discards).toEqual([]);
     expect(analyzer.getPhase()).toBe('up');
   });
 
   it('still counts a shallow rep, but penalizes it for insufficient depth', () => {
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 120, 145, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const { reps } = runFrames(analyzer, repFrames(120));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg }), i * 33);
-    });
-
-    expect(lastResult!.completedRep).not.toBeNull();
-    expect(lastResult!.completedRep!.issues).toContain('INSUFFICIENT_DEPTH');
-    expect(lastResult!.completedRep!.formScore).toBe(63);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).toContain('INSUFFICIENT_DEPTH');
+    // Der n-kleinste Wert landet praktisch auf dem echten Umkehrpunkt (120,25°), weil die
+    // Frames dort am dichtesten liegen - genau das ist der Grund, warum die Tiefe nicht
+    // über ein Perzentil des ganzen Bewegungsbogens bestimmt wird.
+    expect(reps[0].minElbowAngleDeg).toBe(120);
+    expect(reps[0].formScore).toBe(62);
   });
 
   it('discards a small dip near lockout as a false start instead of counting it', () => {
     const analyzer = new PushUpAnalyzer();
-    // Dips to 145 (never crosses the 140 attempt threshold), then straightens back out.
-    const falseStart = [180, 150, 145, 165];
-    falseStart.forEach((elbowAngleDeg, i) => {
-      const { completedRep } = analyzer.processFrame(buildFrame({ elbowAngleDeg }), i * 33);
+    // Sinkt auf 145 (überschreitet die Versuchsschwelle von 140 nie) und streckt sich wieder.
+    const falseStart = [170, 160, 150, 145, 150, 165].map((elbowAngleDeg) => buildFrame({ elbowAngleDeg }));
+    falseStart.forEach((pose, i) => {
+      const { completedRep, discardedRep } = analyzer.processFrame(pose, i * FRAME_MS);
       expect(completedRep).toBeNull();
+      // Ein Fehlstart ist keine verworfene Wiederholung: Er war nie eine.
+      expect(discardedRep).toBeNull();
     });
     expect(analyzer.getPhase()).toBe('up');
 
-    // A real rep right after should still be counted as rep #1 (index 0) - the false
-    // start above must not have consumed a rep index or left stray state behind.
-    const realRep = [150, 90, 90, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
-    realRep.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg }), (falseStart.length + i) * 33);
-    });
-    expect(lastResult!.completedRep?.index).toBe(0);
+    // Eine echte Wiederholung direkt danach muss weiterhin Wiederholung #1 (Index 0) sein -
+    // der Fehlstart darf weder einen Index verbraucht noch Zustand hinterlassen haben.
+    const { reps } = runFrames(analyzer, repFrames(90), falseStart.length * FRAME_MS);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].index).toBe(0);
   });
 
   it('flags sagging hips and lowers the score, without also reporting piking', () => {
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 90, 90, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const { reps } = runFrames(analyzer, repFrames(90, { hipOffsetY: 0.3 }));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, hipOffsetY: 0.3 }), i * 33);
-    });
-
-    expect(lastResult!.completedRep).not.toBeNull();
-    expect(lastResult!.completedRep!.issues).toContain('HIPS_SAGGING');
-    expect(lastResult!.completedRep!.issues).not.toContain('HIPS_PIKING');
-    expect(lastResult!.completedRep!.formScore).toBeLessThan(100);
-    expect(lastResult!.completedRep!.formScore).toBeGreaterThan(60);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).toContain('HIPS_SAGGING');
+    expect(reps[0].issues).not.toContain('HIPS_PIKING');
+    expect(reps[0].formScore).toBeLessThan(100);
+    expect(reps[0].formScore).toBeGreaterThan(60);
   });
 
   it('flags flared elbows during the down phase', () => {
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 90, 90, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const { reps } = runFrames(analyzer, repFrames(90, { flareDeg: 95 }));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, flareDeg: 95 }), i * 33);
-    });
+    expect(reps[0].issues).toContain('ELBOWS_FLARED');
+  });
 
-    expect(lastResult!.completedRep!.issues).toContain('ELBOWS_FLARED');
+  it('ignores a single glitch frame, but still catches form that is genuinely off', () => {
+    // Der Kern der Umstellung vom 09.09.2026. In den echten Messdaten
+    // (docs/messdaten/2026-09-09-reps.json) melden Wiederholungen mit einem
+    // Erkennungsaussetzer einen Ellbogen-Flare von im Median 138° - ein Winkel, bei dem
+    // der Arm hinter dem Rücken stünde. Vorher entschied genau so ein Frame über die
+    // ganze Wiederholung.
+    const withGlitch = new PushUpAnalyzer();
+    const frames = repFrames(90);
+    frames[15] = buildFrame({ elbowAngleDeg: 90, flareDeg: 175, hipOffsetY: 0.9 });
+    const glitched = runFrames(withGlitch, frames);
+
+    expect(glitched.reps).toHaveLength(1);
+    expect(glitched.reps[0].issues).toEqual([]);
+    expect(glitched.reps[0].formScore).toBe(100);
+
+    // Gegenprobe: Dieselbe Abweichung über die ganze Wiederholung muss weiterhin auffallen.
+    const persistent = new PushUpAnalyzer();
+    const flagged = runFrames(persistent, repFrames(90, { flareDeg: 175, hipOffsetY: 0.9 }));
+    expect(flagged.reps[0].issues).toContain('ELBOWS_FLARED');
+    expect(flagged.reps[0].issues).toContain('HIPS_SAGGING');
+  });
+
+  it('discards a rep that completes impossibly fast instead of counting it twice', () => {
+    // 6 von 124 echten Wiederholungen lagen unter 500 ms - das sind Doppelzählungen durch
+    // Winkelrauschen an der Schwelle, keine Liegestütze.
+    const analyzer = new PushUpAnalyzer();
+    const fast = repSweep(90, 8).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg }));
+    const { reps, discards } = runFrames(analyzer, fast);
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['TOO_SHORT']);
+    expect(analyzer.getDiscardCounts().TOO_SHORT).toBe(1);
+
+    // Kein Index verbraucht: die nächste echte Wiederholung ist weiterhin #1.
+    const real = runFrames(analyzer, repFrames(90), 10_000);
+    expect(real.reps[0].index).toBe(0);
+  });
+
+  it('aborts a rep that hangs, instead of blaming the pause on the athlete', () => {
+    // 16 von 124 echten Wiederholungen dauerten über 8 Sekunden, die längste 34 - dort hing
+    // der Zähler, während sich jemand hinlegte. Alle Formwerte dieser Wiederholungen waren
+    // unbrauchbar (Flare-Median 138°).
+    const analyzer = new PushUpAnalyzer();
+    const down = repSweep(90).slice(0, 20).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg }));
+    runFrames(analyzer, down);
+    expect(analyzer.getPhase()).not.toBe('up');
+
+    // Ein Frame 30 Sekunden später - dieselbe Haltung, aber die Wiederholung ist längst tot.
+    const late = analyzer.processFrame(buildFrame({ elbowAngleDeg: 90 }), 30_000);
+    expect(late.discardedRep?.reason).toBe('TOO_LONG');
+    expect(late.completedRep).toBeNull();
+    expect(analyzer.getDiscardCounts().TOO_LONG).toBe(1);
+  });
+
+  it('discards a rep whose pose was lost for most of its frames', () => {
+    const analyzer = new PushUpAnalyzer();
+    const sweep = repSweep(90);
+    // Die Wiederholung beginnt erst, wenn der Winkel unter 160° fällt (hier ~Frame 6) -
+    // die ersten Frames müssen also sichtbar sein, sonst startet sie nie. Danach bricht
+    // das Tracking weg und kommt erst kurz vor dem Ende zurück.
+    const trackable = (i: number) => i < 12 || i >= 40;
+    const patchy = sweep.map((elbowAngleDeg, i) =>
+      buildFrame({ elbowAngleDeg, visibility: trackable(i) ? 1 : 0.1 })
+    );
+    const { reps, discards } = runFrames(analyzer, patchy);
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['TRACKING_LOST']);
+    expect(discards[0].untrackedFrames).toBeGreaterThan(discards[0].trackedFrames);
+    expect(analyzer.getDiscardCounts().TRACKING_LOST).toBe(1);
+  });
+
+  it('resets the discard counters together with the rest of the state', () => {
+    const analyzer = new PushUpAnalyzer();
+    runFrames(analyzer, repSweep(90, 8).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg })));
+    expect(analyzer.getDiscardCounts().TOO_SHORT).toBe(1);
+
+    analyzer.reset();
+    expect(analyzer.getDiscardCounts()).toEqual({ TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0 });
   });
 
   it('still counts a rep when the pose has no visibility data at all (matches real device data)', () => {
@@ -88,17 +202,11 @@ describe('PushUpAnalyzer', () => {
     // instead of going through buildFrame() (which always sets some visibility value)
     // to prove the analyzer still works against what the app actually receives.
     const analyzer = new PushUpAnalyzer();
-    const stripVisibility = (pose: ReturnType<typeof buildFrame>) =>
-      pose.map(({ visibility: _visibility, ...rest }) => rest);
-    const sequence = [180, 150, 90, 90, 120, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const stripVisibility = (pose: Pose) => pose.map(({ visibility: _visibility, ...rest }) => rest);
+    const { reps } = runFrames(analyzer, repFrames(90).map(stripVisibility));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(stripVisibility(buildFrame({ elbowAngleDeg })), i * 33);
-    });
-
-    expect(lastResult!.completedRep).not.toBeNull();
-    expect(lastResult!.completedRep!.formScore).toBe(100);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].formScore).toBe(100);
   });
 
   it('still counts a rep when the feet/hips are out of frame, as long as the arm is visible', () => {
@@ -108,35 +216,25 @@ describe('PushUpAnalyzer', () => {
     // minimum). Rep counting must not depend on that - only form-quality checks that
     // specifically need hip/ankle/ear should degrade, not the rep count itself.
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 90, 90, 120, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const { reps } = runFrames(analyzer, repFrames(90, { extendedVisibility: 0.1 }));
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, extendedVisibility: 0.1 }), i * 33);
-    });
-
-    expect(lastResult!.completedRep).not.toBeNull();
+    expect(reps).toHaveLength(1);
     // No hip/ankle data was ever available, so those checks must give the benefit of the
     // doubt rather than penalizing the rep for something that couldn't be measured.
-    expect(lastResult!.completedRep!.issues).toEqual([]);
+    expect(reps[0].issues).toEqual([]);
     expect(analyzer.getPhase()).toBe('up');
   });
 
   it('reports unmeasurable form metrics as null, not as a non-finite number', () => {
-    // Same out-of-frame setup as above. The optional-check accumulators start at
-    // ±Infinity, and a rep that never saw hip/ankle/ear leaves them there. RepResults are
-    // persisted with JSON.stringify (workout history, calibration log), where Infinity
-    // silently turns into null - so anything reading those numbers back would get a
-    // null typed as `number` and quietly compute NaN. Report "not measured" honestly.
+    // Same out-of-frame setup as above. A rep that never saw hip/ankle/ear leaves those
+    // measurement series empty, and percentile() reports that as NaN. RepResults are
+    // persisted with JSON.stringify (workout history, calibration log), where a
+    // non-finite number silently turns into null - so anything reading those numbers back
+    // would get a null typed as `number` and quietly compute NaN. Report "not measured"
+    // honestly instead.
     const analyzer = new PushUpAnalyzer();
-    const sequence = [180, 150, 90, 90, 120, 150, 165];
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    const rep = runFrames(analyzer, repFrames(90, { extendedVisibility: 0.1 })).reps[0];
 
-    sequence.forEach((elbowAngleDeg, i) => {
-      lastResult = analyzer.processFrame(buildFrame({ elbowAngleDeg, extendedVisibility: 0.1 }), i * 33);
-    });
-
-    const rep = lastResult!.completedRep!;
     expect(rep.minHipStraightnessDeg).toBeNull();
     expect(rep.maxElbowFlareDeg).toBeNull();
     expect(rep.minNeckAngleDeg).toBeNull();
@@ -165,21 +263,18 @@ describe('PushUpAnalyzer', () => {
         buildFrame({ elbowAngleDeg, flareDeg: 95, side: 'right', visibility: rightVisibility })
       );
 
-    let lastResult: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    // Links ist besser sichtbar, wenn die Wiederholung beginnt (der Winkel fällt hier um
+    // Frame 6 unter 160°), und wird deshalb festgelegt; ab Frame 12 wird rechts sichtbarer.
+    // Ohne die Seiten-Festlegung würde `pickMoreVisibleSide` mitten in der Wiederholung auf
+    // die abgespreizten Werte der rechten Seite umschalten.
+    const poses = repSweep(90).map((elbowAngleDeg, i) =>
+      i < 12 ? bothSides(elbowAngleDeg, 0.9, 0.6) : bothSides(elbowAngleDeg, 0.9, 0.95)
+    );
+    const { reps } = runFrames(analyzer, poses);
 
-    // Left is more visible when the rep starts, so it gets locked in...
-    lastResult = analyzer.processFrame(bothSides(180, 0.9, 0.6), 0);
-    lastResult = analyzer.processFrame(bothSides(150, 0.9, 0.6), 33);
-    // ...then right becomes *more* visible than left for the rest of the rep. Without
-    // side-locking, `pickMoreVisibleSide` would switch to right's flared-elbow data here.
-    lastResult = analyzer.processFrame(bothSides(90, 0.9, 0.95), 66);
-    lastResult = analyzer.processFrame(bothSides(90, 0.9, 0.95), 99);
-    lastResult = analyzer.processFrame(bothSides(150, 0.9, 0.95), 132);
-    lastResult = analyzer.processFrame(bothSides(165, 0.9, 0.95), 165);
-
-    expect(lastResult!.completedRep).not.toBeNull();
-    expect(lastResult!.completedRep!.issues).not.toContain('ELBOWS_FLARED');
-    expect(lastResult!.completedRep!.formScore).toBe(100);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).not.toContain('ELBOWS_FLARED');
+    expect(reps[0].formScore).toBe(100);
   });
 });
 

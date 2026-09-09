@@ -311,6 +311,66 @@ reduziert; alle Schwellenwerte liegen gesammelt in `DEFAULT_THRESHOLDS`
 (`src/pose/formAnalysis.ts`) und lassen sich leicht anpassen/kalibrieren, sobald du
 gesehen hast, wie sich die App bei dir anfühlt.
 
+### Warum die Formwerte keine Extremwerte mehr sind (09.09.2026)
+
+Bis zum 09.09.2026 war jede Formkennzahl der **schlechteste Einzelframe** einer
+Wiederholung — kleinster Hüftwinkel, größter Ellbogen-Flare. Ein einziger verrutschter
+Frame entschied damit über die ganze Wiederholung. In den 124 aufgezeichneten
+Wiederholungen (`docs/messdaten/2026-09-09-reps.json`) ist das messbar: Wiederholungen
+mit einem Erkennungsaussetzer melden einen Ellbogen-Flare von im Median **138°** — ein
+Winkel, bei dem der Arm hinter dem Rücken stünde.
+
+Seitdem gilt:
+
+| Kennzahl | Verfahren | Warum |
+|---|---|---|
+| Hüftgerade, Nacken, Ellbogen-Flare | Perzentil über alle Frames (`formPercentile`, Standard 10) | Diese Werte sollen über eine saubere Wiederholung *ungefähr konstant* bleiben. Wer wirklich durchhängt, hängt in vielen Frames durch, nicht in einem. |
+| Ellbogen-Tiefe | n-kleinster Wert (`depthOutlierFrames`, Standard 2) | Die Tiefe ist der **Umkehrpunkt einer Bewegung**, kein Plateau. Der Winkel läuft von 170° auf 90° und zurück; ein Perzentil über den ganzen Bogen würde die Tiefe systematisch zu flach schätzen — und zwar umso stärker, je langsamer jemand die Wiederholung ausführt. |
+
+Beide Verfahren stehen in `src/pose/stats.ts`, die Begründung im Detail ebenfalls dort.
+
+### Plausibilitätsprüfung: nicht jede gezählte Bewegung ist eine Wiederholung
+
+Von denselben 124 aufgezeichneten Wiederholungen waren **24 (19 %) gar keine**:
+
+- **8 unter 700 ms** (6 davon unter 500 ms) — körperlich unmöglich, das sind
+  Doppelzählungen durch Winkelrauschen an der Schwelle.
+- **16 über 8 Sekunden**, die längste 34 — dort hing der Zähler, während sich jemand
+  hinlegte oder Pause machte. Alle Formwerte dieser Wiederholungen waren unbrauchbar.
+
+`PushUpAnalyzer` verwirft solche Bewegungen jetzt, statt sie zu zählen
+(`minRepDurationMs`, `maxRepDurationMs`, `minTrackedFrameRatio`). Eine verworfene
+Bewegung verbraucht **keinen** Wiederholungsindex, wird aber als `discardedRep` gemeldet
+und mit aufgezeichnet — sonst wäre von außen nicht unterscheidbar, ob jemand wenig
+trainiert hat oder ob die Erkennung die Hälfte weggeworfen hat. `getDiscardCounts()`
+liefert die Summen pro Grund.
+
+Die Zeitüberschreitung wird bewusst **vor** der Sichtbarkeitsprüfung ausgewertet:
+Eine Wiederholung, die genau deshalb hängt, weil das Tracking weggebrochen ist, würde
+sonst nie ablaufen.
+
+### Kalibrier-Log auswerten
+
+```bash
+npm run analyze:reps                       # der eingecheckte Datensatz
+node scripts/analyze-rep-log.js pfad.json  # eine neue Aufzeichnung
+```
+
+Das Skript beantwortet die drei Fragen, auf die es bei der Schwellenkalibrierung ankommt:
+
+1. **Wie oft schlägt eine Prüfung an?** Alles jenseits von etwa 50 % ist keine Prüfung
+   mehr, sondern eine Konstante. (Stand 09.09.2026: `HEAD_MISALIGNED` bei **93,5 %**.)
+2. **Erreichen die Wiederholungen die Schwelle überhaupt je?** Liegt die Schwelle über
+   dem 90. Perzentil aller je gemessenen Werte, ist sie nicht streng, sondern falsch.
+   (Stand: Hüfte ≥ 160° in 11 von 124, Nacken ≥ 140° in 9 von 124.)
+3. **Kippt die Hüftrichtung zwischen benachbarten Wiederholungen?** Ein Wechsel zwischen
+   „sackt durch" und „zu hoch" bei nahezu gleichem Winkel ist der Fingerabdruck von
+   Rauschen. (Stand: 43 % Wechsel, davon 24 bei ≤ 8° Unterschied.)
+
+**Die Schwellen selbst sind bewusst noch nicht angepasst.** Erst müssen die Messfehler
+raus — sonst kalibriert man auf den Fehler. Was noch offen ist, steht in
+`docs/backlog.md`.
+
 ### Native Bugfix: MediaPipe erkannte auf dem echten Gerät gar keine Pose
 
 Ursache dafür, dass auf dem echten Handy überhaupt keine Wiederholung gezählt wurde
@@ -1154,6 +1214,7 @@ src/
     blazePoseLandmarks.ts   33-Punkt-Indizes (BlazePose-Standard, kein Native-Import)
     landmarks.ts             Winkel-/Sichtbarkeits-Hilfsfunktionen
     formAnalysis.ts           Zustandsmaschine + Form-Scoring (PushUpAnalyzer)
+    stats.ts                  robuste Statistik (Perzentil / n-kleinster Wert) fuer die Formwerte
     feedbackText.ts            deutsche Texte für Form-Hinweise
     testing/poseBuilder.ts     synthetischer Pose-Generator für Tests
   components/

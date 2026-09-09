@@ -128,7 +128,7 @@ export function DuelScreen({ route, navigation }: Props) {
 
       if (finishedRef.current) return; // Zählung stoppt hart mit dem Duell-Ende.
 
-      const { live, completedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
+      const { live, completedRep, discardedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
       setActiveIssue(live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null);
 
       if (completedRep) {
@@ -137,6 +137,12 @@ export function DuelScreen({ route, navigation }: Props) {
         submitLiveRepCount(duelCode, me.uid, repsRef.current).catch(() => {});
         playRepSoundRef.current(completedRep.issues.length === 0);
       }
+
+      // Im Duell zählt eine verworfene Bewegung nicht - das ist beabsichtigt und für
+      // beide Seiten fair, denn die Alternative wäre, 300-ms-Zuckungen als Punkte zu
+      // werten. Hier nur protokolliert, damit sich Beschwerden über "der hat nicht
+      // gezählt" später nachvollziehen lassen.
+      if (__DEV__ && discardedRep) console.log('[DIAG] Wiederholung verworfen', discardedRep);
 
       const frameDims = vc.getFrameDims(result);
       const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));

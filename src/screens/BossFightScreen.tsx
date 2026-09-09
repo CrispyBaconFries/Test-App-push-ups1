@@ -29,7 +29,7 @@ import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions'
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { recordCalibrationRep } from '../pose/calibrationLogger';
+import { recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -93,7 +93,7 @@ export function BossFightScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
+    const { live: liveResult, completedRep, discardedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
 
     if (completedRep && bossRef.current) {
@@ -114,6 +114,16 @@ export function BossFightScreen({ navigation }: Props) {
       bossRef.current = next;
       setBoss(next);
       saveBossProgress(next).catch(() => {});
+    }
+
+    // Verworfene Bewegungen sind kein Rauschen, sondern ein Messwert: Häufen sie sich,
+    // stimmt etwas mit der Aufnahmesituation nicht (Handy zu nah, Person halb aus dem
+    // Bild, Bildrate eingebrochen). Ohne diese Zeile wäre von außen nicht zu sehen, ob
+    // gerade niemand trainiert oder ob die Erkennung Wiederholungen wegwirft.
+    if (discardedRep) {
+      if (__DEV__) console.log('[DIAG] Wiederholung verworfen', discardedRep);
+      // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+      recordCalibrationDiscard(discardedRep, 'boss').catch(() => {});
     }
 
     // Rebuilt every frame (no throttling) - see WorkoutScreen's onResults for why.
