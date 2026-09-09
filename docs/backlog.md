@@ -27,6 +27,27 @@ Rücken, Blick geradeaus in die Kamera — trotzdem dauerhaft „Hüfte sackt du
 - **Auswertungsskript** `scripts/analyze-rep-log.js`, damit jede weitere Aufzeichnung
   identisch ausgewertet wird.
 
+### Messung nach der Umstellung (Aufzeichnung vom 09.09.2026, 18:48 Uhr, 20 Wiederholungen)
+
+20 gemacht, 20 gezählt, 0 verworfen — die Plausibilitätsprüfung hat nichts Legitimes
+weggeworfen. Die Streubreite der Messwerte ist zusammengebrochen, die anatomisch
+unmöglichen Werte sind vollständig weg:
+
+| | vorher (124 Wdh.) | nachher (20 Wdh.) |
+|---|---|---|
+| Hüfte | 7–169° (Spanne 162°) | **133–157° (Spanne 24°)** |
+| Tiefe | 12–138° (Spanne 126°) | **94–114° (Spanne 20°)** |
+| Flare | 29–176° (Spanne 147°) | **50–60° (Spanne 10°)** |
+| Nacken | 59–158° (Spanne 99°) | **126–140° (Spanne 14°)** |
+| Hüft-Richtungswechsel | 43 % | **21 %** |
+
+Damit ist die Datenlage für die Schwellen sauber. Die verbliebenen Fehlalarme sind jetzt
+eindeutig den Punkten unten zuzuordnen und nicht mehr dem Messrauschen: In dieser Sitzung
+liegt der Nackenwinkel zwischen 126° und 140° bei einer Schwelle von 140° (eingehalten:
+1 von 20), die Hüftgerade zwischen 148° und 155° bei einer Schwelle von 160°
+(eingehalten: **0 von 20**). Beide Schwellen liegen komplett außerhalb des Bereichs, den
+ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
+
 ### Noch offen
 
 1. **Falscher Referenzpunkt bei der Hüfte.**

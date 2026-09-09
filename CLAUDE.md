@@ -34,52 +34,65 @@ kein „einfach neu laden", keine ausgelassenen Zwischenschritte, keine Platzhal
 - Ändert ein Commit nichts am App-Verhalten (z. B. nur Dokumentation), das **ausdrücklich sagen**,
   statt einen unnötigen Rebuild anzustoßen.
 
-# Feste Anweisung: jede Änderung gilt für BEIDE Builds
+# Feste Anweisung: eine App, ein Befehl
 
-Es gibt zwei Installationen desselben Codes, und beide sollen immer auf demselben Stand sein:
+chris hat **nur eine Installation** auf dem Handy, und das ist die Vorzeige-App
+(Release). Sie soll immer dem aktuellen Codestand entsprechen. Die Entwickler-App
+(Debug + Metro) wird **nicht** benutzt — sie war nur nötig, um `console.log`-Ausgaben
+live zu sehen, und das ist mein Werkzeugproblem, nicht seins.
 
-| | Entwickler-App (Debug) | Vorzeige-App (Release) |
-|---|---|---|
-| Bauen | `npm run android` | `npm run android:release` |
-| JS-Bundle | wird von Metro geladen | steckt in der APK |
-| Ohne PC nutzbar | nein | ja |
-| Reine JS-Änderung | Metro-Reload reicht | **voller Rebuild nötig** |
+**Nach jeder Änderung genau diese vier Blöcke ausgeben, sonst nichts:**
 
-**Nach JEDER Änderung beide Befehlsblöcke ausgeben**, ohne Nachfrage, damit chris beide
-Installationen aktualisieren kann. Der wichtigste Fallstrick dabei: Die Vorzeige-App hat kein
-Fast Refresh — auch eine reine JS-Änderung erfordert dort `npm run android:release`. Nur den
-Metro-Reload zu nennen, lässt die Vorzeige-App still auf einem alten Stand zurück.
-
-Vorlage (JS-only-Änderung):
+```powershell
+cd C:\Users\chris\StudioProjects\Test-App-push-ups1
+```
 
 ```powershell
 git pull origin claude/pushup-form-analysis-app-npj2a0
-# Entwickler-App: Metro neu starten
-npx expo start --dev-client --clear
-# Vorzeige-App: neu bauen und installieren
+```
+
+```powershell
 $env:JAVA_HOME = "C:\Users\chris\AppData\Local\Programs\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
+```
+
+```powershell
 npm run android:release
 ```
 
-Bei nativen Änderungen (Patches in `patches/`, Config-Plugins, `app.json`, native Abhängigkeiten)
-zusätzlich `npm install` und `npx expo prebuild --clean` davor, und die Entwickler-App über
-`npm run android` statt nur Metro neu bauen.
+Ändert ein Commit nichts am App-Verhalten (z. B. nur Dokumentation), das **ausdrücklich
+sagen**, statt einen unnötigen Rebuild anzustoßen.
 
-**Wenn sich eine Datei in `patches/` geändert hat**, gehört das Entfernen des betroffenen Pakets
-mit in den Befehlsblock — sonst hält npm es für „up to date", installiert es nicht neu, und
-patch-package scheitert daran, den neuen Patch auf die noch alt-gepatchten Dateien anzuwenden:
+Bei nativen Änderungen (Patches in `patches/`, Config-Plugins, `app.json`, native
+Abhängigkeiten) kommen davor `npm install` und `npx expo prebuild --clean` dazu. Hat sich
+eine Datei in `patches/` geändert, gehört das Entfernen des betroffenen Pakets mit in den
+Block — sonst hält npm es für „up to date", installiert es nicht neu, und patch-package
+scheitert daran, den neuen Patch auf die noch alt-gepatchten Dateien anzuwenden:
 
 ```powershell
 Remove-Item -Recurse -Force node_modules\react-native-mediapipe
-npm install
 ```
 
-Ebenso gehört nach einer Patch-Änderung `npm run clean:native` dazu, weil der CMake-Zustand in
-`node_modules/<paket>/android/.cxx/` sonst veraltet weiterlebt (siehe README, „build.ninja still
-dirty").
+Ebenso gehört nach einer Patch-Änderung `npm run clean:native` dazu, weil der
+CMake-Zustand in `node_modules/<paket>/android/.cxx/` sonst veraltet weiterlebt (siehe
+README, „build.ninja still dirty").
 
-**Hinweis zur Koexistenz:** Beide Builds nutzen dieselbe `applicationId`
-(`com.pushupcoach.app`), können also nicht gleichzeitig auf dem Gerät liegen — die zuletzt
-installierte ersetzt die andere. Soll das geändert werden, braucht der Debug-Build einen
-`applicationIdSuffix` (Konvention: `.dev`); das hat Folgen für die spätere Firebase-/
-Google-Sign-In-Einrichtung, die auf den Paketnamen ausgestellt ist.
+# Feste Anweisung: keine Diagnose über console.log planen
+
+Im Release-Build ist `__DEV__` false — alle `if (__DEV__) console.log(...)`-Zeilen laufen
+dort nicht. Und chris hat kein Metro, kein Kabel und kein Logcat offen. Eine Anleitung wie
+„schau ins Log" ist damit wertlos und kostet ihn eine Runde.
+
+Alles, was ich zur Diagnose brauche, gehört stattdessen an einen dieser beiden Orte:
+
+- **In den Kalibrier-Log** (`src/pose/calibrationLogger.ts`) — der Knopf „🧪
+  Kalibrierungsdaten teilen (DEV)" auf dem HomeScreen ist bewusst *nicht* `__DEV__`-
+  abhängig und funktioniert deshalb auch in der Vorzeige-App. Auswertung am PC mit
+  `npm run analyze:reps`.
+- **Sichtbar in die App selbst**, wenn chris es während des Trainings braucht.
+
+Nur wenn ich ausdrücklich Live-Logs brauche, darf ich die Debug-Variante vorschlagen — und
+dann mit dem Hinweis, dass sie die Vorzeige-App ersetzt (gleiche `applicationId`,
+`com.pushupcoach.app`) und mit `npm run android:release` wieder zurückgeholt wird. Ein
+`applicationIdSuffix` für den Debug-Build wäre die Alternative, hat aber Folgen für die
+spätere Firebase-/Google-Sign-In-Einrichtung, die auf den Paketnamen ausgestellt ist —
+chris hat das bewusst abgelehnt.
