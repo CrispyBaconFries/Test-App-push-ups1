@@ -407,6 +407,51 @@ an, aber zu Recht: Die gemessene Tiefe liegt im Median bei 101°, also knapp obe
 rechten Winkels. Das ist eine echte Trainingsrückmeldung und kein Messfehler. Ob die App
 *so oft* „tiefer gehen" sagen soll, ist eine Produktentscheidung, keine Kalibrierfrage.
 
+### Warum Wiederholungen verschluckt wurden (10.09.2026)
+
+chris machte 14 Liegestütze, gezählt wurden 8. Dazu kamen zwei verworfene Abschnitte von
+je 8 Sekunden — bei **lückenlosem Tracking**, 0 verlorene Frames. Bei einer mittleren
+Wiederholungsdauer von 2,9 s stecken in 16 s Bewegung rund sechs Liegestütze: 8 + 6 = 14.
+Die Rechnung geht exakt auf.
+
+Ursache: Der Abschluss einer Wiederholung hing allein an `elbowUpDeg` (160°). Wer oben
+nicht ganz durchstreckt — mit zunehmender Ermüdung völlig normal — schloss die
+Wiederholung nie ab. Die nächste Abwärtsbewegung galt als Fortsetzung *derselben*
+Wiederholung, mehrere Liegestütze verschmolzen zu einem überlangen „Rep", und der flog
+schließlich am Zeitlimit raus. Drei echte Wiederholungen wurden so zu null.
+
+Es gibt jetzt einen zweiten Weg, eine Wiederholung abzuschließen: Sobald es vom höchsten
+erreichten Punkt wieder um `repReversalToleranceDeg` (15°) abwärts geht, war das eine
+Wiederholung — unabhängig davon, wie weit jemand oben durchstreckt. Die nächste beginnt
+sofort, statt in `'up'` zu warten.
+
+**Die Falle dabei** (beim ersten Einbau prompt hineingetappt, der Test hat sie gefangen):
+Der Rückweg `'ascending' → 'down'` bei `elbowAttemptDeg` (140°) war *immer zuerst* dran.
+Wer bei 148° umkehrt, unterschreitet 140° schon nach 8° — lange bevor die 15°-Umkehr bei
+133° erkannt wäre. Der Rückweg hat die Umkehrerkennung damit vollständig ausgehebelt und
+ist deshalb entfallen. Ein echtes Nachwippen am tiefsten Punkt kommt dort gar nicht an:
+Dafür müsste der Winkel erst über 140° steigen, sonst bleibt die Zustandsmaschine in
+`'down'`.
+
+Der Test dazu prüft beide Richtungen: drei Wiederholungen mit 148° Umkehrpunkt müssen
+dreimal zählen, und mit abgeschalteter Umkehrerkennung (`repReversalToleranceDeg:
+Infinity`) muss dieselbe Eingabe wieder verschmelzen — sonst würde der Test die neue
+Logik gar nicht prüfen.
+
+Begleitend angehoben: `maxRepDurationMs` von 8 auf 12 Sekunden. Echte Wiederholungen
+dauern gemessen bis zu 5,3 s; 12 s fangen den hängenden Zähler weiterhin ab (dort standen
+26, 30 und 34 Sekunden). Und `DiscardedRep` trägt jetzt den Ellbogen-Winkelbereich mit —
+ohne den ist ein `TOO_LONG` nicht deutbar: 90–170° heißt „hier stecken mehrere echte
+Wiederholungen drin", 150–170° heißt „die Person hat sich nicht bewegt".
+
+### Die Hüft-Schwelle, jetzt aus knie-basierten Messungen
+
+Nach der Umstellung auf das Knie ergab die erste Aufzeichnung: sauber ausgeführte
+Wiederholungen bei **152–169°**, eine erkennbar abgekippte Hüfte bei **97°**.
+`minHipStraightnessDeg` steht deshalb auf **145°** — 7° Luft unter der schlechtesten
+sauberen Wiederholung, und die echte Abweichung wird mit großem Abstand markiert. Von 8
+Wiederholungen halten damit 7 die Schwelle ein statt 2.
+
 ### Kalibrier-Log auswerten
 
 ```bash

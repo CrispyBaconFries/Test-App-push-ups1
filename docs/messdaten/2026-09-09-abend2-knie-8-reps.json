@@ -1,0 +1,12 @@
+[
+{"index":0,"formScore":100,"issues":[],"minElbowAngleDeg":73,"minHipStraightnessDeg":169,"maxElbowFlareDeg":43,"minNeckAngleDeg":149,"durationMs":1969,"kind":"rep","recordedAtIso":"2026-09-09T19:26:12.449Z","source":"training"},
+{"index":1,"formScore":65,"issues":["HIPS_PIKING"],"minElbowAngleDeg":85,"minHipStraightnessDeg":97,"maxElbowFlareDeg":66,"minNeckAngleDeg":132,"durationMs":2995,"kind":"rep","recordedAtIso":"2026-09-09T19:26:15.507Z","source":"training"},
+{"index":2,"formScore":93,"issues":["INSUFFICIENT_DEPTH"],"minElbowAngleDeg":100,"minHipStraightnessDeg":164,"maxElbowFlareDeg":58,"minNeckAngleDeg":125,"durationMs":2526,"kind":"rep","recordedAtIso":"2026-09-09T19:26:25.088Z","source":"training"},
+{"reason":"TOO_LONG","durationMs":8066,"trackedFrames":128,"untrackedFrames":0,"kind":"discarded","recordedAtIso":"2026-09-09T19:26:34.430Z","source":"training"},
+{"reason":"TOO_LONG","durationMs":8012,"trackedFrames":137,"untrackedFrames":0,"kind":"discarded","recordedAtIso":"2026-09-09T19:26:44.889Z","source":"training"},
+{"index":3,"formScore":91,"issues":["INSUFFICIENT_DEPTH","HIPS_SAGGING"],"minElbowAngleDeg":99,"minHipStraightnessDeg":157,"maxElbowFlareDeg":55,"minNeckAngleDeg":129,"durationMs":2419,"kind":"rep","recordedAtIso":"2026-09-09T19:26:47.306Z","source":"training"},
+{"index":4,"formScore":95,"issues":["HIPS_SAGGING"],"minElbowAngleDeg":94,"minHipStraightnessDeg":156,"maxElbowFlareDeg":57,"minNeckAngleDeg":128,"durationMs":4654,"kind":"rep","recordedAtIso":"2026-09-09T19:26:54.941Z","source":"training"},
+{"index":5,"formScore":87,"issues":["INSUFFICIENT_DEPTH","HIPS_SAGGING"],"minElbowAngleDeg":98,"minHipStraightnessDeg":153,"maxElbowFlareDeg":56,"minNeckAngleDeg":127,"durationMs":3381,"kind":"rep","recordedAtIso":"2026-09-09T19:26:58.423Z","source":"training"},
+{"index":6,"formScore":90,"issues":["INSUFFICIENT_DEPTH","HIPS_PIKING"],"minElbowAngleDeg":99,"minHipStraightnessDeg":157,"maxElbowFlareDeg":58,"minNeckAngleDeg":126,"durationMs":2782,"kind":"rep","recordedAtIso":"2026-09-09T19:27:01.262Z","source":"training"},
+{"index":7,"formScore":91,"issues":["HIPS_PIKING"],"minElbowAngleDeg":93,"minHipStraightnessDeg":152,"maxElbowFlareDeg":55,"minNeckAngleDeg":127,"durationMs":5322,"kind":"rep","recordedAtIso":"2026-09-09T19:27:07.187Z","source":"training"}
+]

@@ -43,6 +43,17 @@ export interface DiscardedRep {
   /** Frames mit verwertbarer Pose bzw. ohne, während dieser Wiederholung. */
   trackedFrames: number;
   untrackedFrames: number;
+  /**
+   * Kleinster und größter Ellbogenwinkel während der verworfenen Bewegung, `null` wenn
+   * gar kein verwertbarer Frame dabei war.
+   *
+   * Ohne diese beiden Zahlen ist ein `TOO_LONG` nicht deutbar: Ein Bereich von 90-170°
+   * heißt "hier stecken mehrere echte Wiederholungen drin", ein Bereich von 150-170°
+   * heißt "die Person hat sich gar nicht bewegt". Genau diese Frage war beim ersten
+   * Auftreten am 09.09.2026 nicht aus den Daten zu beantworten.
+   */
+  minElbowAngleDeg: number | null;
+  maxElbowAngleDeg: number | null;
 }
 
 /**
@@ -93,6 +104,26 @@ export interface PushUpThresholds {
    * is discarded as a false start.
    */
   elbowAttemptDeg: number;
+  /**
+   * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
+   * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
+   * erreicht wurde.
+   *
+   * Warum es das braucht: Der Abschluss hing bis zum 10.09.2026 allein an `elbowUpDeg`
+   * (160°). Wer oben nicht ganz durchstreckt - was mit zunehmender Ermüdung normal ist -
+   * schloss die Wiederholung nie ab. Die nächste Abwärtsbewegung wurde dann als
+   * Fortsetzung *derselben* Wiederholung gelesen, und mehrere Liegestütze verschmolzen zu
+   * einem einzigen, überlangen "Rep", der schließlich am Zeitlimit verworfen wurde. In der
+   * Aufzeichnung vom 09.09.2026, 19:26 Uhr steckten in zwei verworfenen Abschnitten von
+   * je 8 Sekunden - bei lückenlosem Tracking, 0 verlorene Frames - rund sechs echte
+   * Liegestütze: 8 gezählt plus 6 verschluckt ergibt genau die 14, die chris gemacht hat.
+   *
+   * Mit dieser Umkehrpunkt-Erkennung ist der Abschluss unabhängig davon, wie weit jemand
+   * oben durchstreckt: Sobald es nach dem Hochkommen wieder abwärts geht, war das eine
+   * Wiederholung. 15° liegen deutlich über dem Messrauschen (die Winkelverläufe sind
+   * glatt), aber unter jeder echten Abwärtsbewegung.
+   */
+  repReversalToleranceDeg: number;
   /** Elbow angle (deg) a rep must reach at minimum to count as full depth. */
   goodDepthElbowDeg: number;
   /**
@@ -105,6 +136,13 @@ export interface PushUpThresholds {
    * erreichten 0 von 20 sauber ausgeführten Wiederholungen die Schwelle von 160°. Das Knie
    * liegt auf der Körperlinie und ist zusätzlich zuverlässiger im Bild als der Fuß, der
    * bei einem tief vor der Person stehenden Handy oft ganz herausfällt.
+   *
+   * Der Wert stammt aus der ersten Aufzeichnung *nach* dieser Umstellung (09.09.2026,
+   * 19:26 Uhr): sauber ausgeführte Wiederholungen lagen bei 152-169°, eine erkennbar
+   * abgekippte Hüfte bei 97°. 145° lässt die sauberen mit 7° Luft durch und markiert die
+   * echte Abweichung mit großem Abstand. Vorher standen hier 160° - ein Wert, der zur
+   * alten, über den Knöchel verzerrten Messung gehörte und den in dieser Aufzeichnung
+   * nur 2 von 8 Wiederholungen erreichten.
    */
   minHipStraightnessDeg: number;
   /** elbow-shoulder-hip angle (deg); above this the elbow counts as flared out. */
@@ -144,9 +182,14 @@ export interface PushUpThresholds {
    */
   minRepDurationMs: number;
   /**
-   * Längste Dauer (ms), nach der eine laufende Wiederholung abgebrochen wird. Eine
-   * bewusst langsam ausgeführte Wiederholung dauert rund 4 Sekunden; alles jenseits
-   * davon ist der hängende Zähler, nicht der Sportler.
+   * Längste Dauer (ms), nach der eine laufende Wiederholung abgebrochen wird.
+   *
+   * Stand 10.09.2026 auf 12 Sekunden angehoben (vorher 8): Bei 8 Sekunden wurden echte
+   * Wiederholungen mitgerissen, sobald mehrere zu einer verschmolzen - die Ursache dafür
+   * behebt jetzt `repReversalToleranceDeg`. Gemessene echte Wiederholungen dauern bis zu
+   * 5,3 Sekunden; 12 Sekunden lassen bewusst langsamen Ausführungen Luft und fangen
+   * trotzdem den hängenden Zähler ab, um den es ursprünglich ging (dort standen 26, 30
+   * und 34 Sekunden).
    */
   maxRepDurationMs: number;
   /**
@@ -160,15 +203,16 @@ export interface PushUpThresholds {
 export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   elbowUpDeg: 160,
   elbowAttemptDeg: 140,
+  repReversalToleranceDeg: 15,
   goodDepthElbowDeg: 95,
-  minHipStraightnessDeg: 160,
+  minHipStraightnessDeg: 145,
   maxElbowFlareDeg: 80,
   minNeckAngleDeg: 115,
   minVisibility: 0.5,
   formPercentile: 10,
   depthOutlierFrames: 2,
   minRepDurationMs: 600,
-  maxRepDurationMs: 8000,
+  maxRepDurationMs: 12000,
   minTrackedFrameRatio: 0.6,
 };
 
@@ -204,6 +248,8 @@ interface RepAccumulator {
   neckAngles: number[];
   hipSagDeviationAtDeepest: number;
   deepestElbowAngleSoFar: number;
+  /** Höchster Ellbogenwinkel, seit die Aufwärtsbewegung begonnen hat. */
+  peakElbowSinceBottom: number;
   /** Frames mit verwertbarer Pose seit Beginn dieser Wiederholung. */
   trackedFrames: number;
   /** Frames ohne verwertbare Pose seit Beginn dieser Wiederholung. */
@@ -219,6 +265,7 @@ function freshAccumulator(timeMs: number): RepAccumulator {
     neckAngles: [],
     hipSagDeviationAtDeepest: 0,
     deepestElbowAngleSoFar: Infinity,
+    peakElbowSinceBottom: -Infinity,
     trackedFrames: 0,
     untrackedFrames: 0,
   };
@@ -368,23 +415,51 @@ export class PushUpAnalyzer {
       case 'down':
         if (elbowAngleDeg > t.elbowAttemptDeg) {
           this.phase = 'ascending';
+          if (this.acc) this.acc.peakElbowSinceBottom = elbowAngleDeg;
         }
         break;
 
-      case 'ascending':
-        if (elbowAngleDeg <= t.elbowAttemptDeg) {
-          this.phase = 'down';
-        } else if (elbowAngleDeg >= t.elbowUpDeg) {
+      case 'ascending': {
+        const peak = Math.max(this.acc?.peakElbowSinceBottom ?? -Infinity, elbowAngleDeg);
+        if (this.acc) this.acc.peakElbowSinceBottom = peak;
+
+        // Zwei Wege, eine Wiederholung abzuschließen:
+        //   1. Der Arm ist wieder gestreckt (`elbowUpDeg`) - der saubere Normalfall.
+        //   2. Es geht vom höchsten erreichten Punkt wieder spürbar abwärts, ohne dass
+        //      `elbowUpDeg` je erreicht wurde. Dann hat die Person oben nicht ganz
+        //      durchgestreckt und beginnt bereits die nächste Wiederholung.
+        //
+        // Es gibt hier bewusst KEINEN Rückweg nach 'down' mehr. Der wäre in genau dem
+        // Fall, um den es geht, immer zuerst dran: Wer bei 148° umkehrt, unterschreitet
+        // die Versuchsschwelle (140°) schon nach 8° - lange bevor die 15°-Umkehr bei
+        // 133° erkannt wäre. Der Rückweg hat die Umkehrerkennung damit vollständig
+        // ausgehebelt und die Wiederholungen weiter verschmelzen lassen. Ein echtes
+        // Nachwippen am tiefsten Punkt kommt hier gar nicht an: Dafür müsste der Winkel
+        // erst über 140° steigen, sonst bleibt die Zustandsmaschine in 'down'.
+        const reversed = elbowAngleDeg <= peak - t.repReversalToleranceDeg;
+        if (elbowAngleDeg >= t.elbowUpDeg || reversed) {
           const outcome = this.finishRep(timestampMs);
           completedRep = outcome.rep;
           // Ein bereits gesetztes `discardedRep` (Zeitablauf) kann hier nicht mehr
           // stehen: Der Zeitablauf hat `this.acc` geleert, dann gäbe es keine laufende
           // Wiederholung mehr abzuschließen.
           if (outcome.discarded) discardedRep = outcome.discarded;
-          this.phase = 'up';
-          this.lockedSide = null;
+          if (elbowAngleDeg < t.elbowUpDeg) {
+            // Die Abwärtsbewegung der *nächsten* Wiederholung läuft bereits - sie hier
+            // beginnen zu lassen statt in 'up' zu warten, kostet sonst genau diese
+            // Wiederholung. Die Seite bleibt dabei festgelegt (nicht auf null zurück):
+            // Sie wird sonst mitten in der neuen Wiederholung neu gewählt, und genau das
+            // soll `lockedSide` verhindern.
+            this.phase = 'descending';
+            this.lockedSide = side;
+            this.acc = freshAccumulator(timestampMs);
+          } else {
+            this.phase = 'up';
+            this.lockedSide = null;
+          }
         }
         break;
+      }
     }
 
     if (this.acc && this.phase !== 'up') {
@@ -422,6 +497,8 @@ export class PushUpAnalyzer {
       durationMs: timestampMs - acc.startTimeMs,
       trackedFrames: acc.trackedFrames,
       untrackedFrames: acc.untrackedFrames,
+      minElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.min(...acc.elbowAngles)) : null,
+      maxElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.max(...acc.elbowAngles)) : null,
     };
     this.discardCounts[reason] += 1;
     this.acc = null;

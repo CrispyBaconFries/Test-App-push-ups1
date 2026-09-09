@@ -24,6 +24,18 @@ function repSweep(bottomDeg: number, frames = 45): number[] {
 }
 
 /**
+ * Ein Bewegungsbogen `topDeg` -> `bottomDeg` -> `topDeg`. Anders als `repSweep` ist der
+ * obere Umkehrpunkt frei wählbar, um jemanden nachzubilden, der oben nicht ganz
+ * durchstreckt.
+ */
+function partialSweep(topDeg: number, bottomDeg: number, frames: number): number[] {
+  return Array.from({ length: frames }, (_, i) => {
+    const phase = 1 - Math.cos((2 * Math.PI * i) / (frames - 1));
+    return topDeg - ((topDeg - bottomDeg) * phase) / 2;
+  });
+}
+
+/**
  * Spielt Frames im Kameratakt ab und sammelt alles ein, was dabei herauskommt.
  *
  * Bewusst nicht "gib das Ergebnis des letzten Frames zurück": Eine Wiederholung endet
@@ -320,6 +332,65 @@ describe('PushUpAnalyzer', () => {
     const bad = runFrames(dropped, repFrames(90, { neckAngleDeg: 100 }));
     expect(bad.reps[0].issues).toContain('HEAD_MISALIGNED');
     expect(bad.cues).toContain('HEAD_MISALIGNED');
+  });
+
+  it('counts every rep of someone who does not fully lock out at the top', () => {
+    // Der Fall aus der Aufzeichnung vom 09.09.2026, 19:26 Uhr: chris machte ~14
+    // Liegestütze, gezählt wurden 8. Dazu kamen zwei verworfene Abschnitte von je 8
+    // Sekunden - bei LÜCKENLOSEM Tracking (0 verlorene Frames). Darin steckten rund sechs
+    // echte Wiederholungen: 8 + 6 = 14.
+    //
+    // Ursache: Der Abschluss hing allein an `elbowUpDeg` (160°). Wer oben nicht ganz
+    // durchstreckt, schließt die Wiederholung nie ab - die nächste Abwärtsbewegung galt
+    // als Fortsetzung derselben, mehrere Liegestütze verschmolzen zu einem überlangen
+    // "Rep", und der flog am Zeitlimit raus.
+    const notLockingOut = [
+      170,
+      ...partialSweep(148, 90, 40),
+      ...partialSweep(148, 90, 40),
+      ...partialSweep(148, 90, 40),
+      170,
+    ];
+    const poses = notLockingOut.map((elbowAngleDeg) => buildFrame({ elbowAngleDeg }));
+
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, poses);
+
+    expect(reps).toHaveLength(3);
+    expect(discards).toEqual([]);
+    // Fortlaufend nummeriert, keine Lücken.
+    expect(reps.map((r) => r.index)).toEqual([0, 1, 2]);
+
+    // Gegenprobe, dass dieser Testfall wirklich die neue Logik prüft: Ohne die
+    // Umkehrpunkt-Erkennung (Toleranz unerreichbar groß) verschmilzt genau dieselbe
+    // Eingabe wieder zu deutlich weniger Wiederholungen.
+    const withoutReversal = new PushUpAnalyzer({ repReversalToleranceDeg: Infinity });
+    const merged = runFrames(withoutReversal, poses);
+    expect(merged.reps.length).toBeLessThan(3);
+  });
+
+  it('does not split one rep into two on a wobbly ascent', () => {
+    // Die Kehrseite der Umkehrpunkt-Erkennung: Ein Zittern beim Hochdrücken darf keine
+    // zweite Wiederholung erzeugen. 15° Toleranz liegen deutlich über dem Messrauschen -
+    // die aufgezeichneten Winkelverläufe sind glatt.
+    const wobbly = repSweep(90).map((angle, i) => (i % 2 === 0 ? angle : angle - 6));
+    const analyzer = new PushUpAnalyzer();
+    const { reps } = runFrames(analyzer, wobbly.map((elbowAngleDeg) => buildFrame({ elbowAngleDeg })));
+
+    expect(reps).toHaveLength(1);
+  });
+
+  it('records the angle range of a discarded rep, so TOO_LONG can be interpreted', () => {
+    // Ein `TOO_LONG` ohne Winkelbereich ist nicht deutbar: 90-170° hieße "hier stecken
+    // mehrere echte Wiederholungen drin", 150-170° hieße "die Person hat sich nicht
+    // bewegt". Genau diese Frage war am 09.09.2026 aus den Daten nicht zu beantworten.
+    const analyzer = new PushUpAnalyzer();
+    runFrames(analyzer, repSweep(90).slice(0, 20).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg })));
+    const late = analyzer.processFrame(buildFrame({ elbowAngleDeg: 90 }), 60_000);
+
+    expect(late.discardedRep?.reason).toBe('TOO_LONG');
+    expect(late.discardedRep!.minElbowAngleDeg).toBeLessThan(120);
+    expect(late.discardedRep!.maxElbowAngleDeg).toBeGreaterThan(140);
   });
 
   it('keeps using the side it locked onto at rep start, even if the other side becomes more visible mid-rep', () => {

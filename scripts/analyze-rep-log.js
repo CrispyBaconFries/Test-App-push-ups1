@@ -36,11 +36,11 @@ const file = process.argv[2] || DEFAULT_FILE;
 // alten Werte sind durch den auf den Zehen stehenden Fuß systematisch zu klein.
 const THRESHOLDS = {
   goodDepthElbowDeg: 95,
-  minHipStraightnessDeg: 160,
+  minHipStraightnessDeg: 145,
   maxElbowFlareDeg: 80,
   minNeckAngleDeg: 115,
   minRepDurationMs: 600,
-  maxRepDurationMs: 8000,
+  maxRepDurationMs: 12000,
 };
 
 function median(values) {
@@ -91,6 +91,23 @@ if (discards.length > 0) {
         .join(', ') +
       ')'
   );
+  // Der Winkelbereich entscheidet, wie ein TOO_LONG zu lesen ist: Ein weiter Bereich
+  // heißt "hier stecken mehrere echte Wiederholungen drin" (verschmolzen), ein enger
+  // heißt "die Person hat sich nicht bewegt".
+  for (const d of discards) {
+    const range =
+      typeof d.minElbowAngleDeg === 'number' && typeof d.maxElbowAngleDeg === 'number'
+        ? `Ellbogen ${d.minElbowAngleDeg}-${d.maxElbowAngleDeg}°`
+        : 'Winkelbereich nicht aufgezeichnet';
+    const hint =
+      typeof d.minElbowAngleDeg === 'number' && d.maxElbowAngleDeg - d.minElbowAngleDeg > 50
+        ? '  <-- weiter Bereich: hier steckten echte Wiederholungen drin'
+        : '';
+    console.log(
+      `    ${String(d.reason).padEnd(14)} ${String(d.durationMs).padStart(6)} ms, ` +
+        `${d.trackedFrames} Frames verfolgt / ${d.untrackedFrames} verloren, ${range}${hint}`
+    );
+  }
 } else {
   console.log('Verworfene Bewegungen: keine aufgezeichnet (Aufzeichnung vor dem 09.09.2026?)');
 }

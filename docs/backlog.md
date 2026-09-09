@@ -58,6 +58,17 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
 - **Nacken-Schwelle aus 144 Messungen kalibriert:** 140° → 115°. Markiert statt 93 % noch
   12,5 % und lässt eine saubere Serie (126–140°) mit 11° Luft durch.
 
+### ✅ Erledigt (10.09.2026, zweite Runde)
+
+- **Verschluckte Wiederholungen behoben.** 14 gemacht, 8 gezählt: Wer oben nicht ganz
+  durchstreckt, ließ mehrere Liegestütze zu einem überlangen „Rep" verschmelzen, der am
+  Zeitlimit verworfen wurde. Abschluss jetzt zusätzlich über den Umkehrpunkt
+  (`repReversalToleranceDeg`). `maxRepDurationMs` 8 s → 12 s.
+- **Hüft-Schwelle kalibriert:** 160° → 145°, jetzt aus knie-basierten Messungen (saubere
+  Wiederholungen 152–169°, echte Abweichung 97°). 7 von 8 halten sie ein statt 2.
+- **`DiscardedRep` trägt den Ellbogen-Winkelbereich mit**, sonst ist ein `TOO_LONG` nicht
+  deutbar.
+
 ### Noch offen
 
 1. **`minHipStraightnessDeg` (160°) neu kalibrieren.** Bewusst unverändert gelassen: Die
