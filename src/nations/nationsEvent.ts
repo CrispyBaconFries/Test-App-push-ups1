@@ -48,6 +48,14 @@ export interface NationsEventSchedule {
   startHour: number;
   /** Dauer in vollen Tagen. */
   durationDays: number;
+  /**
+   * Wie viele Tage vor dem Start die Anmeldung öffnet.
+   *
+   * `undefined` (Standard) heißt: immer offen - man kann sich für das nächste Event
+   * anmelden, sobald das vorherige vorbei ist. Eine Zahl schränkt das ein: `1` öffnet die
+   * Anmeldung genau einen Tag vor dem Start, davor zeigt der Bildschirm nur den Termin.
+   */
+  registrationOpensDaysBefore?: number;
   repeat:
     | { mode: 'weekly'; startWeekday: Weekday }
     | {
@@ -362,4 +370,48 @@ export function formatDurationDe(ms: number): string {
   if (days > 0) return `${days} ${days === 1 ? 'Tag' : 'Tage'} ${hours} Std.`;
   if (hours > 0) return `${hours} Std. ${minutes} Min.`;
   return `${minutes} Min.`;
+}
+
+/**
+ * Um welches Event es *jetzt gerade* geht, und was man damit tun kann.
+ *
+ * - `running`      - das Event läuft, Liegestütze zählen, wer noch kein Land hat kann
+ *                    auch jetzt noch einsteigen.
+ * - `registration` - das Event hat noch nicht begonnen, die Anmeldung ist aber offen.
+ * - `closed`       - der Termin steht, die Anmeldung öffnet erst später (nur möglich,
+ *                    wenn `registrationOpensDaysBefore` gesetzt ist).
+ *
+ * Bewusst hier und nicht im Bildschirm: Die Entscheidung "welches Fenster ist gemeint"
+ * ist die Grundlage für die Länderwahl und damit dafür, welchem Event Liegestütze
+ * gutgeschrieben werden - das gehört in den getesteten Teil.
+ */
+export type NationsEventPhase = 'running' | 'registration' | 'closed';
+
+export interface ActiveNationsEvent {
+  window: NationsEventWindow;
+  phase: NationsEventPhase;
+}
+
+export function activeNationsEvent(
+  atMs: number,
+  schedule: NationsEventSchedule = DEFAULT_NATIONS_SCHEDULE
+): ActiveNationsEvent {
+  const running = currentEventWindow(atMs, schedule);
+  if (running) return { window: running, phase: 'running' };
+
+  const upcoming = nextEventWindow(atMs, schedule);
+  const opensDaysBefore = schedule.registrationOpensDaysBefore;
+  if (opensDaysBefore === undefined) return { window: upcoming, phase: 'registration' };
+
+  const opensAtMs = upcoming.startsAtMs - opensDaysBefore * DAY_MS;
+  return { window: upcoming, phase: atMs >= opensAtMs ? 'registration' : 'closed' };
+}
+
+/** Ab wann die Anmeldung für ein Fenster offen ist - für die Anzeige "Anmeldung ab ...". */
+export function registrationOpensAtMs(
+  window: NationsEventWindow,
+  schedule: NationsEventSchedule = DEFAULT_NATIONS_SCHEDULE
+): number | null {
+  const opensDaysBefore = schedule.registrationOpensDaysBefore;
+  return opensDaysBefore === undefined ? null : window.startsAtMs - opensDaysBefore * DAY_MS;
 }

@@ -1178,6 +1178,26 @@ statt eine Zeitzonen-Bibliothek einzubauen — Hermes (die JS-Engine der App) li
 mit Zeitzonendaten nicht zuverlässig mit, und ein Drei-Tage-Event verträgt eine Stunde
 Versatz.
 
+### Anmeldung vor dem Start
+
+Man kann sich anmelden, **sobald das vorherige Event vorbei ist** — also deutlich früher
+als einen Tag vor dem Start. Wer am Montag in die App schaut, muss nicht bis Donnerstag
+warten, um sein Land zu wählen. Der Bildschirm zeigt dann „Startet in 3 Tage 5 Std." und
+darunter „Anmeldung läuft".
+
+Soll die Anmeldung enger sein, gibt es dafür eine Einstellung:
+
+```ts
+registrationOpensDaysBefore: 1,   // Anmeldung öffnet genau einen Tag vor dem Start
+```
+
+Ohne diesen Wert ist sie durchgehend offen (Standard). Mit gesetztem Wert zeigt der
+Bildschirm vorher nur den Termin und „Anmeldung öffnet in …".
+
+Welche Phase gerade gilt, entscheidet `activeNationsEvent` — bewusst in der getesteten
+Logik und nicht im Bildschirm, denn davon hängt ab, welchem Event Liegestütze
+gutgeschrieben werden.
+
 ### Länderwahl
 
 Die Auswahl ist eine durchsuchbare Vollbild-Liste mit Flagge, Name und Ländercode. Gesucht
@@ -1216,6 +1236,12 @@ Ein gemeinsamer Länder-Zähler müsste für alle schreibbar sein und wäre von 
 manipulierbar. Die Länder-Tabelle entsteht stattdessen beim Lesen (`computeStandings`),
 ganz ohne Cloud Function.
 
+**Wer sich anmeldet, aber nichts macht, zählt nicht.** Gezählt werden nur Spieler mit
+mindestens einer Wiederholung — für den Schnitt, für die Spielerzahl des Siegers und für
+die Gesamtzahl im veröffentlichten Ergebnis. Ein Land, aus dem sich nur jemand angemeldet
+hat, steht weiterhin in der Tabelle, aber mit dem Vermerk „X angemeldet, noch nichts
+beigetragen" statt einer irreführenden „0 Spieler · ⌀ 0"-Zeile.
+
 **Schnitt je Spieler:** Gezählt werden nur Spieler mit mindestens einer Wiederholung.
 Sonst würde jede Anmeldung ohne Training den Schnitt eines Landes drücken, und ein Land
 mit vielen Karteileichen stünde schlechter da als eines mit wenigen Aktiven — obwohl beide
@@ -1242,11 +1268,22 @@ Wie beim Rest der App darf fehlendes Internet nichts kaputtmachen:
   mitgespeichert statt später neu berechnet — sonst würde eine zwischenzeitliche Änderung
   am Zeitplan die alte Session plötzlich einem anderen Event zuordnen.
 
-### Voraussetzung
+### Ohne eingerichtetes Ranking-System
 
-Das Länderspiel braucht Firebase und die Google-Anmeldung (wie Rangliste und Duelle) —
-ohne Einrichtung zeigt der Bildschirm einen Hinweis statt einer Tabelle. Siehe
-„Ranking-System einrichten". Nach dem Einrichten müssen die Regeln neu deployt werden:
+Die **Länderwahl funktioniert auch dann**, wenn Firebase noch nicht eingerichtet oder der
+Nutzer nicht angemeldet ist: Sie wird lokal gespeichert (`nationsChoiceStore.ts`), und
+`refresh` trägt sie nach, sobald beides vorhanden ist — ohne dass jemand sie erneut treffen
+müsste. Der Bildschirm sagt das auch: „Deine Länderwahl ist trotzdem schon gespeichert und
+wird automatisch übernommen."
+
+Was ohne Firebase **nicht** geht, ist das Zusammenzählen über mehrere Spieler — also
+Zwischenstand und veröffentlichte Ergebnisse. Dafür steht statt der Tabelle ein Hinweis.
+
+### Voraussetzung für die Wertung
+
+Zwischenstand und Ergebnisse brauchen Firebase und die Google-Anmeldung (wie Rangliste und
+Duelle), siehe „Ranking-System einrichten". Nach dem Einrichten müssen die Regeln neu
+deployt werden:
 
 ```bash
 firebase deploy --only firestore:rules

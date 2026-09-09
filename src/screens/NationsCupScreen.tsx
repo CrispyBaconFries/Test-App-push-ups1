@@ -17,15 +17,14 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useDuelIdentity } from '../ranking/useDuelIdentity';
 import { COUNTRIES, countryLabel, flagEmoji, searchCountries, type Country } from '../nations/countries';
 import {
+  activeNationsEvent,
   computeStandings,
-  currentEventWindow,
   formatDurationDe,
   formatEventRangeDe,
   mostRecentFinishedEventWindow,
-  nextEventWindow,
+  registrationOpensAtMs,
   type CountryStanding,
   type NationsEventResult,
-  type NationsEventWindow,
 } from '../nations/nationsEvent';
 import { loadNationsChoice, saveNationsChoice } from '../nations/nationsChoiceStore';
 import { joinEvent, loadOrFinalizeResult, loadParticipants, loadRecentResults } from '../nations/nationsStore';
@@ -50,21 +49,18 @@ export function NationsCupScreen({ navigation }: Props) {
     return () => clearInterval(timer);
   }, []);
 
-  const running = useMemo(() => currentEventWindow(nowMs), [nowMs]);
-  const upcoming = useMemo(() => nextEventWindow(nowMs), [nowMs]);
+  // Läuft gerade ein Event, geht es um dieses - sonst schon um das nächste. Welche Phase
+  // gilt, entscheidet `activeNationsEvent` (getestet, siehe nationsEvent.ts).
+  const active = useMemo(() => activeNationsEvent(nowMs), [nowMs]);
+  const activeWindow = active.window;
   /**
-   * Als *Wert* in die Abhängigkeiten von `refresh`, nicht das Fenster-Objekt selbst:
-   * `currentEventWindow` liefert bei jedem Minutentakt ein neues Objekt mit gleichem
+   * Als *Werte* in die Abhängigkeiten von `refresh`, nicht das Fenster-Objekt selbst:
+   * `activeNationsEvent` liefert bei jedem Minutentakt ein neues Objekt mit gleichem
    * Inhalt. Mit dem Objekt in den Abhängigkeiten würde die Tabelle jede Minute neu
    * geladen, ohne dass sich etwas geändert hat.
    */
-  const isRunning = running !== null;
-  /**
-   * Läuft gerade ein Event, geht es um dieses - sonst schon um das nächste. Damit kann
-   * sich jemand auch mitten in der Woche schon für Freitag anmelden, statt bis zum
-   * Startschuss warten zu müssen.
-   */
-  const activeWindow: NationsEventWindow = running ?? upcoming;
+  const isRunning = active.phase === 'running';
+  const canChoose = active.phase !== 'closed';
 
   const [chosenCountry, setChosenCountry] = useState<string | null>(null);
   const [myReps, setMyReps] = useState(0);
@@ -95,7 +91,25 @@ export function NationsCupScreen({ navigation }: Props) {
         loadParticipants(activeWindow.id),
         loadRecentResults(),
       ]);
-      const own = participants.find((participant) => participant.uid === me.uid) ?? null;
+      let own = participants.find((participant) => participant.uid === me.uid) ?? null;
+
+      // Wahl nachreichen: Wer sein Land gewählt hat, bevor das Ranking-System
+      // eingerichtet war (oder ohne Internet), steht nur lokal. Sobald beides da ist,
+      // wird der Eintrag hier nachgetragen - sonst zählten seine Liegestütze nie.
+      if (!own) {
+        const localChoice = await loadNationsChoice(activeWindow.id);
+        if (localChoice) {
+          const effective = await joinEvent({
+            window: activeWindow,
+            uid: me.uid,
+            displayName: me.displayName,
+            countryCode: localChoice.countryCode,
+          });
+          own = { uid: me.uid, countryCode: effective, reps: 0 };
+          participants.push(own);
+        }
+      }
+
       if (own) {
         setChosenCountry(own.countryCode);
         setMyReps(own.reps);
@@ -142,24 +156,43 @@ export function NationsCupScreen({ navigation }: Props) {
             text: 'Endgültig wählen',
             style: 'destructive',
             onPress: async () => {
-              if (!me) return;
               setJoining(true);
               try {
+                // Immer zuerst lokal festhalten. Das funktioniert ohne Internet, ohne
+                // Anmeldung und ohne eingerichtetes Ranking-System - und ohne das könnte
+                // sich niemand ein Land aussuchen, solange chris Firebase noch nicht
+                // eingerichtet hat. Nachgetragen wird es in `refresh`, sobald es geht.
+                await saveNationsChoice({
+                  eventId: activeWindow.id,
+                  countryCode: country.code,
+                  chosenAtIso: new Date().toISOString(),
+                });
+                setChosenCountry(country.code);
+                setPickerOpen(false);
+
+                if (identity.status !== 'ready' || !me) {
+                  Alert.alert(
+                    'Land gespeichert',
+                    `Du trittst für ${country.name} an. Sobald das Ranking-System eingerichtet und ` +
+                      'du angemeldet bist, werden deine Liegestütze automatisch für dein Land gezählt.'
+                  );
+                  return;
+                }
+
                 const effective = await joinEvent({
                   window: activeWindow,
                   uid: me.uid,
                   displayName: me.displayName,
                   countryCode: country.code,
                 });
-                await saveNationsChoice({
-                  eventId: activeWindow.id,
-                  countryCode: effective,
-                  chosenAtIso: new Date().toISOString(),
-                });
-                setChosenCountry(effective);
-                setPickerOpen(false);
                 if (effective !== country.code) {
                   // Kann nur passieren, wenn auf einem anderen Gerät schon gewählt wurde.
+                  await saveNationsChoice({
+                    eventId: activeWindow.id,
+                    countryCode: effective,
+                    chosenAtIso: new Date().toISOString(),
+                  });
+                  setChosenCountry(effective);
                   Alert.alert(
                     'Bereits gewählt',
                     `Du bist für dieses Event schon für ${countryLabel(effective)} angemeldet.`
@@ -167,9 +200,13 @@ export function NationsCupScreen({ navigation }: Props) {
                 }
                 await refresh();
               } catch {
+                // Die lokale Wahl steht bereits - es fehlt nur die Übertragung, und die
+                // holt `refresh` beim nächsten Öffnen nach. Deshalb kein Fehler, sondern
+                // ein Hinweis.
                 Alert.alert(
-                  'Hat nicht geklappt',
-                  'Die Wahl konnte nicht gespeichert werden. Prüfe deine Internetverbindung und versuche es erneut.'
+                  'Noch nicht übertragen',
+                  `Du trittst für ${country.name} an. Die Übertragung hat nicht geklappt und wird ` +
+                    'automatisch nachgeholt, sobald du wieder online bist.'
                 );
               } finally {
                 setJoining(false);
@@ -179,10 +216,10 @@ export function NationsCupScreen({ navigation }: Props) {
         ]
       );
     },
-    [activeWindow, me, refresh]
+    [activeWindow, identity.status, me, refresh]
   );
 
-  const myCountry = chosenCountry ? countryLabel(chosenCountry) : null;
+  const registrationOpensAt = useMemo(() => registrationOpensAtMs(activeWindow), [activeWindow]);
 
   return (
     <View style={styles.container}>
@@ -202,31 +239,79 @@ export function NationsCupScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, running ? styles.statusDotLive : styles.statusDotIdle]} />
+            <View style={[styles.statusDot, isRunning ? styles.statusDotLive : styles.statusDotIdle]} />
             <Text style={styles.statusText}>
-              {running ? 'Läuft gerade' : `Startet in ${formatDurationDe(activeWindow.startsAtMs - nowMs)}`}
+              {isRunning ? 'Läuft gerade' : `Startet in ${formatDurationDe(activeWindow.startsAtMs - nowMs)}`}
             </Text>
           </View>
           <Text style={styles.eventRange}>{formatEventRangeDe(activeWindow)}</Text>
-          {running && (
-            <Text style={styles.eventRemaining}>
-              Noch {formatDurationDe(activeWindow.endsAtMs - nowMs)} Zeit
+          {isRunning && (
+            <Text style={styles.eventRemaining}>Noch {formatDurationDe(activeWindow.endsAtMs - nowMs)} Zeit</Text>
+          )}
+          {!isRunning && canChoose && (
+            <Text style={styles.eventRemaining}>Anmeldung läuft - du kannst dein Land jetzt schon wählen</Text>
+          )}
+          {!canChoose && registrationOpensAt !== null && (
+            <Text style={styles.eventRange}>
+              Anmeldung öffnet in {formatDurationDe(registrationOpensAt - nowMs)}
+            </Text>
+          )}
+        </View>
+
+        {/* Die Länderwahl steht bewusst VOR und außerhalb der Ranking-Prüfung: Sie
+            funktioniert lokal, ohne Anmeldung und ohne eingerichtetes Firebase. Sonst
+            könnte niemand sein Land aussuchen, solange das Ranking-System fehlt. */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Dein Land</Text>
+          {chosenCountry ? (
+            <>
+              <View style={styles.myCountryRow}>
+                <Text style={styles.myCountryFlag}>{flagEmoji(chosenCountry)}</Text>
+                <View style={styles.myCountryTextWrap}>
+                  <Text style={styles.myCountryName}>{countryLabel(chosenCountry)}</Text>
+                  <Text style={styles.myCountryReps}>
+                    {myReps} {myReps === 1 ? 'Liegestütz' : 'Liegestütze'} beigetragen
+                  </Text>
+                </View>
+                <Ionicons name="lock-closed" size={18} color={colors.textSecondary} />
+              </View>
+              <Text style={styles.lockedHint}>Deine Wahl steht bis zum Ende des Events fest.</Text>
+            </>
+          ) : canChoose ? (
+            <>
+              <Text style={styles.chooseHint}>
+                Wähle ein Land. Alle deine Liegestütze im Eventzeitraum zählen dann für dieses Land.
+              </Text>
+              <View style={styles.warningRow}>
+                <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                <Text style={styles.warningText}>Die Wahl ist bis zum Ende des Events nicht mehr änderbar.</Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+                onPress={() => setPickerOpen(true)}
+              >
+                <Ionicons name="flag-outline" size={18} color="#0B0F14" />
+                <Text style={styles.primaryButtonText}>Land wählen</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Text style={styles.chooseHint}>
+              Die Anmeldung für das nächste Länderspiel ist noch nicht offen.
             </Text>
           )}
         </View>
 
         {identity.status === 'loading' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
 
-        {identity.status === 'notConfigured' && (
-          <Text style={styles.infoText}>
-            Das Länderspiel braucht das Ranking-System (siehe README „Ranking-System einrichten").
-          </Text>
-        )}
-
-        {identity.status === 'needsReauth' && (
-          <Text style={styles.infoText}>
-            Bitte melde dich auf dem Home-Screen zuerst mit Google an, um am Länderspiel teilzunehmen.
-          </Text>
+        {(identity.status === 'notConfigured' || identity.status === 'needsReauth') && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Wertung</Text>
+            <Text style={styles.infoText}>
+              {identity.status === 'notConfigured'
+                ? 'Das Zusammenzählen über alle Spieler braucht das Ranking-System (siehe README „Ranking-System einrichten"). Deine Länderwahl ist trotzdem schon gespeichert und wird automatisch übernommen, sobald es eingerichtet ist.'
+                : 'Melde dich auf dem Home-Screen mit Google an, damit deine Liegestütze für dein Land zählen. Deine Wahl bleibt gespeichert.'}
+            </Text>
+          </View>
         )}
 
         {identity.status === 'error' && (
@@ -236,47 +321,7 @@ export function NationsCupScreen({ navigation }: Props) {
         {identity.status === 'ready' && (
           <>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Dein Land</Text>
-              {chosenCountry ? (
-                <>
-                  <View style={styles.myCountryRow}>
-                    <Text style={styles.myCountryFlag}>{flagEmoji(chosenCountry)}</Text>
-                    <View style={styles.myCountryTextWrap}>
-                      <Text style={styles.myCountryName}>{myCountry}</Text>
-                      <Text style={styles.myCountryReps}>
-                        {myReps} {myReps === 1 ? 'Liegestütz' : 'Liegestütze'} beigetragen
-                      </Text>
-                    </View>
-                    <Ionicons name="lock-closed" size={18} color={colors.textSecondary} />
-                  </View>
-                  <Text style={styles.lockedHint}>
-                    Deine Wahl steht bis zum Ende des Events fest.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.chooseHint}>
-                    Wähle ein Land. Alle deine Liegestütze im Eventzeitraum zählen dann für dieses Land.
-                  </Text>
-                  <View style={styles.warningRow}>
-                    <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
-                    <Text style={styles.warningText}>
-                      Die Wahl ist bis zum Ende des Events nicht mehr änderbar.
-                    </Text>
-                  </View>
-                  <Pressable
-                    style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-                    onPress={() => setPickerOpen(true)}
-                  >
-                    <Ionicons name="flag-outline" size={18} color="#0B0F14" />
-                    <Text style={styles.primaryButtonText}>Land wählen</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>{running ? 'Zwischenstand' : 'Angemeldet'}</Text>
+              <Text style={styles.cardTitle}>{isRunning ? 'Zwischenstand' : 'Angemeldet'}</Text>
               {loadFailed && <Text style={styles.infoText}>Tabelle konnte nicht geladen werden.</Text>}
               {!loadFailed && standings == null && <ActivityIndicator color={colors.primary} />}
               {!loadFailed && standings != null && standings.length === 0 && (
@@ -331,8 +376,14 @@ function StandingRow({
         <Text style={styles.standingName} numberOfLines={1}>
           {countryLabel(standing.countryCode)}
         </Text>
+        {/* Wer sich angemeldet, aber noch nichts gemacht hat, zählt nicht als Spieler und
+            geht nicht in den Schnitt ein - "0 Spieler · ⌀ 0" wäre dafür eine irreführende
+            Anzeige. Solange niemand aus dem Land etwas beigetragen hat, steht hier
+            stattdessen die Zahl der Anmeldungen. */}
         <Text style={styles.standingMeta}>
-          {standing.players} {standing.players === 1 ? 'Spieler' : 'Spieler'} · ⌀ {standing.averageReps}
+          {standing.players === 0
+            ? `${standing.registeredPlayers} angemeldet, noch nichts beigetragen`
+            : `${standing.players} ${standing.players === 1 ? 'Spieler' : 'Spieler'} · ⌀ ${standing.averageReps}`}
         </Text>
       </View>
       <Text style={styles.standingReps}>{standing.reps}</Text>
@@ -346,6 +397,9 @@ function ResultCard({ result }: { result: NationsEventResult }) {
     month: '2-digit',
     year: 'numeric',
   });
+  // Nur Länder zählen, aus denen wirklich jemand etwas beigetragen hat. Ein Land, in dem
+  // sich nur jemand angemeldet und dann nichts gemacht hat, hat nicht "teilgenommen".
+  const countriesWithReps = result.standings.filter((standing) => standing.reps > 0).length;
   return (
     <View style={styles.resultCard}>
       <Text style={styles.resultDate}>{date}</Text>
@@ -363,8 +417,9 @@ function ResultCard({ result }: { result: NationsEventResult }) {
             {result.winnerPlayers === 1 ? 'Spieler' : 'Spieler'} · ⌀ {result.winnerAverageReps} je Spieler
           </Text>
           <Text style={styles.resultTotals}>
-            Insgesamt {result.totalReps} Liegestütze von {result.totalPlayers} Spielern aus{' '}
-            {result.standings.length} {result.standings.length === 1 ? 'Land' : 'Ländern'}
+            Insgesamt {result.totalReps} Liegestütze von {result.totalPlayers}{' '}
+            {result.totalPlayers === 1 ? 'Spieler' : 'Spielern'} aus {countriesWithReps}{' '}
+            {countriesWithReps === 1 ? 'Land' : 'Ländern'}
           </Text>
         </>
       ) : (

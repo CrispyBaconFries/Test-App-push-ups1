@@ -1,5 +1,7 @@
 import {
   DEFAULT_NATIONS_SCHEDULE,
+  activeNationsEvent,
+  registrationOpensAtMs,
   buildEventResult,
   computeStandings,
   currentEventWindow,
@@ -187,6 +189,30 @@ describe('buildEventResult', () => {
     });
   });
 
+  it('zählt angemeldete Spieler ohne Wiederholung auch im Endergebnis nicht mit', () => {
+    // chris' Vorgabe: "Falls er trotz Anmeldung keinen Liegestütz macht, soll er nicht
+    // gezählt werden." Gilt für den Sieger, für die Gesamtzahl der Spieler und für den
+    // Schnitt - sonst würde eine Anmeldung ohne Training die Zahlen verwässern.
+    const result = buildEventResult(window, [
+      { uid: 'a', countryCode: 'DE', reps: 100 },
+      { uid: 'b', countryCode: 'DE', reps: 0 },
+      { uid: 'c', countryCode: 'DE', reps: 0 },
+      { uid: 'd', countryCode: 'AT', reps: 0 },
+    ]);
+
+    expect(result.winnerCountryCode).toBe('DE');
+    expect(result.winnerPlayers).toBe(1);
+    expect(result.winnerAverageReps).toBe(100);
+    expect(result.totalPlayers).toBe(1);
+    // Österreich steht weiterhin in der Tabelle - aber mit null Spielern und null Schnitt.
+    expect(result.standings.find((s) => s.countryCode === 'AT')).toMatchObject({
+      reps: 0,
+      players: 0,
+      registeredPlayers: 1,
+      averageReps: 0,
+    });
+  });
+
   it('kürt keinen Sieger, wenn niemand eine einzige Wiederholung gemacht hat', () => {
     const result = buildEventResult(window, [
       { uid: 'a', countryCode: 'DE', reps: 0 },
@@ -266,5 +292,42 @@ describe('mostRecentFinishedEventWindow', () => {
     };
     expect(mostRecentFinishedEventWindow(zoneTime('2026-09-12T12:00:00'), everyThreeDays)).toBeNull();
     expect(mostRecentFinishedEventWindow(zoneTime('2026-09-10T12:00:00'), everyThreeDays)).toBeNull();
+  });
+});
+
+describe('activeNationsEvent', () => {
+  it('meint während eines laufenden Events genau dieses', () => {
+    const active = activeNationsEvent(zoneTime('2026-09-12T12:00:00'));
+    expect(active).toMatchObject({ phase: 'running' });
+    expect(active.window.id).toBe('2026-09-11');
+  });
+
+  it('meint zwischen zwei Events das nächste, mit offener Anmeldung', () => {
+    // Standardmäßig kann man sich anmelden, sobald das vorherige Event vorbei ist - also
+    // deutlich früher als einen Tag vorher. Wer am Montag in die App schaut, muss nicht
+    // bis Donnerstag warten, um sein Land zu wählen.
+    const active = activeNationsEvent(zoneTime('2026-09-14T09:00:00'));
+    expect(active).toMatchObject({ phase: 'registration' });
+    expect(active.window.id).toBe('2026-09-18');
+  });
+
+  it('öffnet die Anmeldung genau am eingestellten Tag vorher, wenn eingeschränkt', () => {
+    const oneDayBefore: NationsEventSchedule = { ...DEFAULT_NATIONS_SCHEDULE, registrationOpensDaysBefore: 1 };
+
+    // Mittwoch: Termin steht, Anmeldung noch zu.
+    expect(activeNationsEvent(zoneTime('2026-09-16T12:00:00'), oneDayBefore).phase).toBe('closed');
+    // Donnerstag 00:00, also genau ein Tag vor dem Start am Freitag 00:00: offen.
+    expect(activeNationsEvent(zoneTime('2026-09-17T00:00:00'), oneDayBefore).phase).toBe('registration');
+    // Eine Minute davor noch nicht.
+    expect(activeNationsEvent(zoneTime('2026-09-16T23:59:00'), oneDayBefore).phase).toBe('closed');
+  });
+
+  it('nennt den Zeitpunkt, ab dem die Anmeldung offen ist', () => {
+    const oneDayBefore: NationsEventSchedule = { ...DEFAULT_NATIONS_SCHEDULE, registrationOpensDaysBefore: 1 };
+    const { window } = activeNationsEvent(zoneTime('2026-09-16T12:00:00'), oneDayBefore);
+
+    expect(registrationOpensAtMs(window, oneDayBefore)).toBe(zoneTime('2026-09-17T00:00:00'));
+    // Ohne Einschränkung gibt es keinen solchen Zeitpunkt - die Anmeldung ist immer offen.
+    expect(registrationOpensAtMs(window)).toBeNull();
   });
 });
