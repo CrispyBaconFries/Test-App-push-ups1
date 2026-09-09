@@ -1,6 +1,6 @@
 import { PushUpAnalyzer, type DiscardedRep, type LiveFeedback, type RepResult } from '../formAnalysis';
 import { buildFrame, mergePoses, type SyntheticFrameParams } from '../testing/poseBuilder';
-import { pickMoreVisibleSide, type Pose } from '../landmarks';
+import { angleAtPoint, pickMoreVisibleSide, type Pose } from '../landmarks';
 import { PoseLandmarkIndex } from '../blazePoseLandmarks';
 
 /** ~30 Frames/s - die Bildrate, die die Kamera tatsächlich liefert. */
@@ -35,16 +35,18 @@ function runFrames(
   analyzer: PushUpAnalyzer,
   poses: Pose[],
   startMs = 0
-): { reps: RepResult[]; discards: DiscardedRep[]; live: LiveFeedback } {
+): { reps: RepResult[]; discards: DiscardedRep[]; cues: LiveFeedback['cue'][]; live: LiveFeedback } {
   const reps: RepResult[] = [];
   const discards: DiscardedRep[] = [];
+  const cues: LiveFeedback['cue'][] = [];
   let last: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
   poses.forEach((pose, i) => {
     last = analyzer.processFrame(pose, startMs + i * FRAME_MS);
     if (last.completedRep) reps.push(last.completedRep);
     if (last.discardedRep) discards.push(last.discardedRep);
+    cues.push(last.live.cue);
   });
-  return { reps, discards, live: last!.live };
+  return { reps, discards, cues, live: last!.live };
 }
 
 /** Eine Wiederholung mit gleichbleibenden Körperparametern über den ganzen Verlauf. */
@@ -251,6 +253,73 @@ describe('PushUpAnalyzer', () => {
     expect(live.trackingOk).toBe(false);
     expect(completedRep).toBeNull();
     expect(analyzer.getPhase()).toBe('up');
+  });
+
+  it('does not blame the foot for the back: hip straightness ignores the ankle entirely', () => {
+    // Der Fehler, den chris vom ersten Tag an gemeldet hat. Gemessen wurde
+    // Schulter-Hüfte-KNÖCHEL. Beim Liegestütz steht der Fuß auf den Zehen, der Knöchel
+    // liegt also unter der Körperlinie - der Winkel war damit auch bei kerzengeradem
+    // Rücken systematisch zu klein. In den Messdaten vom 09.09.2026 erreichten deshalb
+    // 0 von 20 sauber ausgeführten Wiederholungen die Schwelle von 160°.
+    const straightBackToesDown = { hipOffsetY: 0, ankleOffsetY: 0.5 };
+
+    // Erst nachweisen, dass dieser Aufbau die alte Messung wirklich hätte scheitern lassen.
+    const frame = buildFrame({ elbowAngleDeg: 90, ...straightBackToesDown });
+    const at = (index: number) => frame[index]!;
+    const overAnkle = angleAtPoint(
+      at(PoseLandmarkIndex.rightShoulder),
+      at(PoseLandmarkIndex.rightHip),
+      at(PoseLandmarkIndex.rightAnkle)
+    );
+    const overKnee = angleAtPoint(
+      at(PoseLandmarkIndex.rightShoulder),
+      at(PoseLandmarkIndex.rightHip),
+      at(PoseLandmarkIndex.rightKnee)
+    );
+    expect(overAnkle).toBeLessThan(160); // alte Messung: "Hüfte sackt durch"
+    expect(overKnee).toBeCloseTo(180); // neue Messung: kerzengerade, wie es sein soll
+
+    const analyzer = new PushUpAnalyzer();
+    const { reps } = runFrames(analyzer, repFrames(90, straightBackToesDown));
+
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).toEqual([]);
+    expect(reps[0].formScore).toBe(100);
+  });
+
+  it('tells piking apart from sagging in the live cue, not just in the rep result', () => {
+    // liveCue() wertete das Vorzeichen der Abweichung nicht aus und konnte deshalb
+    // NIEMALS 'HIPS_PIKING' melden - jede Abweichung hieß "sackt durch", auch ein
+    // hochgestrecktes Gesäß.
+    const sagging = new PushUpAnalyzer();
+    const sagCues = runFrames(sagging, repFrames(90, { hipOffsetY: 0.3 })).cues;
+    expect(sagCues).toContain('HIPS_SAGGING');
+    expect(sagCues).not.toContain('HIPS_PIKING');
+
+    const piking = new PushUpAnalyzer();
+    const pikeRun = runFrames(piking, repFrames(90, { hipOffsetY: -0.3 }));
+    expect(pikeRun.cues).toContain('HIPS_PIKING');
+    expect(pikeRun.cues).not.toContain('HIPS_SAGGING');
+    // Live-Hinweis und Auswertung am Rep-Ende müssen sich einig sein.
+    expect(pikeRun.reps[0].issues).toContain('HIPS_PIKING');
+  });
+
+  it('accepts the neck angle a person actually has while looking at the camera', () => {
+    // Aus 144 echten Wiederholungen kalibriert. Ein neutraler Nacken ergibt in dieser
+    // Kameraperspektive keine 180°: Die App bittet die Person, in die Kamera zu schauen,
+    // und genau das verkleinert den Winkel Ohr-Schulter-Hüfte. Gemessener Median: 128°,
+    // eine saubere Serie lag bei 126-140°. Die alte Schwelle von 140° schlug bei 93 %
+    // aller Wiederholungen an.
+    const looking = new PushUpAnalyzer();
+    const ok = runFrames(looking, repFrames(90, { neckAngleDeg: 126 }));
+    expect(ok.reps[0].issues).not.toContain('HEAD_MISALIGNED');
+
+    // Ein wirklich hängender Kopf muss weiterhin auffallen - solche Werte kommen in den
+    // Messdaten vor (Minimum 59°) und immer zusammen mit anderen groben Fehlern.
+    const dropped = new PushUpAnalyzer();
+    const bad = runFrames(dropped, repFrames(90, { neckAngleDeg: 100 }));
+    expect(bad.reps[0].issues).toContain('HEAD_MISALIGNED');
+    expect(bad.cues).toContain('HEAD_MISALIGNED');
   });
 
   it('keeps using the side it locked onto at rep start, even if the other side becomes more visible mid-rep', () => {

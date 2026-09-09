@@ -63,7 +63,7 @@ export interface RepResult {
   minElbowAngleDeg: number;
   /**
    * `null` when the landmarks that check needs were never visible during the rep (e.g.
-   * feet out of frame for the hip/ankle-based checks). Deliberately not a number: these
+   * feet out of frame for the hip/knee-based checks). Deliberately not a number: these
    * are persisted via JSON.stringify (workout history, calibration log), and a
    * non-finite sentinel like Infinity silently becomes `null` there anyway - but typed
    * as `number`, which would then feed NaN into any later averaging.
@@ -95,11 +95,31 @@ export interface PushUpThresholds {
   elbowAttemptDeg: number;
   /** Elbow angle (deg) a rep must reach at minimum to count as full depth. */
   goodDepthElbowDeg: number;
-  /** shoulder-hip-ankle angle (deg); below this the torso counts as not straight (sag or pike). */
+  /**
+   * shoulder-hip-KNEE angle (deg); below this the torso counts as not straight (sag or pike).
+   *
+   * Bewusst über das Knie und nicht über den Knöchel: Beim Liegestütz steht der Fuß auf
+   * den Zehen, der Knöchel liegt damit deutlich *unterhalb* der Körperlinie
+   * Schulter-Hüfte-Knie. Über den Knöchel gemessen ist der Winkel deshalb auch bei
+   * kerzengeradem Rücken systematisch kleiner als 180° - in den Messdaten vom 09.09.2026
+   * erreichten 0 von 20 sauber ausgeführten Wiederholungen die Schwelle von 160°. Das Knie
+   * liegt auf der Körperlinie und ist zusätzlich zuverlässiger im Bild als der Fuß, der
+   * bei einem tief vor der Person stehenden Handy oft ganz herausfällt.
+   */
   minHipStraightnessDeg: number;
   /** elbow-shoulder-hip angle (deg); above this the elbow counts as flared out. */
   maxElbowFlareDeg: number;
-  /** ear-shoulder-hip angle (deg); below this the head/neck counts as misaligned. */
+  /**
+   * ear-shoulder-hip angle (deg); below this the head/neck counts as misaligned.
+   *
+   * Aus echten Messungen kalibriert (144 Wiederholungen, `docs/messdaten/`), nicht
+   * geschätzt. Ein neutraler Nacken ergibt in dieser Kameraperspektive **nicht** 180°:
+   * Die App bittet die Person, in die Kamera zu schauen, und genau das verkleinert den
+   * Winkel Ohr-Schulter-Hüfte. Gemessener Median über alle Aufzeichnungen: 128°, bei
+   * einer sauber ausgeführten Serie 126-140°. Der alte Wert von 140° lag oberhalb des
+   * 90. Perzentils von allem je Gemessenen und schlug deshalb bei 93 % aller
+   * Wiederholungen an - eine Prüfung, die fast immer anschlägt, trägt keine Information.
+   */
   minNeckAngleDeg: number;
   /** Minimum landmark visibility (0..1) required to trust a frame. */
   minVisibility: number;
@@ -143,7 +163,7 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   goodDepthElbowDeg: 95,
   minHipStraightnessDeg: 160,
   maxElbowFlareDeg: 80,
-  minNeckAngleDeg: 140,
+  minNeckAngleDeg: 115,
   minVisibility: 0.5,
   formPercentile: 10,
   depthOutlierFrames: 2,
@@ -285,12 +305,12 @@ export class PushUpAnalyzer {
     const idx = sideIndices(side);
 
     // Only the arm itself is required to count a rep at all - shoulder/elbow/wrist are
-    // reliably in frame in any push-up camera setup. Ear/hip/ankle are only needed for
+    // reliably in frame in any push-up camera setup. Ear/hip/knee are only needed for
     // the *optional* form-quality checks below: a phone propped up low in front of the
-    // user very often has the feet out of frame or at too shallow an angle for MediaPipe
-    // to trust, and requiring them here used to mean the rep counter simply never
-    // advanced past 'up' whenever that happened - no rep ever counted, regardless of how
-    // clean the push-up itself was.
+    // user very often has the lower body out of frame or at too shallow an angle for
+    // MediaPipe to trust, and requiring them here used to mean the rep counter simply
+    // never advanced past 'up' whenever that happened - no rep ever counted, regardless
+    // of how clean the push-up itself was.
     if (!allVisible(pose, [idx.shoulder, idx.elbow, idx.wrist], t.minVisibility)) {
       // Mitzählen, statt den Ausfall stillschweigend zu überspringen: Am Ende der
       // Wiederholung entscheidet dieser Anteil darüber, ob die Formwerte überhaupt
@@ -309,19 +329,19 @@ export class PushUpAnalyzer {
     const elbowAngleDeg = angleAtPoint(shoulder, elbow, wrist);
 
     const hasHip = allVisible(pose, [idx.hip], t.minVisibility);
-    const hasAnkle = allVisible(pose, [idx.ankle], t.minVisibility);
+    const hasKnee = allVisible(pose, [idx.knee], t.minVisibility);
     const hasEar = allVisible(pose, [idx.ear], t.minVisibility);
     const hip = hasHip ? getLandmark(pose, idx.hip)! : null;
-    const ankle = hasAnkle ? getLandmark(pose, idx.ankle)! : null;
+    const knee = hasKnee ? getLandmark(pose, idx.knee)! : null;
     const ear = hasEar ? getLandmark(pose, idx.ear)! : null;
 
     // null (rather than a bogus 0) whenever the landmarks needed for that specific check
     // aren't visible this frame - finishRep()/liveCue() below treat null as "unknown,
     // don't penalize", not as a real bad-form reading.
-    const hipStraightnessDeg = hip && ankle ? angleAtPoint(shoulder, hip, ankle) : null;
+    const hipStraightnessDeg = hip && knee ? angleAtPoint(shoulder, hip, knee) : null;
     const elbowFlareDeg = hip ? angleAtPoint(elbow, shoulder, hip) : null;
     const neckAngleDeg = ear && hip ? angleAtPoint(ear, shoulder, hip) : null;
-    const hipSagDeviation = hip && ankle ? signedPerpendicularDeviation2D(shoulder, ankle, hip) : null;
+    const hipSagDeviation = hip && knee ? signedPerpendicularDeviation2D(shoulder, knee, hip) : null;
 
     let completedRep: RepResult | null = null;
 
@@ -381,7 +401,7 @@ export class PushUpAnalyzer {
       }
     }
 
-    const cue = this.liveCue(hipStraightnessDeg, elbowFlareDeg, neckAngleDeg);
+    const cue = this.liveCue(hipStraightnessDeg, hipSagDeviation, elbowFlareDeg, neckAngleDeg);
 
     return {
       live: { phase: this.phase, trackingOk: true, elbowAngleDeg, hipStraightnessDeg: hipStraightnessDeg ?? 0, cue },
@@ -412,13 +432,17 @@ export class PushUpAnalyzer {
 
   private liveCue(
     hipStraightnessDeg: number | null,
+    hipSagDeviation: number | null,
     elbowFlareDeg: number | null,
     neckAngleDeg: number | null
   ): LiveFeedback['cue'] {
     if (this.phase === 'up') return null;
     const t = this.thresholds;
     if (hipStraightnessDeg !== null && hipStraightnessDeg < t.minHipStraightnessDeg) {
-      return 'HIPS_SAGGING';
+      // Das Vorzeichen entscheidet die Richtung, genau wie in finishRep(). Ohne diese
+      // Auswertung konnte der Live-Hinweis nie HIPS_PIKING melden und nannte jede
+      // Abweichung "sackt durch" - auch ein hochgestrecktes Gesäß.
+      return hipSagDeviation !== null && hipSagDeviation < 0 ? 'HIPS_PIKING' : 'HIPS_SAGGING';
     }
     if (elbowFlareDeg !== null && elbowFlareDeg > t.maxElbowFlareDeg) {
       return 'ELBOWS_FLARED';

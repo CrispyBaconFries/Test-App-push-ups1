@@ -27,8 +27,15 @@ export interface SyntheticFrameParams {
   flareDeg?: number;
   /** angleAtPoint(ear, shoulder, hip), degrees. ~180 = neutral neck. */
   neckAngleDeg?: number;
-  /** How far the hip point deviates off the shoulder-ankle line. 0 = perfectly straight, positive = sag, negative = pike. */
+  /** How far the hip point deviates off the shoulder-knee body line. 0 = perfectly straight, positive = sag, negative = pike. */
   hipOffsetY?: number;
+  /**
+   * How far the ankle drops below the shoulder-knee body line. 0 = ankle exactly on the
+   * line, which is *not* what a real push-up looks like: the foot rests on the toes, so
+   * the ankle sits clearly below the line through shoulder, hip and knee. Used to prove
+   * that the hip-straightness check no longer depends on the foot at all.
+   */
+  ankleOffsetY?: number;
   /** Landmark visibility for the tracked side; set low to simulate the user stepping out of frame. */
   visibility?: number;
   /** Visibility for ear/hip/ankle specifically (defaults to `visibility`) - set low on its own to simulate feet/lower body being out of frame while the arm stays trackable. */
@@ -49,15 +56,20 @@ export function buildFrame(params: SyntheticFrameParams): Pose {
     flareDeg = 30,
     neckAngleDeg = 175,
     hipOffsetY = 0,
+    ankleOffsetY = 0,
     visibility = 1,
     extendedVisibility = visibility,
     side = 'right',
   } = params;
 
+  // Körperlinie: Schulter (0,0) -> Hüfte (1,·) -> Knie (1.5,0). Das Knie liegt auf dieser
+  // Linie, der Knöchel bei einem echten Liegestütz nicht (Fuß auf den Zehen) - deshalb
+  // ist er über `ankleOffsetY` getrennt verschiebbar.
   const shoulder: Vec2 = { x: 0, y: 0 };
   const hipDir: Vec2 = { x: 1, y: 0 };
   const hip: Vec2 = { x: 1, y: hipOffsetY };
-  const ankle: Vec2 = { x: 2, y: 0 };
+  const knee: Vec2 = { x: 1.5, y: 0 };
+  const ankle: Vec2 = { x: 2, y: ankleOffsetY };
 
   const upperArmDir = rotate(hipDir, -flareDeg);
   const elbow = add(shoulder, scale(upperArmDir, 1));
@@ -97,7 +109,7 @@ export function buildFrame(params: SyntheticFrameParams): Pose {
   set(i.wrist, wrist);
   pose[i.hip] = { x: hip.x, y: hip.y, z: 0, visibility: extendedVisibility };
   pose[i.ankle] = { x: ankle.x, y: ankle.y, z: 0, visibility: extendedVisibility };
-  pose[i.knee] = { x: 1.5, y: 0, z: 0, visibility: extendedVisibility };
+  pose[i.knee] = { x: knee.x, y: knee.y, z: 0, visibility: extendedVisibility };
 
   return pose;
 }

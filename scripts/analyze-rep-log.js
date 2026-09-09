@@ -29,11 +29,16 @@ const DEFAULT_FILE = path.join(__dirname, '..', 'docs', 'messdaten', '2026-09-09
 const file = process.argv[2] || DEFAULT_FILE;
 
 // Muss mit DEFAULT_THRESHOLDS in src/pose/formAnalysis.ts übereinstimmen.
+//
+// ACHTUNG beim Vergleich alter mit neuen Aufzeichnungen: `minHipStraightnessDeg` misst
+// seit dem 10.09.2026 den Winkel Schulter-Hüfte-KNIE statt Schulter-Hüfte-Knöchel. Die
+// Hüftspalte aus Aufzeichnungen davor ist mit neueren deshalb nicht vergleichbar - die
+// alten Werte sind durch den auf den Zehen stehenden Fuß systematisch zu klein.
 const THRESHOLDS = {
   goodDepthElbowDeg: 95,
   minHipStraightnessDeg: 160,
   maxElbowFlareDeg: 80,
-  minNeckAngleDeg: 140,
+  minNeckAngleDeg: 115,
   minRepDurationMs: 600,
   maxRepDurationMs: 8000,
 };
@@ -131,14 +136,24 @@ for (const [label, key, threshold, direction] of checks) {
   const pass = values.filter((v) => (direction === 'above' ? v >= threshold : v <= threshold)).length;
   const p10 = percentile(values, 10);
   const p90 = percentile(values, 90);
-  // Eine Schwelle, die außerhalb von p10..p90 liegt, kann fast niemand je einhalten
-  // (oder fast jeder immer) - dann misst sie die Person nicht mehr, sondern die Methode.
-  const outside = threshold > p90 || threshold < p10;
+  // Zwei verschiedene Befunde, die nicht verwechselt werden dürfen:
+  //   unerreichbar - die Schwelle liegt jenseits von dem, was fast niemand je erreicht.
+  //                  Dann misst sie nicht mehr die Person, sondern die Methode. Das ist
+  //                  der Fehler, der HEAD_MISALIGNED bei 93 % anschlagen ließ.
+  //   wirkungslos  - die Prüfung schlägt nie an. Nicht falsch, aber sie trägt nichts bei
+  //                  und man sollte wissen, dass sie faktisch abgeschaltet ist.
+  const unreachable = direction === 'above' ? threshold > p90 : threshold < p10;
+  const inert = pass === values.length;
+  const note = unreachable
+    ? `   <-- unerreichbar: Schwelle jenseits von p${direction === 'above' ? '90' : '10'}`
+    : inert
+      ? '   (schlägt in diesem Datensatz nie an)'
+      : '';
   console.log(
     `  ${label.padEnd(36)} Schwelle ${String(threshold).padStart(3)}°  ` +
       `p10 ${p10.toFixed(0).padStart(3)}  Median ${median(values).toFixed(0).padStart(3)}  p90 ${p90.toFixed(0).padStart(3)}  ` +
       `eingehalten: ${pass}/${values.length}` +
-      (outside ? '   <-- Schwelle außerhalb p10..p90' : '')
+      note
   );
 }
 

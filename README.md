@@ -349,6 +349,64 @@ Die Zeitüberschreitung wird bewusst **vor** der Sichtbarkeitsprüfung ausgewert
 Eine Wiederholung, die genau deshalb hängt, weil das Tracking weggebrochen ist, würde
 sonst nie ablaufen.
 
+### Warum die Hüfte über das Knie gemessen wird, nicht über den Knöchel (10.09.2026)
+
+Der Fehlalarm „Hüfte sackt durch", den chris vom ersten Tag an gemeldet hat, war ein
+Messfehler, kein Formfehler:
+
+```ts
+// vorher
+const hipStraightnessDeg = hip && ankle ? angleAtPoint(shoulder, hip, ankle) : null;
+```
+
+Beim Liegestütz steht der Fuß auf den Zehen. Der Knöchel liegt damit deutlich *unterhalb*
+der Körperlinie Schulter–Hüfte–Knie — der Winkel Schulter–Hüfte–Knöchel ist also auch bei
+kerzengeradem Rücken systematisch kleiner als 180°. In den Messdaten vom 09.09.2026
+erreichten **0 von 20** sauber ausgeführten Wiederholungen die Schwelle von 160°, bei
+einer Streubreite von nur 7°. Gemessen wird jetzt Schulter–Hüfte–**Knie**; das Knie liegt
+auf der Körperlinie und ist zusätzlich zuverlässiger im Bild als der Fuß, der bei einem
+tief vor der Person stehenden Handy oft ganz herausfällt.
+
+Der zugehörige Test baut genau diese Situation nach (gerader Rücken, Fuß abgesenkt) und
+prüft *beides*: dass die alte Messung daran gescheitert wäre und die neue nicht.
+
+**Die Schwelle `minHipStraightnessDeg` (160°) ist bewusst unverändert geblieben.** Sie
+misst seit dieser Änderung etwas anderes, alte Aufzeichnungen taugen also nicht mehr zur
+Kalibrierung. Ob 160° jetzt erreichbar ist, sagt die nächste Aufzeichnung — Messung und
+Schwelle im selben Schritt zu ändern, würde das Ergebnis unlesbar machen.
+
+### Der Live-Hinweis kennt jetzt die Richtung
+
+`liveCue()` wertete das Vorzeichen der Hüftabweichung nicht aus und konnte deshalb
+**niemals** `HIPS_PIKING` melden — jede Abweichung hieß „sackt durch", auch ein
+hochgestrecktes Gesäß. Die Auswertung am Ende der Wiederholung (`finishRep()`) machte es
+von Anfang an richtig; jetzt sind beide einig.
+
+### Die Nacken-Schwelle stammt aus Messungen, nicht aus Anatomie
+
+`minNeckAngleDeg` stand auf 140° und schlug damit bei **93 % aller Wiederholungen** an.
+Der Grund: Ein neutraler Nacken ergibt in dieser Kameraperspektive keine 180°. Die App
+bittet die Person ausdrücklich, in die Kamera zu schauen — und genau das verkleinert den
+Winkel Ohr–Schulter–Hüfte.
+
+Aus 144 aufgezeichneten Wiederholungen:
+
+| Schwelle | markiert insgesamt | markiert bei einer sauberen Serie |
+|---|---|---|
+| 140° (alt) | 93,1 % | 19 von 20 |
+| 125° | 26,4 % | 0 von 20 |
+| **115° (neu)** | **12,5 %** | **0 von 20** |
+| 100° | 4,9 % | 0 von 20 |
+
+115° lässt eine saubere Serie (gemessen 126–140°) mit 11° Luft durch und markiert
+weiterhin die echten Ausreißer — im Datensatz kommen Werte bis herunter zu 59° vor, immer
+zusammen mit anderen groben Fehlern.
+
+**Nicht angefasst: `goodDepthElbowDeg` (95°).** Diese Prüfung schlägt zwar ebenfalls oft
+an, aber zu Recht: Die gemessene Tiefe liegt im Median bei 101°, also knapp oberhalb eines
+rechten Winkels. Das ist eine echte Trainingsrückmeldung und kein Messfehler. Ob die App
+*so oft* „tiefer gehen" sagen soll, ist eine Produktentscheidung, keine Kalibrierfrage.
+
 ### Kalibrier-Log auswerten
 
 ```bash

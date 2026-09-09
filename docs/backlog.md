@@ -48,48 +48,41 @@ liegt der Nackenwinkel zwischen 126° und 140° bei einer Schwelle von 140° (ei
 (eingehalten: **0 von 20**). Beide Schwellen liegen komplett außerhalb des Bereichs, den
 ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
 
+### ✅ Erledigt (10.09.2026)
+
+- **Hüftwinkel über das Knie statt über den Knöchel.** Der Knöchel liegt beim Liegestütz
+  auf den Zehen und damit unter der Körperlinie; über ihn gemessen war der Winkel auch bei
+  geradem Rücken systematisch zu klein. Regressionstest baut genau diesen Fall nach.
+- **Vorzeichen im Live-Hinweis.** `liveCue()` kann jetzt `HIPS_PIKING` melden und ist mit
+  `finishRep()` einig.
+- **Nacken-Schwelle aus 144 Messungen kalibriert:** 140° → 115°. Markiert statt 93 % noch
+  12,5 % und lässt eine saubere Serie (126–140°) mit 11° Luft durch.
+
 ### Noch offen
 
-1. **Falscher Referenzpunkt bei der Hüfte.**
-   ```ts
-   const hipStraightnessDeg = hip && ankle ? angleAtPoint(shoulder, hip, ankle) : null;
-   ```
-   Beim Liegestütz steht der Fuß auf den Zehen, der Knöchel liegt also deutlich
-   *unterhalb* der Körperlinie Schulter–Hüfte–Knie. Der Winkel Schulter–Hüfte–Knöchel ist
-   damit auch bei perfekt geradem Rücken systematisch kleiner als 180°. Kandidat:
-   **Schulter–Hüfte–Knie** messen, den Knöchel nur noch für die Sichtbarkeitsprüfung
-   verwenden.
+1. **`minHipStraightnessDeg` (160°) neu kalibrieren.** Bewusst unverändert gelassen: Die
+   Kennzahl misst seit dem 10.09.2026 etwas anderes (Knie statt Knöchel), alte
+   Aufzeichnungen taugen dafür also nicht. Die nächste Aufzeichnung sagt, ob 160° jetzt
+   erreichbar ist. Messung und Schwelle im selben Schritt zu ändern würde das Ergebnis
+   unlesbar machen.
 
-2. **Der Live-Hinweis ignoriert die Richtung.**
-   ```ts
-   if (hipStraightnessDeg !== null && hipStraightnessDeg < t.minHipStraightnessDeg) {
-     return 'HIPS_SAGGING';
-   }
-   ```
-   `liveCue()` wertet das Vorzeichen von `hipSagDeviation` nicht aus, kann deshalb
-   **niemals** `HIPS_PIKING` melden und nennt jede Abweichung „sackt durch".
-   `finishRep()` macht es richtig, `liveCue()` nicht.
+2. **Produktentscheidung `goodDepthElbowDeg` (95°).** Kein Messfehler — die gemessene
+   Tiefe liegt im Median bei 101°, also wirklich knapp oberhalb des rechten Winkels. Die
+   Frage ist, ob die App bei 95 % der Wiederholungen „tiefer gehen" sagen soll oder ob
+   eine mildere Stufe (z. B. Hinweis erst ab 110°) motivierender ist.
 
-3. **Schwellen neu setzen** — `minHipStraightnessDeg` (160) und `minNeckAngleDeg` (140)
-   liegen beide oberhalb des 90. Perzentils aller je gemessenen Werte. Aber erst nach
-   1. und 2. **und** nach einer neuen Aufzeichnung, sonst kalibriert man auf den
-   Messfehler.
-
-4. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
+3. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
    Konfidenzwerte im nativen Bridge-Code (`ConvertHelpers.kt`); `visibility` ist bei uns
    auf jedem Frame `undefined`. Solange das so bleibt, können schlechte Landmarken gar
-   nicht aussortiert werden — `minTrackedFrameRatio` greift derzeit nur, wenn ein
-   Landmark ganz fehlt. Für dieses Paket gibt es bereits einen Patch, in den das mit
-   hineinkann.
+   nicht aussortiert werden — `minTrackedFrameRatio` greift derzeit nur, wenn ein Landmark
+   ganz fehlt. Für dieses Paket gibt es bereits einen Patch, in den das mit hineinkann.
 
-5. **Sitzungskontext erfassen** — Person, Abstand, Handyhöhe, frontal oder seitlich, und
+4. **Sitzungskontext erfassen** — Person, Abstand, Handyhöhe, frontal oder seitlich, und
    eine Selbsteinschätzung nach dem Satz. Ohne das mischen sich mehrere Personen aus
-   unbekannten Perspektiven in einem Datensatz; genau daher stammt die enorme Streuung
-   (Flare-Median je Sitzung zwischen 58° und 101° — das ist die Kameraperspektive, nicht
-   die Technik).
+   unbekannten Perspektiven in einem Datensatz.
 
-6. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen
-   nicht, um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
+5. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen nicht,
+   um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
 
 ## 2. Kalibrierung mit Kopf-Rahmen vor dem Training
 
