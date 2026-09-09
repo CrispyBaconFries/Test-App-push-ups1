@@ -1136,6 +1136,122 @@ aktiv aufgerufen.
 **Boss-Grafiken**: aktuell weiterhin ein einfaches, eingefärbtes Platzhalter-Icon
 (Totenkopf) - die eigentliche Gestaltung kommt wie besprochen in einem eigenen Schritt.
 
+## Länderspiel (bereits implementiert)
+
+Ein zeitlich begrenztes Event: Jeder Spieler wählt ein Land, und alle Liegestütze, die er
+im Eventzeitraum macht, zählen für dieses Land. Am Ende gewinnt das Land mit den meisten
+Liegestützen; das Ergebnis wird mit Datum, Sieger, Liegestützen, Spielerzahl und Schnitt
+je Spieler veröffentlicht.
+
+Erreichbar über die Kachel **„Länderspiel"** auf dem Startbildschirm.
+
+### Zeitraum einstellen
+
+Alles Zeitliche steckt in `DEFAULT_NATIONS_SCHEDULE` (`src/nations/nationsEvent.ts`).
+Aktuell: **jede Woche Freitag 00:00 bis Sonntag 24:00**, drei volle Tage.
+
+```ts
+export const DEFAULT_NATIONS_SCHEDULE: NationsEventSchedule = {
+  utcOffsetMinutes: 120,        // Zeitzone des Events (Deutschland: 60 Winter / 120 Sommer)
+  startHour: 0,                 // Startstunde in dieser Zone
+  durationDays: 3,              // volle Tage
+  repeat: { mode: 'weekly', startWeekday: 5 },   // 5 = Freitag
+};
+```
+
+Für **„alle drei Tage für drei Tage"** wird nur `repeat` ausgetauscht — sonst nichts:
+
+```ts
+  repeat: { mode: 'everyNDays', anchorDate: '2026-09-11', periodDays: 3 },
+```
+
+`anchorDate` ist der erste Starttag; ab dann läuft der Rhythmus durch. Ist `periodDays`
+größer als `durationDays`, entsteht eine Pause zwischen den Events; sind beide gleich,
+läuft es lückenlos. Beide Modi sind mit Tests abgedeckt
+(`src/nations/__tests__/nationsEvent.test.ts`).
+
+**Zeitzone:** Das Fenster gilt für alle Spieler im selben Augenblick, unabhängig davon, wo
+ihr Handy steht — sonst hätte jemand mit einer anderen Zeitzone länger Zeit. `utcOffsetMinutes`
+wird **nicht** automatisch auf Sommerzeit umgestellt: Zweimal im Jahr beginnt und endet das
+Event dadurch eine Stunde verschoben, bis der Wert angepasst wird. Bewusst so gelassen,
+statt eine Zeitzonen-Bibliothek einzubauen — Hermes (die JS-Engine der App) liefert `Intl`
+mit Zeitzonendaten nicht zuverlässig mit, und ein Drei-Tage-Event verträgt eine Stunde
+Versatz.
+
+### Länderwahl
+
+Die Auswahl ist eine durchsuchbare Vollbild-Liste mit Flagge, Name und Ländercode. Gesucht
+wird ohne Rücksicht auf Groß-/Kleinschreibung, Umlaute und Akzente: „osterreich" findet
+Österreich, „cote" findet Côte d'Ivoire. Treffer sind nach Nähe sortiert, nicht
+alphabetisch — bei „de" steht Deutschland oben und nicht Bangladesch.
+
+Die Flaggen sind **keine Bilddateien**, sondern werden aus dem Ländercode gerechnet
+(`flagEmoji` in `src/nations/countries.ts`): Unicode kodiert Flaggen als Buchstabenpaar,
+`D` + `E` ergibt 🇩🇪. Deshalb liegen im Projekt keine 200 Bilder herum, die Liste
+funktioniert offline, und die APK wird davon kein Byte größer. Stellt ein Gerät Flaggen
+nicht dar, erscheinen die beiden Buchstaben — deshalb steht der Ländername im UI immer
+daneben und nie nur die Flagge.
+
+**Die Wahl ist unumkehrbar** bis zum Ende des Events. Darauf wird zweimal hingewiesen
+(vor dem Öffnen der Liste und im Bestätigungsdialog), und sie ist nicht nur in der App
+gesperrt, sondern in `firestore.rules` erzwungen:
+
+```
+allow update: if ... && request.resource.data.countryCode == resource.data.countryCode;
+```
+
+Auch ein zweites Gerät oder eine ältere App-Version kann die Wahl damit nicht umbiegen.
+Ein neues Event bedeutet eine neue, wieder freie Wahl.
+
+### Datenmodell und Auswertung
+
+```
+nationsEvents/{eventId}                      Eckdaten + (nach Ende) das Ergebnis
+nationsEvents/{eventId}/participants/{uid}   Land und Liegestütze EINES Spielers
+```
+
+Pro Spieler ein eigenes Dokument statt eines Zählers pro Land: So schreibt jeder Client
+ausschließlich sein eigenes Dokument — dieselbe Regel, die schon für `players/{uid}` gilt.
+Ein gemeinsamer Länder-Zähler müsste für alle schreibbar sein und wäre von jedem beliebig
+manipulierbar. Die Länder-Tabelle entsteht stattdessen beim Lesen (`computeStandings`),
+ganz ohne Cloud Function.
+
+**Schnitt je Spieler:** Gezählt werden nur Spieler mit mindestens einer Wiederholung.
+Sonst würde jede Anmeldung ohne Training den Schnitt eines Landes drücken, und ein Land
+mit vielen Karteileichen stünde schlechter da als eines mit wenigen Aktiven — obwohl beide
+gleich viel geleistet haben. Wer sich nur angemeldet hat, steht in `registeredPlayers`.
+Gleichstand bei den Liegestützen entscheidet der höhere Schnitt.
+
+**Veröffentlichung ohne Server:** Es gibt keine Cloud Function, die zum Eventende einen
+Cron-Job ausführt. Stattdessen schreibt der erste Client, der nach dem Ende hinschaut, das
+Ergebnis fest (`loadOrFinalizeResult`) — dasselbe „faule" Muster, das `syncTrainingProgress`
+schon für den Wochenwechsel der Rangliste benutzt. Einmal festgeschrieben ändert es sich
+nicht mehr, auch wenn später noch ein verspäteter Offline-Sync eintrudelt.
+
+### Offline
+
+Wie beim Rest der App darf fehlendes Internet nichts kaputtmachen:
+
+- Die Länderwahl liegt zusätzlich lokal (`nationsChoiceStore.ts`), ist also auch ohne Netz
+  sichtbar.
+- Gutschriften, die nicht durchkommen, landen in `nationsSyncQueue.ts` und werden beim
+  nächsten Öffnen des Startbildschirms nachgeholt.
+- Maßgeblich ist der Zeitpunkt der **Session**, nicht der des Hochladens. Wer Sonntagabend
+  ohne Internet trainiert und erst Dienstag online geht, bekommt die Liegestütze trotzdem
+  dem Sonntags-Event gutgeschrieben. Das Event-Fenster wird in der Warteschlange
+  mitgespeichert statt später neu berechnet — sonst würde eine zwischenzeitliche Änderung
+  am Zeitplan die alte Session plötzlich einem anderen Event zuordnen.
+
+### Voraussetzung
+
+Das Länderspiel braucht Firebase und die Google-Anmeldung (wie Rangliste und Duelle) —
+ohne Einrichtung zeigt der Bildschirm einen Hinweis statt einer Tabelle. Siehe
+„Ranking-System einrichten". Nach dem Einrichten müssen die Regeln neu deployt werden:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
 ## Missionen & Münzen (bereits implementiert)
 
 Komplett offline (kein Backend nötig): tägliche und wöchentliche Missionen mit
@@ -1403,6 +1519,12 @@ src/
     LeaderboardScreen.tsx           Rangliste: Gesamt/Diese Woche/Meine Liga/Freunde als Unter-Tabs
     ShopScreen.tsx                    Münz-Shop: Streak-Rettung, Avatare, Rahmen-Themes
     ProfileScreen.tsx                  Eigenes oder fremdes Profil: Level/XP, Reps gesamt/Woche, Freundescode
+  nations/                      Länderspiel (Event-Zeitfenster, Länderliste, Auswertung)
+    nationsEvent.ts             Zeitfenster + Tabelle + Ergebnis - reines TS, voll getestet
+    countries.ts                Länder + aus dem Code gerechnete Flaggen + Suche
+    nationsStore.ts             Firestore: Beitritt, Gutschrift, Tabelle, Ergebnisse
+    nationsSync.ts              Gutschrift nach einer Session (+ Warteschlange offline)
+    nationsChoiceStore.ts       lokal gemerkte Länderwahl
   storage/workoutStorage.ts    lokale Session-Historie (AsyncStorage) + Statistiken + Streak (mit Freeze-Support)
   gamification/
     points.ts       Punkte-/Level-Berechnung (Level 1-50, gedeckelt), testbar

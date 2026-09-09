@@ -42,6 +42,39 @@ service cloud.firestore {
       allow update: if request.auth != null;
     }
 
+    // Länderspiel: Eckdaten und (nach Ende) das veröffentlichte Ergebnis eines Events.
+    //
+    // Das Ergebnis schreibt der erste Client, der nach dem Ende hinschaut (siehe
+    // nationsStore.ts, `loadOrFinalizeResult`) - ohne Cloud Function gibt es niemanden
+    // sonst, der das tun könnte. Deshalb darf jeder eingeloggte Nutzer es anlegen, aber
+    // ein einmal geschriebenes Ergebnis lässt sich nicht mehr ändern.
+    //
+    // Bekannte Grenze: Ein manipulierter Client könnte als Erster ein falsches Ergebnis
+    // eintragen. Dieselbe Klasse von Einschränkung wie bei `players` oben, und für ein
+    // Hobby-Projekt ohne echten Wettbewerbsdruck akzeptabel. Der saubere Fix wäre eine
+    // Cloud Function, die nach Eventende auswertet, und hier nur noch Lesezugriff.
+    match /nationsEvents/{eventId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && !('result' in resource.data);
+      allow delete: if false;
+
+      // Ein Spieler und sein Land. Jeder schreibt nur seinen eigenen Eintrag.
+      //
+      // Der wichtige Teil ist die update-Regel: Sie erzwingt, dass `countryCode` nach der
+      // ersten Wahl unverändert bleibt. Die Unumkehrbarkeit hängt damit nicht daran, dass
+      // die App sich benimmt - auch ein zweites Gerät oder eine ältere App-Version kann
+      // die Wahl nicht mehr umbiegen. Die Liegestütze (`reps`) dürfen weiter wachsen.
+      match /participants/{uid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.auth.uid == uid;
+        allow update: if request.auth != null
+                      && request.auth.uid == uid
+                      && request.resource.data.countryCode == resource.data.countryCode;
+        allow delete: if false;
+      }
+    }
+
     // Abgeschlossene Duelle (Historie/Statistik). Nur die beiden Teilnehmer dürfen
     // ihn anlegen (einmalig) bzw. lesen; nachträgliches Ändern/Löschen ist gesperrt.
     match /matches/{matchId} {

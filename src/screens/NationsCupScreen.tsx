@@ -1,0 +1,577 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/RootNavigator';
+import { useDuelIdentity } from '../ranking/useDuelIdentity';
+import { COUNTRIES, countryLabel, flagEmoji, searchCountries, type Country } from '../nations/countries';
+import {
+  computeStandings,
+  currentEventWindow,
+  formatDurationDe,
+  formatEventRangeDe,
+  mostRecentFinishedEventWindow,
+  nextEventWindow,
+  type CountryStanding,
+  type NationsEventResult,
+  type NationsEventWindow,
+} from '../nations/nationsEvent';
+import { loadNationsChoice, saveNationsChoice } from '../nations/nationsChoiceStore';
+import { joinEvent, loadOrFinalizeResult, loadParticipants, loadRecentResults } from '../nations/nationsStore';
+import { colors } from '../theme/colors';
+import { fonts } from '../theme/typography';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'NationsCup'>;
+
+/**
+ * Wie oft die Restzeit neu berechnet wird. Eine Minute reicht: Angezeigt werden Tage,
+ * Stunden und Minuten, und ein Sekundentakt würde nur Strom kosten.
+ */
+const CLOCK_REFRESH_MS = 60_000;
+
+export function NationsCupScreen({ navigation }: Props) {
+  const identity = useDuelIdentity();
+  const me = identity.me;
+
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), CLOCK_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  const running = useMemo(() => currentEventWindow(nowMs), [nowMs]);
+  const upcoming = useMemo(() => nextEventWindow(nowMs), [nowMs]);
+  /**
+   * Als *Wert* in die Abhängigkeiten von `refresh`, nicht das Fenster-Objekt selbst:
+   * `currentEventWindow` liefert bei jedem Minutentakt ein neues Objekt mit gleichem
+   * Inhalt. Mit dem Objekt in den Abhängigkeiten würde die Tabelle jede Minute neu
+   * geladen, ohne dass sich etwas geändert hat.
+   */
+  const isRunning = running !== null;
+  /**
+   * Läuft gerade ein Event, geht es um dieses - sonst schon um das nächste. Damit kann
+   * sich jemand auch mitten in der Woche schon für Freitag anmelden, statt bis zum
+   * Startschuss warten zu müssen.
+   */
+  const activeWindow: NationsEventWindow = running ?? upcoming;
+
+  const [chosenCountry, setChosenCountry] = useState<string | null>(null);
+  const [myReps, setMyReps] = useState(0);
+  const [standings, setStandings] = useState<CountryStanding[] | null>(null);
+  const [pastResults, setPastResults] = useState<NationsEventResult[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  // Die lokal gespeicherte Wahl steht sofort und ohne Internet zur Verfügung; der
+  // Firestore-Stand darf sie danach korrigieren (z. B. wenn auf einem zweiten Gerät
+  // bereits ein anderes Land gewählt wurde).
+  useEffect(() => {
+    let cancelled = false;
+    loadNationsChoice(activeWindow.id).then((choice) => {
+      if (!cancelled && choice) setChosenCountry(choice.countryCode);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWindow.id]);
+
+  const refresh = useCallback(async () => {
+    if (identity.status !== 'ready' || !me) return;
+    setLoadFailed(false);
+    try {
+      const [participants, results] = await Promise.all([
+        loadParticipants(activeWindow.id),
+        loadRecentResults(),
+      ]);
+      const own = participants.find((participant) => participant.uid === me.uid) ?? null;
+      if (own) {
+        setChosenCountry(own.countryCode);
+        setMyReps(own.reps);
+        await saveNationsChoice({
+          eventId: activeWindow.id,
+          countryCode: own.countryCode,
+          chosenAtIso: new Date().toISOString(),
+        });
+      }
+      setStandings(computeStandings(participants));
+
+      // Ist das zuletzt gelaufene Event vorbei und noch nicht ausgewertet, wird es hier
+      // festgeschrieben - siehe `loadOrFinalizeResult`: Ohne Server macht das der erste
+      // Client, der nach dem Ende hinschaut. Bewusst `Date.now()` und nicht der
+      // Minutentakt-Zustand `nowMs`: Der wäre in dieser Funktion eine veraltete Kopie.
+      const justFinished = mostRecentFinishedEventWindow(Date.now());
+      const finalized = justFinished ? await loadOrFinalizeResult(justFinished, Date.now()).catch(() => null) : null;
+
+      // Erst nach der Auswertung setzen, sonst fehlt das eben beendete Event in der Liste
+      // und taucht erst beim nächsten Öffnen auf.
+      setPastResults(
+        finalized && !results.some((entry) => entry.eventId === finalized.eventId)
+          ? [finalized, ...results]
+          : results
+      );
+    } catch {
+      setLoadFailed(true);
+    }
+  }, [identity.status, me, activeWindow.id, isRunning]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const confirmChoice = useCallback(
+    (country: Country) => {
+      Alert.alert(
+        `Für ${country.name} antreten?`,
+        'Diese Wahl lässt sich bis zum Ende des Events nicht mehr ändern. Alle deine ' +
+          'Liegestütze in diesem Zeitraum zählen für dieses Land.',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          {
+            text: 'Endgültig wählen',
+            style: 'destructive',
+            onPress: async () => {
+              if (!me) return;
+              setJoining(true);
+              try {
+                const effective = await joinEvent({
+                  window: activeWindow,
+                  uid: me.uid,
+                  displayName: me.displayName,
+                  countryCode: country.code,
+                });
+                await saveNationsChoice({
+                  eventId: activeWindow.id,
+                  countryCode: effective,
+                  chosenAtIso: new Date().toISOString(),
+                });
+                setChosenCountry(effective);
+                setPickerOpen(false);
+                if (effective !== country.code) {
+                  // Kann nur passieren, wenn auf einem anderen Gerät schon gewählt wurde.
+                  Alert.alert(
+                    'Bereits gewählt',
+                    `Du bist für dieses Event schon für ${countryLabel(effective)} angemeldet.`
+                  );
+                }
+                await refresh();
+              } catch {
+                Alert.alert(
+                  'Hat nicht geklappt',
+                  'Die Wahl konnte nicht gespeichert werden. Prüfe deine Internetverbindung und versuche es erneut.'
+                );
+              } finally {
+                setJoining(false);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [activeWindow, me, refresh]
+  );
+
+  const myCountry = chosenCountry ? countryLabel(chosenCountry) : null;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Pressable
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <View>
+          <Text style={styles.title}>Länderspiel</Text>
+          <Text style={styles.subtitle}>Trainiere für dein Land</Text>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.card}>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, running ? styles.statusDotLive : styles.statusDotIdle]} />
+            <Text style={styles.statusText}>
+              {running ? 'Läuft gerade' : `Startet in ${formatDurationDe(activeWindow.startsAtMs - nowMs)}`}
+            </Text>
+          </View>
+          <Text style={styles.eventRange}>{formatEventRangeDe(activeWindow)}</Text>
+          {running && (
+            <Text style={styles.eventRemaining}>
+              Noch {formatDurationDe(activeWindow.endsAtMs - nowMs)} Zeit
+            </Text>
+          )}
+        </View>
+
+        {identity.status === 'loading' && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
+
+        {identity.status === 'notConfigured' && (
+          <Text style={styles.infoText}>
+            Das Länderspiel braucht das Ranking-System (siehe README „Ranking-System einrichten").
+          </Text>
+        )}
+
+        {identity.status === 'needsReauth' && (
+          <Text style={styles.infoText}>
+            Bitte melde dich auf dem Home-Screen zuerst mit Google an, um am Länderspiel teilzunehmen.
+          </Text>
+        )}
+
+        {identity.status === 'error' && (
+          <Text style={styles.infoText}>Etwas ist schiefgelaufen. Bitte erneut versuchen.</Text>
+        )}
+
+        {identity.status === 'ready' && (
+          <>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Dein Land</Text>
+              {chosenCountry ? (
+                <>
+                  <View style={styles.myCountryRow}>
+                    <Text style={styles.myCountryFlag}>{flagEmoji(chosenCountry)}</Text>
+                    <View style={styles.myCountryTextWrap}>
+                      <Text style={styles.myCountryName}>{myCountry}</Text>
+                      <Text style={styles.myCountryReps}>
+                        {myReps} {myReps === 1 ? 'Liegestütz' : 'Liegestütze'} beigetragen
+                      </Text>
+                    </View>
+                    <Ionicons name="lock-closed" size={18} color={colors.textSecondary} />
+                  </View>
+                  <Text style={styles.lockedHint}>
+                    Deine Wahl steht bis zum Ende des Events fest.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.chooseHint}>
+                    Wähle ein Land. Alle deine Liegestütze im Eventzeitraum zählen dann für dieses Land.
+                  </Text>
+                  <View style={styles.warningRow}>
+                    <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+                    <Text style={styles.warningText}>
+                      Die Wahl ist bis zum Ende des Events nicht mehr änderbar.
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+                    onPress={() => setPickerOpen(true)}
+                  >
+                    <Ionicons name="flag-outline" size={18} color="#0B0F14" />
+                    <Text style={styles.primaryButtonText}>Land wählen</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{running ? 'Zwischenstand' : 'Angemeldet'}</Text>
+              {loadFailed && <Text style={styles.infoText}>Tabelle konnte nicht geladen werden.</Text>}
+              {!loadFailed && standings == null && <ActivityIndicator color={colors.primary} />}
+              {!loadFailed && standings != null && standings.length === 0 && (
+                <Text style={styles.infoText}>Noch kein Land dabei. Sei der Erste.</Text>
+              )}
+              {standings?.map((standing, index) => (
+                <StandingRow
+                  key={standing.countryCode}
+                  rank={index + 1}
+                  standing={standing}
+                  isMine={standing.countryCode === chosenCountry}
+                />
+              ))}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Vergangene Länderspiele</Text>
+              {pastResults == null && !loadFailed && <ActivityIndicator color={colors.primary} />}
+              {pastResults != null && pastResults.length === 0 && (
+                <Text style={styles.infoText}>Noch kein Länderspiel abgeschlossen.</Text>
+              )}
+              {pastResults?.map((result) => <ResultCard key={result.eventId} result={result} />)}
+            </View>
+          </>
+        )}
+      </ScrollView>
+
+      <CountryPickerModal
+        visible={pickerOpen}
+        busy={joining}
+        onClose={() => setPickerOpen(false)}
+        onSelect={confirmChoice}
+      />
+    </View>
+  );
+}
+
+function StandingRow({
+  rank,
+  standing,
+  isMine,
+}: {
+  rank: number;
+  standing: CountryStanding;
+  isMine: boolean;
+}) {
+  return (
+    <View style={[styles.standingRow, isMine && styles.standingRowMine]}>
+      <Text style={styles.standingRank}>{rank}</Text>
+      <Text style={styles.standingFlag}>{flagEmoji(standing.countryCode)}</Text>
+      <View style={styles.standingTextWrap}>
+        <Text style={styles.standingName} numberOfLines={1}>
+          {countryLabel(standing.countryCode)}
+        </Text>
+        <Text style={styles.standingMeta}>
+          {standing.players} {standing.players === 1 ? 'Spieler' : 'Spieler'} · ⌀ {standing.averageReps}
+        </Text>
+      </View>
+      <Text style={styles.standingReps}>{standing.reps}</Text>
+    </View>
+  );
+}
+
+function ResultCard({ result }: { result: NationsEventResult }) {
+  const date = new Date(result.startsAtMs).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return (
+    <View style={styles.resultCard}>
+      <Text style={styles.resultDate}>{date}</Text>
+      {result.winnerCountryCode ? (
+        <>
+          <View style={styles.resultWinnerRow}>
+            <Text style={styles.resultTrophy}>🏆</Text>
+            <Text style={styles.resultFlag}>{flagEmoji(result.winnerCountryCode)}</Text>
+            <Text style={styles.resultWinnerName} numberOfLines={1}>
+              {countryLabel(result.winnerCountryCode)}
+            </Text>
+          </View>
+          <Text style={styles.resultMeta}>
+            {result.winnerReps} Liegestütze · {result.winnerPlayers}{' '}
+            {result.winnerPlayers === 1 ? 'Spieler' : 'Spieler'} · ⌀ {result.winnerAverageReps} je Spieler
+          </Text>
+          <Text style={styles.resultTotals}>
+            Insgesamt {result.totalReps} Liegestütze von {result.totalPlayers} Spielern aus{' '}
+            {result.standings.length} {result.standings.length === 1 ? 'Land' : 'Ländern'}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.resultMeta}>Kein Sieger - in diesem Zeitraum wurde nichts eingetragen.</Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Vollbild-Auswahl mit Suchfeld. Bewusst ein `Modal` und kein eigener Navigations-
+ * Eintrag: Die Auswahl ist ein Zwischenschritt innerhalb dieses Bildschirms, und der
+ * Warnhinweis zur Unumkehrbarkeit gehört direkt daneben.
+ */
+function CountryPickerModal({
+  visible,
+  busy,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSelect: (country: Country) => void;
+}) {
+  const [term, setTerm] = useState('');
+  const results = useMemo(() => searchCountries(term), [term]);
+
+  // Beim erneuten Öffnen soll wieder die volle Liste stehen, nicht die alte Suche.
+  useEffect(() => {
+    if (visible) setTerm('');
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent={false}>
+      <View style={styles.modalContainer}>
+        <View style={styles.headerRow}>
+          <Pressable style={({ pressed }) => [styles.backButton, pressed && styles.pressed]} onPress={onClose}>
+            <Ionicons name="close" size={22} color={colors.textPrimary} />
+          </Pressable>
+          <View>
+            <Text style={styles.title}>Land wählen</Text>
+            <Text style={styles.subtitle}>{COUNTRIES.length} Länder</Text>
+          </View>
+        </View>
+
+        <View style={styles.warningRow}>
+          <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+          <Text style={styles.warningText}>
+            Nicht änderbar bis zum Ende des Events.
+          </Text>
+        </View>
+
+        <View style={styles.searchRow}>
+          <Ionicons name="search" size={18} color={colors.textSecondary} />
+          <TextInput
+            style={styles.searchInput}
+            value={term}
+            onChangeText={setTerm}
+            placeholder="Land suchen"
+            placeholderTextColor={colors.textSecondary}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {term.length > 0 && (
+            <Pressable onPress={() => setTerm('')} hitSlop={8}>
+              <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+            </Pressable>
+          )}
+        </View>
+
+        {busy && <ActivityIndicator color={colors.primary} style={styles.spacingTop} />}
+
+        <FlatList
+          data={results}
+          keyExtractor={(country) => country.code}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={<Text style={styles.infoText}>Kein Land gefunden.</Text>}
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.countryRow, pressed && styles.pressed]}
+              onPress={() => onSelect(item)}
+              disabled={busy}
+            >
+              <Text style={styles.countryFlag}>{flagEmoji(item.code)}</Text>
+              <Text style={styles.countryName}>{item.name}</Text>
+              <Text style={styles.countryCode}>{item.code}</Text>
+            </Pressable>
+          )}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, paddingTop: 56, paddingHorizontal: 24 },
+  modalContainer: { flex: 1, backgroundColor: colors.background, paddingTop: 56, paddingHorizontal: 24 },
+  scrollContent: { paddingBottom: 40, gap: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 12 },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { opacity: 0.7 },
+  title: { fontFamily: fonts.bold, fontSize: 22, color: colors.textPrimary },
+  subtitle: { fontSize: 13, color: colors.textSecondary },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 10,
+  },
+  cardTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.textPrimary },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  statusDotLive: { backgroundColor: colors.primary },
+  statusDotIdle: { backgroundColor: colors.textSecondary },
+  statusText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.textPrimary },
+  eventRange: { fontSize: 13, color: colors.textSecondary },
+  eventRemaining: { fontSize: 13, color: colors.primary, fontFamily: fonts.semiBold },
+  infoText: { fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
+  spacingTop: { marginTop: 16 },
+  chooseHint: { fontSize: 13, color: colors.textSecondary, lineHeight: 19 },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,194,75,0.12)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  warningText: { flex: 1, fontSize: 12, color: colors.warning, lineHeight: 17 },
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  primaryButtonText: { fontFamily: fonts.bold, fontSize: 15, color: '#0B0F14' },
+  myCountryRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  myCountryFlag: { fontSize: 32 },
+  myCountryTextWrap: { flex: 1 },
+  myCountryName: { fontFamily: fonts.bold, fontSize: 17, color: colors.textPrimary },
+  myCountryReps: { fontSize: 13, color: colors.textSecondary },
+  lockedHint: { fontSize: 12, color: colors.textSecondary },
+  standingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  standingRowMine: { backgroundColor: colors.primaryMuted, borderRadius: 10, paddingHorizontal: 8 },
+  standingRank: { width: 22, fontFamily: fonts.bold, fontSize: 14, color: colors.textSecondary },
+  standingFlag: { fontSize: 22 },
+  standingTextWrap: { flex: 1 },
+  standingName: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.textPrimary },
+  standingMeta: { fontSize: 11, color: colors.textSecondary },
+  standingReps: { fontFamily: fonts.bold, fontSize: 16, color: colors.primary },
+  resultCard: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 12,
+    gap: 4,
+  },
+  resultDate: { fontSize: 12, color: colors.textSecondary },
+  resultWinnerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  resultTrophy: { fontSize: 18 },
+  resultFlag: { fontSize: 22 },
+  resultWinnerName: { flex: 1, fontFamily: fonts.bold, fontSize: 16, color: colors.textPrimary },
+  resultMeta: { fontSize: 12, color: colors.textSecondary },
+  resultTotals: { fontSize: 12, color: colors.textSecondary },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: { flex: 1, color: colors.textPrimary, fontSize: 15, padding: 0 },
+  countryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  countryFlag: { fontSize: 26 },
+  countryName: { flex: 1, fontSize: 15, color: colors.textPrimary },
+  countryCode: { fontSize: 12, color: colors.textSecondary, fontFamily: fonts.semiBold },
+});

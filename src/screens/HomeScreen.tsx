@@ -15,6 +15,7 @@ import { recordAppOpenAndGetStreak, coinsForLoginStreak } from '../gamification/
 import { reconcileStreakFreezes } from '../gamification/streakFreezeStore';
 import { loadDuelLog, type DuelLogEntry } from '../duel/duelLog';
 import { flushPendingLeaderboardSync } from '../ranking/leaderboardSync';
+import { flushPendingNationsSync } from '../nations/nationsSync';
 import {
   isDailyReminderEnabled,
   enableDailyReminder,
@@ -42,6 +43,7 @@ type MenuItem = {
     | 'RankedMatchmaking'
     | 'BossFight'
     | 'Leaderboard'
+    | 'NationsCup'
     | 'Shop'
     | 'Profile';
   icon: keyof typeof Ionicons.glyphMap;
@@ -69,6 +71,12 @@ const MENU_ITEMS: MenuItem[] = [
     icon: 'podium-outline',
     title: 'Rangliste',
     subtitle: 'Gesamt, diese Woche und deine Liga im Vergleich',
+  },
+  {
+    key: 'NationsCup',
+    icon: 'flag-outline',
+    title: 'Länderspiel',
+    subtitle: 'Wähle dein Land - alle Liegestütze zählen für die Landeswertung',
   },
   {
     key: 'Profile',
@@ -144,6 +152,7 @@ export function HomeScreen({ navigation }: Props) {
   // beim App-Öffnen ist eine gute Gelegenheit dafür (siehe leaderboardSyncQueue.ts).
   useEffect(() => {
     flushPendingLeaderboardSync(auth.profile).catch(() => {});
+    flushPendingNationsSync(auth.profile).catch(() => {});
   }, [auth.profile]);
 
   // Streak-Rettung aus dem Münz-Shop: prüft bei jedem Fokussieren, ob seit dem letzten

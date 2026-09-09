@@ -24,6 +24,7 @@ import { computeMissions } from '../gamification/missions';
 import { claimCompletedMissions } from '../gamification/currencyStore';
 import { loadDuelLog } from '../duel/duelLog';
 import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
+import { syncNationsProgress } from '../nations/nationsSync';
 import { useAuth } from '../auth/AuthContext';
 import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
@@ -158,6 +159,10 @@ export function BossFightScreen({ navigation }: Props) {
 
     // Siehe WorkoutScreen's finishWorkout - bewusst nicht awaited.
     syncLeaderboardProgress(auth.profile, session.totalReps, session.points, session.finishedAtIso).catch(() => {});
+    // Länderspiel: Läuft gerade ein Event und hat der Nutzer ein Land gewählt, zählen
+    // diese Liegestütze auch dafür. Wie oben ohne `await` - ein Netzwerkproblem darf das
+    // Beenden eines Workouts nicht aufhalten, was nicht durchkommt wird nachgeholt.
+    syncNationsProgress(auth.profile, session.totalReps, session.finishedAtIso).catch(() => {});
 
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);

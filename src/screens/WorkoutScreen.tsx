@@ -23,6 +23,7 @@ import { computeMissions } from '../gamification/missions';
 import { claimCompletedMissions } from '../gamification/currencyStore';
 import { loadDuelLog } from '../duel/duelLog';
 import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
+import { syncNationsProgress } from '../nations/nationsSync';
 import { useAuth } from '../auth/AuthContext';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
@@ -182,6 +183,10 @@ export function WorkoutScreen({ navigation }: Props) {
     // Bewusst nicht awaited - ein Netzwerkproblem beim Online-Rangliste-Sync darf das
     // Beenden des Workouts nicht verzögern (siehe leaderboardSync.ts).
     syncLeaderboardProgress(auth.profile, session.totalReps, session.points, session.finishedAtIso).catch(() => {});
+    // Länderspiel: Läuft gerade ein Event und hat der Nutzer ein Land gewählt, zählen
+    // diese Liegestütze auch dafür. Wie oben ohne `await` - ein Netzwerkproblem darf das
+    // Beenden eines Workouts nicht aufhalten, was nicht durchkommt wird nachgeholt.
+    syncNationsProgress(auth.profile, session.totalReps, session.finishedAtIso).catch(() => {});
 
     const allSessions = [session, ...previousSessions];
     const badgesAfter = computeBadgeStatuses(computeStats(allSessions), allSessions);
