@@ -28,8 +28,11 @@ export type FormIssue =
  *                  hinlegte oder Pause machte (16 von 124, bis zu 34 Sekunden).
  * - `TRACKING_LOST` - über einen zu großen Teil der Wiederholung war keine verwertbare
  *                  Pose da, die Formwerte wären geraten.
+ * - `NOT_A_PLANK` - der Körper war überhaupt nicht in Stützposition und die Bewegung ging
+ *                  auch nicht in die Tiefe. Das ist der Gang zur Position hin und wieder
+ *                  weg, kein Liegestütz.
  */
-export type RepDiscardReason = 'TOO_SHORT' | 'TOO_LONG' | 'TRACKING_LOST';
+export type RepDiscardReason = 'TOO_SHORT' | 'TOO_LONG' | 'TRACKING_LOST' | 'NOT_A_PLANK';
 
 /**
  * Eine verworfene Wiederholung. Wird nicht gezählt und nicht bewertet, aber gemeldet -
@@ -104,6 +107,25 @@ export interface PushUpThresholds {
    * is discarded as a false start.
    */
   elbowAttemptDeg: number;
+  /**
+   * Unterhalb dieses Schulter-Hüfte-Knie-Winkels ist der Körper gar nicht in
+   * Stützposition. Zusammen mit fehlender Tiefe (siehe `goodDepthElbowDeg`) wird die
+   * Bewegung dann verworfen, statt sie als schlechte Wiederholung zu zählen.
+   *
+   * Warum beide Bedingungen und nicht nur eine: chris stellt das Handy auf den Boden,
+   * geht zwei Schritte zurück und geht dann in die Position - dabei wurden ein bis zwei
+   * Wiederholungen gezählt, die keine waren. In der Aufzeichnung vom 09.09.2026,
+   * 20:12 Uhr sind das die Einträge um 20:12:02 (Hüfte 56°, Tiefe 117°), 20:12:06
+   * (88°/130°) und 20:13:01 beim Aufstehen (22°/126°). Alle 21 echten Wiederholungen
+   * derselben Sitzung liegen bei 158-169°.
+   *
+   * Die Hüfte allein reicht als Kriterium aber nicht: Eine echte Wiederholung mit
+   * deutlich abgekippter Hüfte (gemessen 97°) ist ein *schlechter* Liegestütz, kein
+   * Nicht-Liegestütz - sie soll gezählt und schlecht bewertet werden. Sie unterscheidet
+   * sich vom Positionswechsel dadurch, dass sie in die Tiefe ging (85°). Deshalb wird
+   * nur verworfen, was *beides* nicht erfüllt: weder Stützposition noch Tiefe.
+   */
+  minPlankHipStraightnessDeg: number;
   /**
    * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
    * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
@@ -203,6 +225,7 @@ export interface PushUpThresholds {
 export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   elbowUpDeg: 160,
   elbowAttemptDeg: 140,
+  minPlankHipStraightnessDeg: 110,
   repReversalToleranceDeg: 15,
   goodDepthElbowDeg: 95,
   minHipStraightnessDeg: 145,
@@ -304,6 +327,7 @@ export class PushUpAnalyzer {
     TOO_SHORT: 0,
     TOO_LONG: 0,
     TRACKING_LOST: 0,
+    NOT_A_PLANK: 0,
   };
 
   constructor(thresholds: Partial<PushUpThresholds> = {}) {
@@ -315,7 +339,7 @@ export class PushUpAnalyzer {
     this.repIndex = 0;
     this.acc = null;
     this.lockedSide = null;
-    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0 };
+    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0 };
   }
 
   /** Kopie der Verwurf-Zähler dieser Sitzung (siehe `discardCounts`). */
@@ -564,6 +588,14 @@ export class PushUpAnalyzer {
     const hipStraightnessDeg = percentile(acc.hipStraightness, lowP);
     const elbowFlareDeg = percentile(acc.elbowFlare, highP);
     const neckAngleDeg = percentile(acc.neckAngles, lowP);
+
+    // Weder Stützposition noch Tiefe: Das war der Weg in die Position hinein oder wieder
+    // heraus, kein Liegestütz. Bewusst erst hier, nach der Kennzahlberechnung - vorher
+    // stehen die Werte noch nicht fest. `NaN < x` ist false, eine nie gemessene Hüfte
+    // führt also nie zum Verwerfen (Zweifel für den Sportler).
+    if (hipStraightnessDeg < t.minPlankHipStraightnessDeg && elbowDepthDeg > t.goodDepthElbowDeg) {
+      return { rep: null, discarded: this.discardRep('NOT_A_PLANK', timestampMs) };
+    }
 
     const issues: FormIssue[] = [];
     let score = 100;

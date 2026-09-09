@@ -1,0 +1,374 @@
+[
+  {
+    "index": 0,
+    "formScore": 32,
+    "issues": [
+      "INSUFFICIENT_DEPTH",
+      "HIPS_PIKING"
+    ],
+    "minElbowAngleDeg": 117,
+    "minHipStraightnessDeg": 56,
+    "maxElbowFlareDeg": 55,
+    "minNeckAngleDeg": 138,
+    "durationMs": 1118,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:02.708Z",
+    "source": "training"
+  },
+  {
+    "index": 1,
+    "formScore": 25,
+    "issues": [
+      "INSUFFICIENT_DEPTH",
+      "HIPS_SAGGING"
+    ],
+    "minElbowAngleDeg": 130,
+    "minHipStraightnessDeg": 88,
+    "maxElbowFlareDeg": 68,
+    "minNeckAngleDeg": 126,
+    "durationMs": 3393,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:06.086Z",
+    "source": "training"
+  },
+  {
+    "index": 2,
+    "formScore": 90,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 102,
+    "minHipStraightnessDeg": 165,
+    "maxElbowFlareDeg": 53,
+    "minNeckAngleDeg": 126,
+    "durationMs": 1853,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:14.333Z",
+    "source": "training"
+  },
+  {
+    "index": 3,
+    "formScore": 96,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 98,
+    "minHipStraightnessDeg": 164,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 128,
+    "durationMs": 1743,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:16.077Z",
+    "source": "training"
+  },
+  {
+    "index": 4,
+    "formScore": 94,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 99,
+    "minHipStraightnessDeg": 160,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 126,
+    "durationMs": 1551,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:17.627Z",
+    "source": "training"
+  },
+  {
+    "index": 5,
+    "formScore": 95,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 98,
+    "minHipStraightnessDeg": 161,
+    "maxElbowFlareDeg": 51,
+    "minNeckAngleDeg": 127,
+    "durationMs": 1746,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:19.372Z",
+    "source": "training"
+  },
+  {
+    "index": 6,
+    "formScore": 93,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 100,
+    "minHipStraightnessDeg": 159,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 126,
+    "durationMs": 1672,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:21.045Z",
+    "source": "training"
+  },
+  {
+    "index": 7,
+    "formScore": 99,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 96,
+    "minHipStraightnessDeg": 160,
+    "maxElbowFlareDeg": 54,
+    "minNeckAngleDeg": 124,
+    "durationMs": 1690,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:22.734Z",
+    "source": "training"
+  },
+  {
+    "index": 8,
+    "formScore": 93,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 100,
+    "minHipStraightnessDeg": 161,
+    "maxElbowFlareDeg": 56,
+    "minNeckAngleDeg": 127,
+    "durationMs": 1572,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:24.309Z",
+    "source": "training"
+  },
+  {
+    "index": 9,
+    "formScore": 99,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 95,
+    "minHipStraightnessDeg": 160,
+    "maxElbowFlareDeg": 53,
+    "minNeckAngleDeg": 128,
+    "durationMs": 1714,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:26.020Z",
+    "source": "training"
+  },
+  {
+    "index": 10,
+    "formScore": 98,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 96,
+    "minHipStraightnessDeg": 160,
+    "maxElbowFlareDeg": 54,
+    "minNeckAngleDeg": 129,
+    "durationMs": 1670,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:27.692Z",
+    "source": "training"
+  },
+  {
+    "index": 11,
+    "formScore": 100,
+    "issues": [],
+    "minElbowAngleDeg": 94,
+    "minHipStraightnessDeg": 162,
+    "maxElbowFlareDeg": 53,
+    "minNeckAngleDeg": 130,
+    "durationMs": 2417,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:30.110Z",
+    "source": "training"
+  },
+  {
+    "index": 12,
+    "formScore": 93,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 100,
+    "minHipStraightnessDeg": 158,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 132,
+    "durationMs": 2270,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:32.377Z",
+    "source": "training"
+  },
+  {
+    "index": 13,
+    "formScore": 96,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 97,
+    "minHipStraightnessDeg": 161,
+    "maxElbowFlareDeg": 50,
+    "minNeckAngleDeg": 134,
+    "durationMs": 3534,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:35.912Z",
+    "source": "training"
+  },
+  {
+    "index": 14,
+    "formScore": 86,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 104,
+    "minHipStraightnessDeg": 162,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 135,
+    "durationMs": 4267,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:40.180Z",
+    "source": "training"
+  },
+  {
+    "index": 15,
+    "formScore": 77,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 111,
+    "minHipStraightnessDeg": 167,
+    "maxElbowFlareDeg": 54,
+    "minNeckAngleDeg": 131,
+    "durationMs": 2051,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:43.362Z",
+    "source": "training"
+  },
+  {
+    "index": 16,
+    "formScore": 93,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 100,
+    "minHipStraightnessDeg": 168,
+    "maxElbowFlareDeg": 53,
+    "minNeckAngleDeg": 132,
+    "durationMs": 2414,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:46.602Z",
+    "source": "training"
+  },
+  {
+    "reason": "TOO_SHORT",
+    "durationMs": 372,
+    "trackedFrames": 6,
+    "untrackedFrames": 0,
+    "minElbowAngleDeg": 132,
+    "maxElbowAngleDeg": 146,
+    "kind": "discarded",
+    "recordedAtIso": "2026-09-09T20:12:46.972Z",
+    "source": "training"
+  },
+  {
+    "index": 17,
+    "formScore": 78,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 110,
+    "minHipStraightnessDeg": 165,
+    "maxElbowFlareDeg": 54,
+    "minNeckAngleDeg": 131,
+    "durationMs": 1528,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:48.499Z",
+    "source": "training"
+  },
+  {
+    "index": 18,
+    "formScore": 60,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 139,
+    "minHipStraightnessDeg": 169,
+    "maxElbowFlareDeg": 55,
+    "minNeckAngleDeg": 130,
+    "durationMs": 998,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:49.763Z",
+    "source": "training"
+  },
+  {
+    "index": 19,
+    "formScore": 85,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 105,
+    "minHipStraightnessDeg": 168,
+    "maxElbowFlareDeg": 53,
+    "minNeckAngleDeg": 131,
+    "durationMs": 2756,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:52.519Z",
+    "source": "training"
+  },
+  {
+    "index": 20,
+    "formScore": 98,
+    "issues": [
+      "HEAD_MISALIGNED"
+    ],
+    "minElbowAngleDeg": 91,
+    "minHipStraightnessDeg": 165,
+    "maxElbowFlareDeg": 58,
+    "minNeckAngleDeg": 111,
+    "durationMs": 1606,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:54.124Z",
+    "source": "training"
+  },
+  {
+    "index": 21,
+    "formScore": 60,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 136,
+    "minHipStraightnessDeg": 168,
+    "maxElbowFlareDeg": 54,
+    "minNeckAngleDeg": 131,
+    "durationMs": 615,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:55.550Z",
+    "source": "training"
+  },
+  {
+    "index": 22,
+    "formScore": 83,
+    "issues": [
+      "INSUFFICIENT_DEPTH"
+    ],
+    "minElbowAngleDeg": 106,
+    "minHipStraightnessDeg": 163,
+    "maxElbowFlareDeg": 56,
+    "minNeckAngleDeg": 129,
+    "durationMs": 1491,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:12:57.038Z",
+    "source": "training"
+  },
+  {
+    "index": 23,
+    "formScore": 25,
+    "issues": [
+      "INSUFFICIENT_DEPTH",
+      "HIPS_SAGGING"
+    ],
+    "minElbowAngleDeg": 126,
+    "minHipStraightnessDeg": 22,
+    "maxElbowFlareDeg": 52,
+    "minNeckAngleDeg": 134,
+    "durationMs": 2545,
+    "kind": "rep",
+    "recordedAtIso": "2026-09-09T20:13:01.890Z",
+    "source": "training"
+  }
+]

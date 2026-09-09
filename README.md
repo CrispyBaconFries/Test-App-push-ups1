@@ -452,6 +452,35 @@ Wiederholungen bei **152–169°**, eine erkennbar abgekippte Hüfte bei **97°*
 sauberen Wiederholung, und die echte Abweichung wird mit großem Abstand markiert. Von 8
 Wiederholungen halten damit 7 die Schwelle ein statt 2.
 
+### Der Weg in die Position ist kein Liegestütz (10.09.2026)
+
+chris stellt das Handy auf den Boden, geht zwei Schritte zurück und geht dann in die
+Stützposition — dabei wurden ein bis zwei Wiederholungen gezählt, die keine waren. In der
+Aufzeichnung vom 09.09.2026, 20:12 Uhr stehen genau drei solche Einträge:
+
+| Zeit | Hüfte | Tiefe | was es war |
+|---|---|---|---|
+| 20:12:02 | 56° | 117° | in Position gehen |
+| 20:12:06 | 88° | 130° | in Position gehen |
+| 20:13:01 | 22° | 126° | wieder aufstehen |
+
+Alle **21 echten** Wiederholungen derselben Sitzung liegen bei 158–169° Hüfte.
+
+`PushUpAnalyzer` verwirft solche Bewegungen jetzt als `NOT_A_PLANK` — aber nur, wenn
+**beide** Bedingungen zutreffen: Der Körper war nicht in Stützposition
+(`minPlankHipStraightnessDeg`, 110°) **und** die Bewegung ging nicht in die Tiefe
+(`goodDepthElbowDeg`).
+
+Die Hüfte allein reicht als Kriterium nicht. In der Aufzeichnung davor steht eine echte
+Wiederholung mit deutlich abgekippter Hüfte (97°) — das ist ein *schlechter* Liegestütz,
+kein Nicht-Liegestütz, und muss gezählt und schlecht bewertet werden. Sie unterscheidet
+sich vom Positionswechsel dadurch, dass sie in die Tiefe ging (85°). Gegen alle
+vorhandenen Daten geprüft: Der Filter trifft alle drei Positionswechsel, lässt alle 21
+echten Wiederholungen und die eine schlechte durch. Beide Richtungen stehen als Test.
+
+War die Hüfte nie messbar (Unterkörper außerhalb des Bildes), greift die Prüfung gar
+nicht — im Zweifel für den Sportler.
+
 ### Kalibrier-Log auswerten
 
 ```bash

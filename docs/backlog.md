@@ -69,6 +69,16 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
 - **`DiscardedRep` trägt den Ellbogen-Winkelbereich mit**, sonst ist ein `TOO_LONG` nicht
   deutbar.
 
+### ✅ Erledigt (10.09.2026, dritte Runde)
+
+- **Positionswechsel zählen nicht mehr mit.** Der Gang in die Stützposition und das
+  Aufstehen danach wurden als Wiederholungen gezählt (3 in einer Sitzung). Neuer
+  Verwurfsgrund `NOT_A_PLANK`, der nur greift, wenn weder Stützposition noch Tiefe
+  vorliegen — eine echte Wiederholung mit schlechter Hüfte bleibt gezählt.
+- **Bestätigt aus der Aufzeichnung vom 09.09.2026, 20:12 Uhr:** Die
+  Umkehrpunkt-Erkennung wirkt (24 gezählt, keine verschluckten Abschnitte mehr),
+  `HEAD_MISALIGNED` liegt bei 1 von 24, die Hüfte bei 158–169°, Formnoten im Median 93.
+
 ### Noch offen
 
 1. **`minHipStraightnessDeg` (160°) neu kalibrieren.** Bewusst unverändert gelassen: Die

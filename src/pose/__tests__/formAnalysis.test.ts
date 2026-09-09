@@ -206,7 +206,7 @@ describe('PushUpAnalyzer', () => {
     expect(analyzer.getDiscardCounts().TOO_SHORT).toBe(1);
 
     analyzer.reset();
-    expect(analyzer.getDiscardCounts()).toEqual({ TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0 });
+    expect(analyzer.getDiscardCounts()).toEqual({ TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0 });
   });
 
   it('still counts a rep when the pose has no visibility data at all (matches real device data)', () => {
@@ -391,6 +391,47 @@ describe('PushUpAnalyzer', () => {
     expect(late.discardedRep?.reason).toBe('TOO_LONG');
     expect(late.discardedRep!.minElbowAngleDeg).toBeLessThan(120);
     expect(late.discardedRep!.maxElbowAngleDeg).toBeGreaterThan(140);
+  });
+
+  it('does not count walking into position as a push-up', () => {
+    // chris stellt das Handy auf den Boden, geht zwei Schritte zurück und geht dann in
+    // die Position - dabei wurden ein bis zwei Wiederholungen gezählt, die keine waren.
+    // In der Aufzeichnung vom 09.09.2026, 20:12 Uhr sind das drei Einträge: Hüfte 56°
+    // bei Tiefe 117°, Hüfte 88° bei 130°, und beim Aufstehen Hüfte 22° bei 126°. Alle
+    // 21 echten Wiederholungen derselben Sitzung liegen bei 158-169° Hüfte.
+    const analyzer = new PushUpAnalyzer();
+    // hipOffsetY 0.8 ergibt einen Hüftwinkel weit unter der Stütz-Schwelle, und der Arm
+    // beugt sich nur bis 120° - keine Tiefe.
+    const { reps, discards } = runFrames(analyzer, repFrames(120, { hipOffsetY: 0.8 }));
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['NOT_A_PLANK']);
+    expect(analyzer.getDiscardCounts().NOT_A_PLANK).toBe(1);
+  });
+
+  it('still counts a real rep with a badly dropped hip - that is bad form, not a non-rep', () => {
+    // Die Gegenprobe, und der Grund, warum die Hüfte allein nicht als Kriterium reicht.
+    // In der Aufzeichnung vom 09.09.2026, 19:26 Uhr steht eine echte Wiederholung mit
+    // Hüfte 97° - unter der Stütz-Schwelle. Sie unterscheidet sich vom Positionswechsel
+    // dadurch, dass sie in die Tiefe ging (85°). Sie muss zählen und schlecht bewertet
+    // werden, nicht verschwinden.
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, repFrames(85, { hipOffsetY: 0.8 }));
+
+    expect(discards).toEqual([]);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).toContain('HIPS_SAGGING');
+    expect(reps[0].formScore).toBeLessThan(80);
+  });
+
+  it('gives the benefit of the doubt when the hip was never measurable', () => {
+    // Füße und Hüfte außerhalb des Bildes: Die Stütz-Prüfung darf dann nicht greifen,
+    // sonst verschwinden Wiederholungen wegen einer Kamera-Position statt wegen der Form.
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, repFrames(120, { extendedVisibility: 0.1 }));
+
+    expect(discards).toEqual([]);
+    expect(reps).toHaveLength(1);
   });
 
   it('keeps using the side it locked onto at rep start, even if the other side becomes more visible mid-rep', () => {
