@@ -15,6 +15,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { type FormIssue } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
+import { StartPositionOverlay } from '../components/StartPositionOverlay';
+import type { StartPositionProgress } from '../pose/startPosition';
 import { RankFrame } from '../components/RankFrame';
 import { useRepSounds } from '../audio/repSounds';
 import {
@@ -31,6 +33,13 @@ import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
 const OVERLAY_FRAME_SKIP = 2;
+
+/**
+ * Wie lange höchstens auf die eigene Startposition gewartet wird, bevor trotzdem "bereit"
+ * gemeldet wird. Etwas mehr als die Zeitgrenze der Startpositions-Prüfung selbst (30 s),
+ * damit im Normalfall diese greift und nicht die Notbremse hier.
+ */
+const DUEL_READY_FALLBACK_MS = 35000;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
 
@@ -52,6 +61,7 @@ export function DuelScreen({ route, navigation }: Props) {
   const [opponent, setOpponent] = useState<DuelPlayerState | null>(null);
   const [skeletonPoints, setSkeletonPoints] = useState<ViewPoint[] | null>(null);
   const [activeIssue, setActiveIssue] = useState<FormIssue | null>(null);
+  const [startPosition, setStartPosition] = useState<StartPositionProgress | null>(null);
 
   const playRepSound = useRepSounds();
   const playRepSoundRef = useRef(playRepSound);
@@ -61,15 +71,26 @@ export function DuelScreen({ route, navigation }: Props) {
     if (!hasPermission) requestPermission();
   }, [hasPermission, requestPermission]);
 
-  // Sobald die Kamera bereit ist, den eigenen Spieler als bereit melden - beide
-  // Geräte sind sich schon vorher in der Lobby begegnet (2 Spieler im Duell-Dokument),
-  // hier geht es nur noch um den synchronisierten Start.
+  const sendReady = useCallback(() => {
+    if (readySentRef.current) return;
+    readySentRef.current = true;
+    setPlayerReady(duelCode, me.uid).catch(() => {});
+  }, [duelCode, me.uid]);
+
+  /**
+   * Notbremse für den Fall, dass gar keine Kamerabilder ankommen.
+   *
+   * "Bereit" hängt seit der Startpositions-Prüfung daran, dass der eigene Stütz erkannt
+   * wurde (siehe `onResults`) - das ist der richtige Zeitpunkt, weil der Countdown sonst
+   * losläuft, während man noch aufsteht. Die Prüfung selbst hat zwar eine eigene
+   * Zeitgrenze, die aber an Frames hängt: Kommt gar keiner an, läuft sie nie ab. Für den
+   * Gegner sähe das aus wie ein Spieler, der ewig nicht bereit wird.
+   */
   useEffect(() => {
-    if (hasPermission && !readySentRef.current) {
-      readySentRef.current = true;
-      setPlayerReady(duelCode, me.uid).catch(() => {});
-    }
-  }, [hasPermission, duelCode, me.uid]);
+    if (!hasPermission) return;
+    const timer = setTimeout(sendReady, DUEL_READY_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [hasPermission, sendReady]);
 
   // Zentrale Zustandsmaschine: hört auf das Duell-Dokument und leitet Countdown/Ende
   // aus dem *gemeinsamen* `startsAtServerTime` ab (nicht aus einem eigenen Timer-Start),
@@ -131,6 +152,15 @@ export function DuelScreen({ route, navigation }: Props) {
 
       const { live, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
       setActiveIssue(live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null);
+      setStartPosition(live.startPosition);
+
+      // Erst bereit melden, wenn die eigene Startposition wirklich steht. Vorher hing das
+      // an der Kameraberechtigung - der Countdown konnte damit anlaufen, während man noch
+      // zwei Schritte vom Handy entfernt stand, und die 60 Sekunden liefen bereits.
+      if (live.startPosition === null) {
+        if (!readySentRef.current) playRepSoundRef.current(true);
+        sendReady();
+      }
 
       if (completedRep) {
         repsRef.current += 1;
@@ -149,7 +179,7 @@ export function DuelScreen({ route, navigation }: Props) {
       const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));
       setSkeletonPoints(points);
     },
-    [duelCode, me.uid]
+    [duelCode, me.uid, sendReady]
   );
 
   const onError = useCallback((error: DetectionError) => {
@@ -177,6 +207,8 @@ export function DuelScreen({ route, navigation }: Props) {
         points={skeletonPoints}
         activeIssue={activeIssue}
       />
+
+      {startPosition && <StartPositionOverlay progress={startPosition} />}
 
       <View style={styles.hudRow} pointerEvents="none">
         <PlayerBadge label={me.displayName} avatar={me.avatar} tier={me.tier} lp={me.lp} reps={myReps} align="left" />

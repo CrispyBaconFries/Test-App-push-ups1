@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { liveCueLabelDe } from '../pose/feedbackText';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
+import { StartPositionOverlay } from '../components/StartPositionOverlay';
 import { ProgressBar } from '../components/ProgressBar';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
@@ -31,7 +32,7 @@ import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions'
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
+import { recordCalibrationBaseline, recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -56,6 +57,8 @@ export function BossFightScreen({ navigation }: Props) {
   const auth = useAuth();
   const { hasPermission, requestPermission } = useCameraPermission();
   const analyzer = usePushUpAnalyzer();
+  // Ob die Startposition schon eingenommen wurde (Ref statt State - siehe WorkoutScreen).
+  const armedRef = useRef(false);
   const startedAtRef = useRef(new Date().toISOString());
   const repsRef = useRef<RepResult[]>([]);
   const bossRef = useRef<BossProgress | null>(null);
@@ -97,6 +100,15 @@ export function BossFightScreen({ navigation }: Props) {
 
     const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
+
+    // Startposition gerade fertig eingenommen - siehe WorkoutScreen für die Begründung.
+    if (liveResult.startPosition === null && !armedRef.current) {
+      armedRef.current = true;
+      playRepSoundRef.current(true);
+      const baseline = analyzer.getBaseline();
+      // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+      if (baseline) recordCalibrationBaseline(baseline, 'boss').catch(() => {});
+    }
 
     if (completedRep && bossRef.current) {
       repsRef.current = [...repsRef.current, completedRep];
@@ -241,6 +253,8 @@ export function BossFightScreen({ navigation }: Props) {
         points={skeletonPoints}
         activeIssue={activeIssue}
       />
+
+      {live?.startPosition && <StartPositionOverlay progress={live.startPosition} />}
 
       {boss && (
         <View style={styles.bossHud} pointerEvents="none">

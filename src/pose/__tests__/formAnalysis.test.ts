@@ -1,4 +1,11 @@
-import { PushUpAnalyzer, type DiscardedRep, type LiveFeedback, type RepResult } from '../formAnalysis';
+import {
+  DEFAULT_THRESHOLDS,
+  personalThresholds,
+  PushUpAnalyzer,
+  type DiscardedRep,
+  type LiveFeedback,
+  type RepResult,
+} from '../formAnalysis';
 import { buildFrame, mergePoses, type SyntheticFrameParams } from '../testing/poseBuilder';
 import { angleAtPoint, pickMoreVisibleSide, type Pose } from '../landmarks';
 import { PoseLandmarkIndex } from '../blazePoseLandmarks';
@@ -43,17 +50,35 @@ function partialSweep(topDeg: number, bottomDeg: number, frames: number): number
  * einige Frames vor dem Ende der Sequenz. `reps.length` ist außerdem die Prüfung, die
  * Doppelzählungen auffliegen lässt.
  */
+/**
+ * Nimmt die Startposition ein: eine ruhig gehaltene obere Position, lang genug, dass die
+ * Prüfung in `startPosition.ts` scharf schaltet.
+ *
+ * Bewusst mit einer sauberen Haltung, auch wenn der Test danach eine schlechte oder halb
+ * sichtbare spielt: Geprüft werden soll, was die Zählung aus der Wiederholung macht,
+ * nicht ob sie überhaupt anspringt. Gibt den Zeitstempel zurück, bei dem es weitergeht.
+ */
+const ARMING_FRAMES = 80; // 80 * 33 ms = 2640 ms, deutlich über den geforderten 2000 ms
+
+function armAnalyzer(analyzer: PushUpAnalyzer, startMs: number): number {
+  for (let i = 0; i < ARMING_FRAMES; i++) {
+    analyzer.processFrame(buildFrame({ elbowAngleDeg: 172 }), startMs + i * FRAME_MS);
+  }
+  return startMs + ARMING_FRAMES * FRAME_MS;
+}
+
 function runFrames(
   analyzer: PushUpAnalyzer,
   poses: Pose[],
   startMs = 0
 ): { reps: RepResult[]; discards: DiscardedRep[]; cues: LiveFeedback['cue'][]; live: LiveFeedback } {
+  const firstFrameMs = analyzer.isArmed() ? startMs : armAnalyzer(analyzer, startMs);
   const reps: RepResult[] = [];
   const discards: DiscardedRep[] = [];
   const cues: LiveFeedback['cue'][] = [];
   let last: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
   poses.forEach((pose, i) => {
-    last = analyzer.processFrame(pose, startMs + i * FRAME_MS);
+    last = analyzer.processFrame(pose, firstFrameMs + i * FRAME_MS);
     if (last.completedRep) reps.push(last.completedRep);
     if (last.discardedRep) discards.push(last.discardedRep);
     cues.push(last.live.cue);
@@ -93,10 +118,11 @@ describe('PushUpAnalyzer', () => {
 
   it('discards a small dip near lockout as a false start instead of counting it', () => {
     const analyzer = new PushUpAnalyzer();
+    const afterArmingMs = armAnalyzer(analyzer, 0);
     // Sinkt auf 145 (überschreitet die Versuchsschwelle von 140 nie) und streckt sich wieder.
     const falseStart = [170, 160, 150, 145, 150, 165].map((elbowAngleDeg) => buildFrame({ elbowAngleDeg }));
     falseStart.forEach((pose, i) => {
-      const { completedRep, discardedRep } = analyzer.processFrame(pose, i * FRAME_MS);
+      const { completedRep, discardedRep } = analyzer.processFrame(pose, afterArmingMs + i * FRAME_MS);
       expect(completedRep).toBeNull();
       // Ein Fehlstart ist keine verworfene Wiederholung: Er war nie eine.
       expect(discardedRep).toBeNull();
@@ -105,7 +131,7 @@ describe('PushUpAnalyzer', () => {
 
     // Eine echte Wiederholung direkt danach muss weiterhin Wiederholung #1 (Index 0) sein -
     // der Fehlstart darf weder einen Index verbraucht noch Zustand hinterlassen haben.
-    const { reps } = runFrames(analyzer, repFrames(90), falseStart.length * FRAME_MS);
+    const { reps } = runFrames(analyzer, repFrames(90), afterArmingMs + falseStart.length * FRAME_MS);
     expect(reps).toHaveLength(1);
     expect(reps[0].index).toBe(0);
   });
@@ -456,6 +482,221 @@ describe('PushUpAnalyzer', () => {
     expect(reps).toHaveLength(1);
     expect(reps[0].issues).not.toContain('ELBOWS_FLARED');
     expect(reps[0].formScore).toBe(100);
+  });
+});
+
+describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
+  /**
+   * Der Winkel Schulter-Hüfte-Knie, den `buildFrame` für einen bestimmten Hüftversatz
+   * erzeugt. Ausgerechnet statt geschätzt, damit die Testfälle nachweislich auf der
+   * richtigen Seite der Schwellwerte liegen.
+   */
+  function hipAngleFor(hipOffsetY: number): number {
+    const pose = buildFrame({ elbowAngleDeg: 170, hipOffsetY });
+    return angleAtPoint(
+      pose[PoseLandmarkIndex.rightShoulder],
+      pose[PoseLandmarkIndex.rightHip],
+      pose[PoseLandmarkIndex.rightKnee]
+    );
+  }
+
+  /**
+   * Der Weg in die Liegestütz-Position, so wie chris ihn beschreibt: Handy hinstellen,
+   * zwei Schritte zurück, hinknien, Hände aufsetzen, Körper strecken.
+   *
+   * Für einen Zähler, der den Ellbogenwinkel verfolgt, sieht das aus wie eine
+   * Wiederholung - der Arm streckt und beugt sich dabei tatsächlich. Die Zahlen stammen
+   * aus der Aufzeichnung vom 09.09.2026 (20:12 Uhr): Hüfte 56-88°, tiefster
+   * Ellbogenwinkel 117-130°.
+   */
+  function walkIntoPosition(): Pose[] {
+    const kneeling = Array.from({ length: 25 }, (_, i) => {
+      const phase = i / 24;
+      return buildFrame({
+        elbowAngleDeg: 175 - 55 * Math.sin(phase * Math.PI), // 175° -> 120° -> 175°
+        hipOffsetY: 1.0 - 0.9 * phase, // stark abgeknickt -> zunehmend gestreckt
+      });
+    });
+    return kneeling;
+  }
+
+  it('zählt den Weg in die Position nicht als Wiederholung', () => {
+    expect(hipAngleFor(1.0)).toBeLessThan(110); // wirklich kein Stütz
+    const analyzer = new PushUpAnalyzer();
+
+    const approach = walkIntoPosition();
+    approach.forEach((pose, i) => {
+      const { completedRep, discardedRep } = analyzer.processFrame(pose, i * FRAME_MS);
+      expect(completedRep).toBeNull();
+      expect(discardedRep).toBeNull();
+    });
+    expect(analyzer.isArmed()).toBe(false);
+  });
+
+  it('zählt erst, nachdem die Startposition zwei Sekunden gehalten wurde', () => {
+    const analyzer = new PushUpAnalyzer();
+    let t = 0;
+
+    // 1. Hineingehen - darf nichts auslösen.
+    walkIntoPosition().forEach((pose) => {
+      analyzer.processFrame(pose, t);
+      t += FRAME_MS;
+    });
+    expect(analyzer.isArmed()).toBe(false);
+
+    // 2. Ruhig halten - schaltet scharf.
+    for (let i = 0; i < 80; i++) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 172 }), t);
+      t += FRAME_MS;
+    }
+    expect(analyzer.isArmed()).toBe(true);
+
+    // 3. Drei echte Wiederholungen - werden gezählt.
+    const reps: RepResult[] = [];
+    [90, 92, 88].forEach((bottom) => {
+      repFrames(bottom).forEach((pose) => {
+        const { completedRep } = analyzer.processFrame(pose, t);
+        if (completedRep) reps.push(completedRep);
+        t += FRAME_MS;
+      });
+    });
+    expect(reps).toHaveLength(3);
+  });
+
+  it('meldet solange den Grund, warum noch nicht gezählt wird', () => {
+    const analyzer = new PushUpAnalyzer();
+
+    const bent = analyzer.processFrame(buildFrame({ elbowAngleDeg: 120 }), 0);
+    expect(bent.live.startPosition?.status).toBe('ARMS_BENT');
+    expect(bent.live.startPosition?.requiredMs).toBe(2000);
+
+    const kneeling = analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, hipOffsetY: 1.0 }), FRAME_MS);
+    expect(kneeling.live.startPosition?.status).toBe('NOT_A_PLANK');
+
+    const outOfFrame = analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, visibility: 0.1 }), 2 * FRAME_MS);
+    expect(outOfFrame.live.startPosition?.status).toBe('NO_POSE');
+    expect(outOfFrame.live.trackingOk).toBe(false);
+  });
+
+  it('meldet nach dem Scharfschalten keine Startposition mehr', () => {
+    const analyzer = new PushUpAnalyzer();
+    const { live } = runFrames(analyzer, repFrames(90));
+
+    expect(live.startPosition).toBeNull();
+    expect(analyzer.isArmed()).toBe(true);
+  });
+
+  it('misst die eigene Grundhaltung beim Halten', () => {
+    const analyzer = new PushUpAnalyzer();
+    armAnalyzer(analyzer, 0);
+
+    const baseline = analyzer.getBaseline();
+    expect(baseline).not.toBeNull();
+    expect(baseline!.topElbowAngleDeg).toBe(172);
+    expect(baseline!.neutralHipStraightnessDeg).toBe(180); // buildFrame ohne Hüftversatz
+    expect(baseline!.samples).toBeGreaterThanOrEqual(12);
+  });
+
+  it('lockert die Hüft-Schwelle für eine flach gefilmte, aber gerade Haltung', () => {
+    // Der Kern des Fehlalarms: Eine Person mit geradem Rücken, flach von vorn gefilmt,
+    // misst in der Startposition nur rund 150° statt 180°. Jede ihrer Wiederholungen
+    // liegt dann unter dem allgemeinen Schwellwert von 145° - und bekommt "Hüfte sackt
+    // durch" gemeldet, obwohl sich an ihrer Haltung nichts geändert hat.
+    const neutralOffset = 0.18; // Grundhaltung dieser Person, flach gefilmt
+    const duringRepOffset = 0.245; // im Verlauf einer Wiederholung, unverändert gerader Rücken
+    expect(Math.round(hipAngleFor(neutralOffset))).toBe(150);
+    expect(Math.round(hipAngleFor(duringRepOffset))).toBe(140);
+
+    const calibrated = new PushUpAnalyzer();
+    for (let i = 0; i < 80; i++) {
+      calibrated.processFrame(buildFrame({ elbowAngleDeg: 172, hipOffsetY: neutralOffset }), i * FRAME_MS);
+    }
+    expect(calibrated.getThresholds().minHipStraightnessDeg).toBe(130); // 150 - 20
+
+    const { reps } = runFrames(calibrated, repFrames(90, { hipOffsetY: duringRepOffset }), 80 * FRAME_MS);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].minHipStraightnessDeg).toBe(140);
+    expect(reps[0].issues).not.toContain('HIPS_SAGGING');
+
+    // Gegenprobe: Ohne Kalibrierung auf diese Haltung schlägt genau diese Wiederholung an -
+    // sie liegt mit 140° unter dem allgemeinen Schwellwert von 145°.
+    const uncalibrated = new PushUpAnalyzer();
+    armAnalyzer(uncalibrated, 0);
+    const strict = runFrames(uncalibrated, repFrames(90, { hipOffsetY: duringRepOffset }));
+    expect(strict.reps[0].issues).toContain('HIPS_SAGGING');
+  });
+
+  it('verschärft die Schwelle nie, egal wie gut die Grundhaltung ist', () => {
+    // Eine perfekte Grundhaltung (180°) ergäbe rechnerisch 160° - strenger als der
+    // allgemeine Wert. Genau das soll nicht passieren: Wer die Fehlalarme gar nicht hat,
+    // soll dafür nicht strenger bewertet werden.
+    const analyzer = new PushUpAnalyzer();
+    armAnalyzer(analyzer, 0);
+
+    expect(analyzer.getBaseline()!.neutralHipStraightnessDeg).toBe(180);
+    expect(analyzer.getThresholds().minHipStraightnessDeg).toBe(DEFAULT_THRESHOLDS.minHipStraightnessDeg);
+  });
+
+  it('lockert höchstens bis zur Untergrenze, auch bei schlechter Grundhaltung', () => {
+    // Wer mit durchgesackter Hüfte einsteigt, darf sich das nicht als "normal" für den
+    // Rest der Sitzung bescheinigen lassen.
+    const baseline = {
+      topElbowAngleDeg: 172,
+      neutralHipStraightnessDeg: 115,
+      neutralNeckAngleDeg: 60,
+      elbowJitterDeg: 1,
+      hipJitterDeg: 2,
+      samples: 60,
+      heldMs: 2000,
+    };
+
+    const personal = personalThresholds(baseline);
+    expect(personal.minHipStraightnessDeg).toBe(DEFAULT_THRESHOLDS.minHipStraightnessDeg - 25);
+    expect(personal.minNeckAngleDeg).toBe(DEFAULT_THRESHOLDS.minNeckAngleDeg - 25);
+  });
+
+  it('lässt Schwellwerte unangetastet, was in der Startposition nicht messbar war', () => {
+    const personal = personalThresholds({
+      topElbowAngleDeg: 172,
+      neutralHipStraightnessDeg: null,
+      neutralNeckAngleDeg: null,
+      elbowJitterDeg: 1,
+      hipJitterDeg: null,
+      samples: 60,
+      heldMs: 2000,
+    });
+
+    expect(personal.minHipStraightnessDeg).toBeUndefined();
+    expect(personal.minNeckAngleDeg).toBeUndefined();
+  });
+
+  it('fasst die Ellbogen-Schwellen bewusst nicht an', () => {
+    // Sie entscheiden, OB gezählt wird. Ein Fehler dort kostet Wiederholungen, ein
+    // Fehler bei Hüfte oder Nacken nur Punkte.
+    const personal = personalThresholds({
+      topElbowAngleDeg: 150,
+      neutralHipStraightnessDeg: 150,
+      neutralNeckAngleDeg: 140,
+      elbowJitterDeg: 1,
+      hipJitterDeg: 2,
+      samples: 60,
+      heldMs: 2000,
+    });
+
+    expect(personal.elbowUpDeg).toBeUndefined();
+    expect(personal.elbowAttemptDeg).toBeUndefined();
+    expect(personal.goodDepthElbowDeg).toBeUndefined();
+  });
+
+  it('verlangt nach reset() wieder die Startposition', () => {
+    const analyzer = new PushUpAnalyzer();
+    armAnalyzer(analyzer, 0);
+    expect(analyzer.isArmed()).toBe(true);
+
+    analyzer.reset();
+    expect(analyzer.isArmed()).toBe(false);
+    expect(analyzer.getBaseline()).toBeNull();
+    expect(analyzer.getThresholds().minHipStraightnessDeg).toBe(DEFAULT_THRESHOLDS.minHipStraightnessDeg);
   });
 });
 

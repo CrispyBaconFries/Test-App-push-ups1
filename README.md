@@ -481,6 +481,94 @@ echten Wiederholungen und die eine schlechte durch. Beide Richtungen stehen als 
 War die Hüfte nie messbar (Unterkörper außerhalb des Bildes), greift die Prüfung gar
 nicht — im Zweifel für den Sportler.
 
+### Startposition: gezählt wird erst, wenn die Position steht (10.09.2026)
+
+Der Filter oben fängt den Positionswechsel *nachträglich* ab - die Bewegung wird als
+Wiederholung begonnen und am Ende verworfen. Das reicht nicht, sobald der Weg in die
+Position zufällig auch tief genug geht: Dann greift die Und-Bedingung nicht mehr.
+
+Deshalb gibt es jetzt eine Stufe davor: **Solange die Startposition nicht eingenommen und
+zwei Sekunden ruhig gehalten wurde, läuft die Zustandsmaschine gar nicht.** Der Weg in die
+Position kann damit gar keine Wiederholung mehr erzeugen, unabhängig davon, wie er
+aussieht (`src/pose/startPosition.ts`).
+
+**Warum das Ruhighalten der entscheidende Teil ist.** Der Verdacht war zuerst „das
+Skelett springt beim Hinlegen wild herum". Die Messdaten sagen etwas anderes: Das Tracking
+war lückenlos, 0 verlorene Frames. Die Bewegung war sauber erfasst - sie *war* nur einfach
+eine Beugung und Streckung der Arme, und genau darauf schaut ein Zähler, der den
+Ellbogenwinkel verfolgt. Eine Prüfung auf „Arme gestreckt und Körper im Stütz" allein
+würde deshalb nichts ändern: Jeder Weg nach unten führt durch diese Haltung *hindurch*.
+Nur bleibt niemand dabei zwei Sekunden lang innerhalb weniger Grad stehen. Das Haltefenster
+wandert bei einer langsamen Abwärtsbewegung einfach mit, statt zu wachsen - als Test
+abgedeckt („schaltet NICHT scharf, wenn die Position nur langsam durchlaufen wird").
+
+Kleines Zittern kostet nicht die ganze Haltezeit: Das Fenster wird vorne gekürzt, bis die
+Spannweite wieder passt (8° Ellbogen, 12° Hüfte), statt komplett verworfen zu werden.
+Verworfen wird es nur, wenn die Position wirklich verlassen wird - Arme gebeugt, Körper
+abgeknickt, oder Pose weg.
+
+**Der Bildschirm sagt, woran es hakt.** „Ich sehe dich nicht" / „Arme durchstrecken" /
+„Körper strecken" / „Ruhig halten", dazu ein Balken, der sich füllt, und ein Ton, sobald es
+losgeht. Das ist Absicht: Wer davor liegt, kann sonst nur raten, warum nichts passiert.
+
+**Notbremse:** Nach 30 Sekunden wird auch ohne erfolgreiches Halten scharf geschaltet -
+dann mit den allgemeinen Schwellwerten. Ein Bildschirm, der unter ungünstigen Bedingungen
+*nie* zu zählen anfängt, ist schlimmer als eine gelegentliche Fehlzählung.
+
+**Kein Kopf-Rahmen.** Ursprünglich war ein kopfförmiger Rahmen geplant, in den man sich
+hineinstellt. Zwei Gründe dagegen: Er hängt an Bildschirmkoordinaten und damit daran, wie
+das Handy gerade steht - kippt es leicht, stimmt er nicht mehr. Und er verlangt, aus zwei
+Metern Entfernung im Stütz liegend Details auf einem Handy am Boden zu erkennen. Das
+Halten der Position braucht keinen Blick auf den Bildschirm und misst genau das, worauf es
+ankommt: die eigene Haltung, nicht die Lage im Bild.
+
+**Im Duell** hängt „bereit" jetzt daran statt an der Kameraberechtigung. Vorher konnte der
+Countdown anlaufen, während ein Spieler noch zwei Schritte vom Handy entfernt stand - die
+60 Sekunden liefen dann bereits.
+
+### Persönliche Schwellwerte aus der Grundhaltung (10.09.2026)
+
+Dieselben zwei Sekunden liefern die Messung, die den Fehlalarmen zu Hüfte und Kopfposition
+die Grundlage entzieht. Eine Hüftgerade von 150° heißt bei der einen Person „leicht
+durchgesackt" und bei der anderen „kerzengerade, nur flach von vorn gefilmt". Ohne
+Bezugspunkt muss ein fester Schwellwert beides gleich behandeln - und genau daher kommen
+die Meldungen, über die sich bisher jede Testperson beschwert hat.
+
+Gemessen wird der Median über das Haltefenster:
+
+| Wert | Wofür |
+|---|---|
+| Schulter-Hüfte-Knie | persönliche Schwelle für „Hüfte sackt durch" / „Po zu hoch" |
+| Ohr-Schulter-Hüfte | persönliche Schwelle für „Kopfhaltung" |
+| Ellbogenwinkel oben | nur aufgezeichnet, siehe unten |
+
+Die Schwelle ist **Grundhaltung minus 20°** (Hüfte) bzw. **minus 25°** (Nacken). Die 20°
+sind nicht geraten: Sauber ausgeführte Wiederholungen lagen in der Aufzeichnung vom
+09.09.2026 bei 152-169°, eine erkennbar abgekippte Hüfte bei 97°. Eine Grundhaltung von
+rund 165° minus 20° ergibt genau die 145°, die als allgemeiner Wert aus denselben Daten
+kalibriert wurden - für diese Person ändert sich also nichts, und abweichen tut es nur da,
+wo die Perspektive den Winkel staucht.
+
+**Zwei bewusste Einschränkungen:**
+
+1. **Die Kalibrierung lockert nur, sie verschärft nie.** Wessen Grundhaltung *besser* ist
+   als der allgemeine Wert, wird trotzdem nach dem allgemeinen bewertet. Die beiden
+   Fehlerrichtungen wiegen unterschiedlich schwer: Eine zu milde Schwelle bewertet eine
+   schlechte Wiederholung zu gut, eine zu strenge nörgelt bei jeder guten - und Letzteres
+   bringt Leute dazu, der App nicht mehr zu glauben. Gelockert wird höchstens um 25°, sonst
+   würde ein Einstieg mit durchgesackter Hüfte das Durchsacken für den Rest der Sitzung als
+   normal festschreiben.
+2. **Die Ellbogen-Schwellen bleiben unangetastet.** Sie entscheiden, *ob* gezählt wird,
+   nicht wie gut bewertet wird - ein Fehler dort kostet Wiederholungen, ein Fehler bei
+   Hüfte oder Nacken nur Punkte. Und die Tiefe lässt sich aus einer gehaltenen Position
+   ohnehin nicht ableiten, dafür bräuchte es eine vorgeführte Wiederholung. Der gemessene
+   Wert wird trotzdem protokolliert, damit sich später **mit Daten** entscheiden lässt, ob
+   es sich lohnt.
+
+Die Grundhaltung landet als eigener Eintrag im Kalibrier-Log (`kind: 'baseline'`) und wird
+von `npm run analyze:reps` mit ausgegeben - erst damit sind die Hüft- und Nackenwerte der
+einzelnen Wiederholungen überhaupt deutbar.
+
 ### Kalibrier-Log auswerten
 
 ```bash

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Share } from 'react-native';
 import type { DiscardedRep, RepResult } from './formAnalysis';
+import type { PostureBaseline } from './startPosition';
 
 /**
  * TEMPORÄR, NUR FÜR DIE ENTWICKLUNG: sammelt die gemessenen Werte echter Liegestütze
@@ -45,10 +46,23 @@ export interface CalibrationDiscardEntry extends DiscardedRep, CalibrationEntryB
 }
 
 /**
+ * Die in der gehaltenen Startposition gemessene Grundhaltung (siehe `startPosition.ts`),
+ * einmal je Trainingsbildschirm.
+ *
+ * Ohne diesen Eintrag ist eine spätere Auswertung nicht deutbar: Eine Hüftgerade von 140°
+ * heißt bei einer Person mit 180° Grundhaltung etwas völlig anderes als bei einer mit
+ * 150°. Erst der Bezugspunkt macht aus der Zahl eine Aussage - und erst damit lässt sich
+ * prüfen, ob die gewählten Abstände (20° Hüfte, 25° Nacken) die richtigen sind.
+ */
+export interface CalibrationBaselineEntry extends PostureBaseline, CalibrationEntryBase {
+  kind: 'baseline';
+}
+
+/**
  * Einträge aus Aufzeichnungen vor dem 09.09.2026 haben kein `kind` - dort gab es nur
  * gezählte Wiederholungen. Beim Auswerten gilt "kein kind" deshalb als `'rep'`.
  */
-export type CalibrationEntry = CalibrationRepEntry | CalibrationDiscardEntry;
+export type CalibrationEntry = CalibrationRepEntry | CalibrationDiscardEntry | CalibrationBaselineEntry;
 
 async function loadLog(): Promise<CalibrationEntry[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -93,6 +107,13 @@ export async function recordCalibrationDiscard(
   source: CalibrationEntry['source']
 ): Promise<void> {
   await append({ ...discarded, kind: 'discarded', recordedAtIso: new Date().toISOString(), source });
+}
+
+export async function recordCalibrationBaseline(
+  baseline: PostureBaseline,
+  source: CalibrationEntry['source']
+): Promise<void> {
+  await append({ ...baseline, kind: 'baseline', recordedAtIso: new Date().toISOString(), source });
 }
 
 export async function clearCalibrationLog(): Promise<void> {

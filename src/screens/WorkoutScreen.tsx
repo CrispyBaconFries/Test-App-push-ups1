@@ -17,6 +17,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RepHud } from '../components/RepHud';
+import { StartPositionOverlay } from '../components/StartPositionOverlay';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
 import { computeBadgeStatuses, newlyUnlockedBadges } from '../gamification/badges';
@@ -28,7 +29,7 @@ import { syncNationsProgress } from '../nations/nationsSync';
 import { useAuth } from '../auth/AuthContext';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
+import { recordCalibrationBaseline, recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -60,6 +61,10 @@ export function WorkoutScreen({ navigation }: Props) {
   // DEV DIAGNOSTIC (temporär) - loggt alle ~15 Frames Phase/Winkel/Sichtbarkeit in die
   // Metro-Konsole, um zu sehen, woran die Zählung auf einem echten Gerät genau
   // scheitert. Entfernen, sobald das geklärt ist.
+  // Ob die Startposition schon eingenommen wurde. Als Ref und nicht als State, weil es im
+  // Kamerapfad bei jedem Frame gelesen wird und ein State-Update dort erst beim nächsten
+  // Render sichtbar wäre - der Bestätigungston liefe sonst mehrfach.
+  const armedRef = useRef(false);
   const diagFrameCounterRef = useRef(0);
   const diagElbowRangeRef = useRef({ min: Infinity, max: -Infinity });
 
@@ -89,6 +94,16 @@ export function WorkoutScreen({ navigation }: Props) {
 
     const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
+
+    // Startposition gerade fertig eingenommen: einmal bestätigen, damit man es auch ohne
+    // Blick auf den Bildschirm mitbekommt - und die gemessene Grundhaltung festhalten.
+    if (liveResult.startPosition === null && !armedRef.current) {
+      armedRef.current = true;
+      playRepSoundRef.current(true);
+      const baseline = analyzer.getBaseline();
+      // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+      if (baseline) recordCalibrationBaseline(baseline, 'training').catch(() => {});
+    }
 
     // DEV DIAGNOSTIC (temporär) - entfernen, sobald die Zählung nachweislich funktioniert.
     // Der beobachtete Winkelbereich ist der wichtigste Wert hier: bleibt das Maximum
@@ -261,6 +276,8 @@ export function WorkoutScreen({ navigation }: Props) {
       />
 
       <RepHud repCount={repCount} live={live} lastRep={lastRep} trackingOk={live?.trackingOk ?? true} />
+
+      {live?.startPosition && <StartPositionOverlay progress={live.startPosition} />}
 
       <Pressable
         style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}

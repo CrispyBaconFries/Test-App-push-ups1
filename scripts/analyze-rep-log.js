@@ -71,6 +71,7 @@ const entries = JSON.parse(fs.readFileSync(file, 'utf8'));
 // gezählte Wiederholungen gab.
 const reps = entries.filter((e) => (e.kind ?? 'rep') === 'rep');
 const discards = entries.filter((e) => e.kind === 'discarded');
+const baselines = entries.filter((e) => e.kind === 'baseline');
 
 // Eine neue Sitzung beginnt, wo der Wiederholungszähler wieder bei 0 anfängt.
 const sessions = [];
@@ -110,6 +111,31 @@ if (discards.length > 0) {
   }
 } else {
   console.log('Verworfene Bewegungen: keine aufgezeichnet (Aufzeichnung vor dem 09.09.2026?)');
+}
+
+// Die in der gehaltenen Startposition gemessene Grundhaltung (siehe src/pose/startPosition.ts).
+// Ohne sie sind die Hüft- und Nackenwerte weiter unten nicht deutbar: 140° heißt bei einer
+// Grundhaltung von 180° etwas anderes als bei 150°.
+if (baselines.length > 0) {
+  console.log('\n--- Grundhaltung (Startposition) --------------------------------------------');
+  console.log('  Zeit                 Ellbogen  Hüfte  Nacken  Zittern  Frames  gehalten');
+  for (const b of baselines) {
+    const time = (b.recordedAtIso ?? '').slice(0, 19).replace('T', ' ');
+    const num = (v) => (typeof v === 'number' ? String(v).padStart(5) : '    -');
+    console.log(
+      `  ${time}  ${num(b.topElbowAngleDeg)}°    ${num(b.neutralHipStraightnessDeg)}°  ` +
+        `${num(b.neutralNeckAngleDeg)}°   ${num(b.elbowJitterDeg)}°  ${String(b.samples).padStart(6)}  ${String(b.heldMs).padStart(6)} ms`
+    );
+  }
+  const hips = defined(baselines.map((b) => b.neutralHipStraightnessDeg));
+  if (hips.length > 0) {
+    console.log(
+      `  -> Persönliche Hüft-Schwelle wäre ${Math.min(...hips) - 20}-${Math.max(...hips) - 20}° ` +
+        '(Grundhaltung minus 20°, gedeckelt auf höchstens den allgemeinen Wert von 145°).'
+    );
+  }
+} else {
+  console.log('Grundhaltung: nicht aufgezeichnet (Aufzeichnung vor dem 10.09.2026?)');
 }
 
 console.log('\n--- Sitzungen ---------------------------------------------------------------');

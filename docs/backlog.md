@@ -105,21 +105,30 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
 5. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen nicht,
    um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
 
-## 2. Kalibrierung mit Kopf-Rahmen vor dem Training
+## 2. Kalibrierung in der Startposition — ERLEDIGT (10.09.2026)
 
-Von chris bestätigt. Vor dem Start positioniert sich die Person so, dass der Kopf in einem
-kopfförmigen Rahmen liegt.
+Umgesetzt als `src/pose/startPosition.ts` plus `StartPositionOverlay`, nicht als eigener
+Screen und **ohne** den ursprünglich geplanten Kopf-Rahmen. Ausführlich im README
+(„Startposition: gezählt wird erst, wenn die Position steht" und „Persönliche Schwellwerte
+aus der Grundhaltung"). Kurz:
 
-Wichtig ist die **Trennung der beiden Rollen**: Der Rahmen ist Positionierungshilfe und
-Auslöser für die Grundlinien-Messung. Die eigentliche Zählreferenz bleibt
-**körperrelativ** (Verhältnisse aus `worldLandmarks`) und darf *nicht* an
-Bildschirmkoordinaten hängen — sonst bricht die Erkennung, sobald das Handy auch nur
-leicht verrutscht.
+- Gezählt wird erst, wenn die obere Position **zwei Sekunden ruhig gehalten** wurde. Damit
+  ist der Weg in die Position keine Wiederholung mehr — er führt zwar durch die Haltung
+  hindurch, bleibt aber nie darin stehen.
+- Dieselben zwei Sekunden liefern die persönliche Grundhaltung (Schulter–Hüfte–Knie,
+  Ohr–Schulter–Hüfte). Daraus kommen persönliche Schwellen, die nur lockern, nie
+  verschärfen.
+- Der Kopf-Rahmen ist bewusst gestrichen: Er hängt an Bildschirmkoordinaten (kippt das
+  Handy, stimmt er nicht mehr) und verlangt, aus zwei Metern Entfernung Details auf einem
+  Handy am Boden zu erkennen. Die Trennung der Rollen, um die es dabei ging — Referenz
+  bleibt körperrelativ aus `worldLandmarks` — gilt in der umgesetzten Lösung ohnehin.
 
-Geplant: `src/pose/calibration.ts` plus eigener Screen vor dem WorkoutScreen. Die dort
-gemessene Grundlinie (Schulter–Hüfte–Knie-Winkel im Stütz, Armlänge, Körperhöhe) speist
-persönliche Schwellen, statt für alle die globalen `DEFAULT_THRESHOLDS` zu benutzen. Das
-löst Punkt 1 langfristig auf die saubere Art.
+**Offen bleibt** die Gegenprobe mit echten Daten: Ob 20° (Hüfte) und 25° (Nacken) unter der
+Grundhaltung die richtigen Abstände sind, lässt sich erst sagen, wenn Aufzeichnungen mit
+`kind: 'baseline'` vorliegen. `npm run analyze:reps` gibt die Grundhaltung dafür bereits
+mit aus. Ebenso offen: Ob sich der gemessene Ellbogenwinkel der oberen Position
+(`topElbowAngleDeg`) lohnt, um `elbowUpDeg` zu personalisieren — er wird deshalb schon
+protokolliert, aber noch nicht verwendet.
 
 ## 3. Schneller Design-/Layout-Workflow
 

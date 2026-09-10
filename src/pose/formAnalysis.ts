@@ -9,6 +9,12 @@ import {
   type Pose,
 } from './landmarks';
 import { nthSmallest, percentile } from './stats';
+import {
+  StartPositionGate,
+  type PostureBaseline,
+  type StartPositionCriteria,
+  type StartPositionProgress,
+} from './startPosition';
 
 export type RepPhase = 'up' | 'descending' | 'down' | 'ascending';
 
@@ -94,6 +100,14 @@ export interface LiveFeedback {
   elbowAngleDeg: number;
   hipStraightnessDeg: number;
   cue: FormIssue | 'GOOD_FORM' | null;
+  /**
+   * Solange die Startposition noch nicht eingenommen und gehalten wurde: wie weit es ist
+   * und woran es gerade hakt. `null` bedeutet "scharf geschaltet, es wird gezählt".
+   *
+   * Bis dahin läuft die Zustandsmaschine gar nicht - der Weg in die Position hinein ist
+   * damit keine Wiederholung mehr, egal wie er aussieht (siehe `startPosition.ts`).
+   */
+  startPosition: StartPositionProgress | null;
 }
 
 export interface PushUpThresholds {
@@ -244,6 +258,76 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
+ * Wie weit unter der eigenen, ruhig gehaltenen Grundhaltung ein Wert noch als in Ordnung
+ * durchgeht.
+ *
+ * Die 20° bei der Hüfte sind aus den Messdaten abgeleitet, nicht geraten: In der
+ * Aufzeichnung vom 09.09.2026 (19:26 Uhr) liegen sauber ausgeführte Wiederholungen bei
+ * 152-169°, eine erkennbar abgekippte Hüfte bei 97°. Eine Grundhaltung von rund 165°
+ * minus 20° ergibt genau die 145°, die als allgemeiner Schwellwert aus denselben Daten
+ * kalibriert wurden - die persönliche Rechnung fällt für diese Person also mit dem
+ * bisherigen Wert zusammen und weicht nur ab, wo die Perspektive den Winkel staucht.
+ *
+ * Beim Nacken sind es 25°, weil dort mehr Spiel drin ist: Der Kopf senkt sich im Verlauf
+ * einer Wiederholung, während die Hüfte über die ganze Wiederholung gerade bleiben soll.
+ */
+const PERSONAL_HIP_MARGIN_DEG = 20;
+const PERSONAL_NECK_MARGIN_DEG = 25;
+
+/**
+ * Wie weit die persönliche Schwelle den allgemeinen Wert höchstens lockern darf. Ohne
+ * diese Grenze würde eine Kalibrierung in schlechter Haltung die Prüfung praktisch
+ * abschalten - wer mit durchgesackter Hüfte einsteigt, bekäme das Durchsacken für den
+ * Rest der Sitzung als "normal" bescheinigt.
+ */
+const MAX_PERSONAL_RELAXATION_DEG = 25;
+
+/**
+ * Persönliche Schwellwerte aus der in der Startposition gemessenen Grundhaltung.
+ *
+ * **Sie lockern nur, sie verschärfen nie.** Das ist eine bewusste Entscheidung und keine
+ * Vereinfachung: Das Problem, das die Kalibrierung lösen soll, sind Fehlalarme - "Hüfte
+ * hängt durch" bei kerzengeradem Rücken, nur flach von vorn gefilmt. Wessen Grundhaltung
+ * *besser* ist als der allgemeine Schwellwert, der hat dieses Problem nicht, und ihn
+ * dafür strenger zu bewerten würde genau die Sorte Meldung erzeugen, die hier abgestellt
+ * werden soll. Die beiden Fehlerrichtungen wiegen unterschiedlich schwer: Eine zu milde
+ * Schwelle bewertet eine schlechte Wiederholung zu gut, eine zu strenge nörgelt bei jeder
+ * guten - und Letzteres bringt Leute dazu, der App nicht mehr zu glauben.
+ *
+ * Bewusst **nicht** angefasst werden die Ellbogen-Schwellen (`elbowUpDeg`,
+ * `elbowAttemptDeg`, `goodDepthElbowDeg`): Sie entscheiden, *ob* gezählt wird, nicht wie
+ * gut bewertet wird. Ein Fehler dort kostet Wiederholungen, ein Fehler bei Hüfte oder
+ * Nacken nur Punkte. Und die Tiefe lässt sich aus einer gehaltenen Startposition ohnehin
+ * nicht ableiten - dafür bräuchte es eine vorgeführte Wiederholung. `topElbowAngleDeg`
+ * wird trotzdem gemessen und mitprotokolliert, damit sich später anhand echter Daten
+ * entscheiden lässt, ob es sich lohnt.
+ */
+export function personalThresholds(
+  baseline: PostureBaseline,
+  base: PushUpThresholds = DEFAULT_THRESHOLDS
+): Partial<PushUpThresholds> {
+  const personal: Partial<PushUpThresholds> = {};
+
+  if (baseline.neutralHipStraightnessDeg !== null) {
+    personal.minHipStraightnessDeg = clamp(
+      baseline.neutralHipStraightnessDeg - PERSONAL_HIP_MARGIN_DEG,
+      base.minHipStraightnessDeg - MAX_PERSONAL_RELAXATION_DEG,
+      base.minHipStraightnessDeg
+    );
+  }
+
+  if (baseline.neutralNeckAngleDeg !== null) {
+    personal.minNeckAngleDeg = clamp(
+      baseline.neutralNeckAngleDeg - PERSONAL_NECK_MARGIN_DEG,
+      base.minNeckAngleDeg - MAX_PERSONAL_RELAXATION_DEG,
+      base.minNeckAngleDeg
+    );
+  }
+
+  return personal;
+}
+
+/**
  * `percentile()` liefert `NaN`, wenn die Messreihe leer blieb - also wenn die
  * Landmarken, die diese Prüfung braucht, während der ganzen Wiederholung nie sichtbar
  * waren (typisch: Füße außerhalb des Bildes). Das wird hier zu "nicht gemessen"
@@ -316,7 +400,20 @@ export class PushUpAnalyzer {
    * corrupting the rep's score. Only re-picked once the analyzer is idle (`'up'`).
    */
   private lockedSide: BodySide | null = null;
-  private readonly thresholds: PushUpThresholds;
+  /**
+   * `baseThresholds` ist der Stand vor der Kalibrierung, `thresholds` der gerade
+   * geltende. Getrennt, damit `reset()` sauber zurückkommt, ohne den ursprünglichen
+   * Konstruktor-Parameter noch einmal zu brauchen.
+   */
+  private readonly baseThresholds: PushUpThresholds;
+  private thresholds: PushUpThresholds;
+  /**
+   * Solange gesetzt, wird noch **nicht** gezählt: Erst muss die Startposition eingenommen
+   * und ruhig gehalten werden (siehe `startPosition.ts`). `null` heißt scharf.
+   */
+  private gate: StartPositionGate | null;
+  private readonly gateCriteria: Partial<StartPositionCriteria>;
+  private baseline: PostureBaseline | null = null;
   /**
    * Wie oft in dieser Sitzung eine Bewegung verworfen wurde, nach Grund. Rein
    * diagnostisch: Steigt hier etwas auffällig, stimmt etwas mit der Aufnahmesituation
@@ -330,8 +427,19 @@ export class PushUpAnalyzer {
     NOT_A_PLANK: 0,
   };
 
-  constructor(thresholds: Partial<PushUpThresholds> = {}) {
-    this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
+  constructor(thresholds: Partial<PushUpThresholds> = {}, startPosition: Partial<StartPositionCriteria> = {}) {
+    this.baseThresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
+    this.thresholds = this.baseThresholds;
+    // Die Startposition ist die obere Position eines Liegestützes - deshalb dieselbe
+    // Ellbogenschwelle. Wäre sie kleiner, sähe die Zustandsmaschine im Moment des
+    // Scharfschaltens bereits eine Abwärtsbewegung und begänne eine Wiederholung, die nur
+    // aus dem Kalibrier-Halten besteht.
+    this.gateCriteria = {
+      minElbowAngleDeg: this.baseThresholds.elbowUpDeg,
+      minHipStraightnessDeg: this.baseThresholds.minPlankHipStraightnessDeg,
+      ...startPosition,
+    };
+    this.gate = new StartPositionGate(this.gateCriteria);
   }
 
   reset(): void {
@@ -340,6 +448,28 @@ export class PushUpAnalyzer {
     this.acc = null;
     this.lockedSide = null;
     this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0 };
+    this.thresholds = this.baseThresholds;
+    this.baseline = null;
+    this.gate = new StartPositionGate(this.gateCriteria);
+  }
+
+  /** `false`, solange die Startposition noch nicht eingenommen wurde - dann wird nicht gezählt. */
+  isArmed(): boolean {
+    return this.gate === null;
+  }
+
+  /**
+   * Die in der Startposition gemessene Grundhaltung, oder `null` - wenn noch nicht scharf
+   * geschaltet wurde, oder wenn über die Notbremse (`timeoutMs`) ohne gültige Messung
+   * gestartet wurde. Für den Kalibrier-Log und die Anzeige.
+   */
+  getBaseline(): PostureBaseline | null {
+    return this.baseline;
+  }
+
+  /** Die aktuell geltenden Schwellwerte - nach der Kalibrierung die persönlichen. */
+  getThresholds(): PushUpThresholds {
+    return this.thresholds;
   }
 
   /** Kopie der Verwurf-Zähler dieser Sitzung (siehe `discardCounts`). */
@@ -387,8 +517,12 @@ export class PushUpAnalyzer {
       // Wiederholung entscheidet dieser Anteil darüber, ob die Formwerte überhaupt
       // belastbar sind.
       if (this.acc) this.acc.untrackedFrames += 1;
+      // Auch ein Frame ohne verwertbare Pose gehört in das Startpositions-Fenster: Er
+      // verwirft die bisher gesammelte Haltezeit (wer zwischendurch aus dem Bild
+      // verschwindet, hat nicht durchgehend gehalten) und lässt die Notbremse weiterlaufen.
+      const startPosition = this.gate ? this.pushToGate(null, null, null, timestampMs) : null;
       return {
-        live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null },
+        live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null, startPosition },
         completedRep: null,
         discardedRep,
       };
@@ -413,6 +547,25 @@ export class PushUpAnalyzer {
     const elbowFlareDeg = hip ? angleAtPoint(elbow, shoulder, hip) : null;
     const neckAngleDeg = ear && hip ? angleAtPoint(ear, shoulder, hip) : null;
     const hipSagDeviation = hip && knee ? signedPerpendicularDeviation2D(shoulder, knee, hip) : null;
+
+    // Vor dem Scharfschalten läuft die Zustandsmaschine gar nicht. Der Weg in die
+    // Position hinein kann damit keine Wiederholung mehr erzeugen - er *sieht* für einen
+    // Ellbogenwinkel-Zähler nämlich genau wie eine aus (siehe `startPosition.ts`).
+    if (this.gate) {
+      const startPosition = this.pushToGate(elbowAngleDeg, hipStraightnessDeg, neckAngleDeg, timestampMs);
+      return {
+        live: {
+          phase: this.phase,
+          trackingOk: true,
+          elbowAngleDeg,
+          hipStraightnessDeg: hipStraightnessDeg ?? 0,
+          cue: null,
+          startPosition,
+        },
+        completedRep: null,
+        discardedRep,
+      };
+    }
 
     let completedRep: RepResult | null = null;
 
@@ -503,10 +656,38 @@ export class PushUpAnalyzer {
     const cue = this.liveCue(hipStraightnessDeg, hipSagDeviation, elbowFlareDeg, neckAngleDeg);
 
     return {
-      live: { phase: this.phase, trackingOk: true, elbowAngleDeg, hipStraightnessDeg: hipStraightnessDeg ?? 0, cue },
+      live: {
+        phase: this.phase,
+        trackingOk: true,
+        elbowAngleDeg,
+        hipStraightnessDeg: hipStraightnessDeg ?? 0,
+        cue,
+        startPosition: null,
+      },
       completedRep,
       discardedRep,
     };
+  }
+
+  /**
+   * Reicht einen Frame an die Startpositions-Prüfung weiter. Liefert den Fortschritt für
+   * die Anzeige, oder `null` sobald scharf geschaltet wurde - dann sind die persönlichen
+   * Schwellwerte bereits gesetzt.
+   */
+  private pushToGate(
+    elbowAngleDeg: number | null,
+    hipStraightnessDeg: number | null,
+    neckAngleDeg: number | null,
+    timestampMs: number
+  ): StartPositionProgress | null {
+    const outcome = this.gate!.push({ timeMs: timestampMs, elbowAngleDeg, hipStraightnessDeg, neckAngleDeg });
+    if (!outcome.ready) return outcome.progress;
+    this.gate = null;
+    this.baseline = outcome.baseline;
+    if (outcome.baseline) {
+      this.thresholds = { ...this.baseThresholds, ...personalThresholds(outcome.baseline, this.baseThresholds) };
+    }
+    return null;
   }
 
   /**
