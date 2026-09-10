@@ -1,8 +1,26 @@
 import { isFirebaseConfigured } from '../firebase/firebaseConfig';
 import { ensureFirebaseBridged } from '../firebase/firebaseAuthBridge';
-import { loadOrCreatePlayerProfile, syncTrainingProgress } from './playerProfileStore';
+import { loadOrCreatePlayerProfile, syncTrainingProgress, type PersonalRecords } from './playerProfileStore';
 import { enqueuePendingSync, loadPendingSyncQueue, savePendingSyncQueue, type PendingSyncEntry } from './leaderboardSyncQueue';
 import type { AuthProfile } from '../auth/types';
+import { computeStats, loadSessions } from '../storage/workoutStorage';
+
+/**
+ * Persönliche Rekorde aus der lokalen Trainingshistorie.
+ *
+ * Bewusst hier gelesen und nicht von den Bildschirmen durchgereicht: Beide Aufrufer
+ * (WorkoutScreen, BossFightScreen) haben nur ihre gerade beendete Session zur Hand, die
+ * Tagesbestleistung braucht aber alle Sessions des Tages. So steht die Logik an einer
+ * Stelle statt zweimal fast gleich in zwei Bildschirmen.
+ */
+async function currentRecords(): Promise<PersonalRecords> {
+  const stats = computeStats(await loadSessions());
+  return {
+    bestDayReps: stats.bestDayReps,
+    bestSessionReps: stats.bestSessionReps,
+    longestStreakDays: stats.longestStreakDays,
+  };
+}
 
 /**
  * Best-effort Sync einer gerade abgeschlossenen Session in die Online-Ranglisten
@@ -30,7 +48,7 @@ export async function syncLeaderboardProgress(
 
   try {
     await loadOrCreatePlayerProfile(uid, profile.name ?? profile.email, profile.photoUrl);
-    await syncTrainingProgress(uid, repsThisSession, pointsThisSession, new Date(finishedAtIso).getTime());
+    await syncTrainingProgress(uid, repsThisSession, pointsThisSession, new Date(finishedAtIso).getTime(), await currentRecords());
   } catch {
     await enqueuePendingSync({ reps: repsThisSession, points: pointsThisSession, finishedAtIso });
     return;
@@ -54,12 +72,15 @@ export async function flushPendingLeaderboardSync(profile: AuthProfile | null): 
   if (!uid) return;
 
   await loadOrCreatePlayerProfile(uid, profile.name ?? profile.email, profile.photoUrl);
+  // Einmal für den ganzen Durchlauf: Die Rekorde stehen fest, sie hängen nicht am
+  // einzelnen nachgeholten Eintrag.
+  const records = await currentRecords();
 
   const remaining: PendingSyncEntry[] = [];
   for (let i = 0; i < queue.length; i++) {
     const entry = queue[i]!;
     try {
-      await syncTrainingProgress(uid, entry.reps, entry.points, new Date(entry.finishedAtIso).getTime());
+      await syncTrainingProgress(uid, entry.reps, entry.points, new Date(entry.finishedAtIso).getTime(), records);
     } catch {
       remaining.push(...queue.slice(i));
       break;

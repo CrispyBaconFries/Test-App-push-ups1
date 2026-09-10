@@ -124,6 +124,46 @@ export function ProfileScreen({ route, navigation }: Props) {
         <StatTile icon="ribbon-outline" value={`${badgeCount}`} label="Abzeichen" />
       </View>
 
+      {stats && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Bestleistungen</Text>
+          <RecordRow
+            icon="today-outline"
+            label="Meiste an einem Tag"
+            value={`${stats.bestDayReps}`}
+            hint={stats.bestDayKey ? formatDayKeyDe(stats.bestDayKey) : undefined}
+          />
+          <RecordRow icon="flash-outline" label="Beste Session" value={`${stats.bestSessionReps}`} />
+          <RecordRow
+            icon="flame"
+            label="Längste Streak"
+            value={`${stats.longestStreakDays} ${stats.longestStreakDays === 1 ? 'Tag' : 'Tage'}`}
+            iconColor={colors.accent}
+          />
+          <RecordRow
+            icon="checkmark-done"
+            label="Bester Form-Score"
+            value={`${stats.bestAverageFormScore}`}
+            hint="beste Session"
+          />
+        </View>
+      )}
+
+      {stats && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Auf einen Blick</Text>
+          <RecordRow icon="calendar-number-outline" label="Trainingstage" value={`${stats.activeDays}`} />
+          <RecordRow
+            icon="stats-chart-outline"
+            label="Schnitt je Trainingstag"
+            value={`${stats.averageRepsPerActiveDay}`}
+            hint="Ruhetage zählen nicht mit"
+          />
+          <RecordRow icon="speedometer-outline" label="Form-Score im Schnitt" value={`${stats.averageFormScore}`} />
+          <RecordRow icon="list-outline" label="Trainings gesamt" value={`${stats.totalSessions}`} />
+        </View>
+      )}
+
       {onlineProfile && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Freundescode</Text>
@@ -151,6 +191,12 @@ function OtherProfileView({
   const tierDefinition = RANK_TIERS.find((t) => t.tier === tier);
   const level = levelForPoints(profile.totalPoints ?? 0);
   const weeklyReps = profile.weeklyBucketKey === weekKey(new Date()) ? profile.weeklyReps ?? 0 : 0;
+  // Nur anzeigen, wenn wenigstens ein Rekord vorliegt - eine Karte voller Nullen sagt
+  // weniger aus als gar keine Karte.
+  const hasRecords =
+    (profile.bestDayReps ?? 0) > 0 ||
+    (profile.bestSessionReps ?? 0) > 0 ||
+    (profile.longestStreakDays ?? 0) > 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -191,7 +237,62 @@ function OtherProfileView({
         <StatTile icon="barbell-outline" value={`${profile.totalReps ?? 0}`} label="Liegestütze gesamt" />
         <StatTile icon="calendar-outline" value={`${weeklyReps}`} label="Diese Woche" />
       </View>
+
+      {/* Die Rekorde werden aus der lokalen Historie des jeweiligen Spielers
+          mitsynchronisiert (siehe `syncTrainingProgress`). Profile, die seit dieser
+          Änderung noch nicht trainiert haben, haben die Felder noch nicht - dann bleibt
+          die Karte weg, statt überall Nullen anzuzeigen. */}
+      {hasRecords && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Bestleistungen</Text>
+          <RecordRow icon="today-outline" label="Meiste an einem Tag" value={`${profile.bestDayReps ?? 0}`} />
+          <RecordRow icon="flash-outline" label="Beste Session" value={`${profile.bestSessionReps ?? 0}`} />
+          <RecordRow
+            icon="flame"
+            label="Längste Streak"
+            value={`${profile.longestStreakDays ?? 0} ${profile.longestStreakDays === 1 ? 'Tag' : 'Tage'}`}
+            iconColor={colors.accent}
+          />
+        </View>
+      )}
     </ScrollView>
+  );
+}
+
+/**
+ * Aus `YYYY-MM-DD` wird `10.09.2026`. Bewusst von Hand zerlegt statt über `new Date(key)`:
+ * Ein reiner Datums-String wird von JavaScript als UTC-Mitternacht gelesen, was in
+ * Zeitzonen westlich von Greenwich den Vortag anzeigen würde - und der Schlüssel ist
+ * gerade der *lokale* Kalendertag (siehe `localDayKey` in workoutStorage.ts).
+ */
+function formatDayKeyDe(dayKey: string): string {
+  const [year, month, day] = dayKey.split('-');
+  return year && month && day ? `${day}.${month}.${year}` : dayKey;
+}
+
+/** Eine Zeile "Beschriftung ... Wert" in den Bestleistungs-/Überblick-Karten. */
+function RecordRow({
+  icon,
+  label,
+  value,
+  hint,
+  iconColor = colors.primary,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  hint?: string;
+  iconColor?: string;
+}) {
+  return (
+    <View style={styles.recordRow}>
+      <Ionicons name={icon} size={16} color={iconColor} />
+      <View style={styles.recordTextWrap}>
+        <Text style={styles.recordLabelText}>{label}</Text>
+        {hint && <Text style={styles.recordHint}>{hint}</Text>}
+      </View>
+      <Text style={styles.recordValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -333,6 +434,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     gap: 4,
+  },
+  recordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  recordTextWrap: { flex: 1 },
+  recordLabelText: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  recordHint: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  recordValue: {
+    fontFamily: fonts.bold,
+    fontSize: 17,
+    color: colors.primary,
   },
   statValue: {
     fontFamily: fonts.bold,

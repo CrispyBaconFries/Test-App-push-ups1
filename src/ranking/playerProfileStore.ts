@@ -63,11 +63,18 @@ export async function applyDuelResult(params: {
  * in einer neuen Woche synct, nicht durch eine zwischenzeitliche zweite Schreib-Anfrage
  * (z. B. ein zweites Gerät desselben Nutzers) einen inkonsistenten Zwischenstand sieht.
  */
+export interface PersonalRecords {
+  bestDayReps: number;
+  bestSessionReps: number;
+  longestStreakDays: number;
+}
+
 export async function syncTrainingProgress(
   uid: string,
   repsThisSession: number,
   pointsThisSession: number,
-  now: number = Date.now()
+  now: number = Date.now(),
+  records?: PersonalRecords
 ): Promise<void> {
   const currentWeekKey = weekKey(new Date(now));
   await runTransaction(getFirestore(), async (tx) => {
@@ -81,6 +88,16 @@ export async function syncTrainingProgress(
       weeklyReps: priorWeeklyReps + repsThisSession,
       weeklyBucketKey: currentWeekKey,
       totalPoints: (data.totalPoints ?? 0) + pointsThisSession,
+      // Rekorde nur nach oben: Wer die App neu installiert und damit seine lokale
+      // Historie verliert, würde sonst auch seine Online-Rekorde auf die frische,
+      // niedrige Historie zurücksetzen.
+      ...(records
+        ? {
+            bestDayReps: Math.max(data.bestDayReps ?? 0, records.bestDayReps),
+            bestSessionReps: Math.max(data.bestSessionReps ?? 0, records.bestSessionReps),
+            longestStreakDays: Math.max(data.longestStreakDays ?? 0, records.longestStreakDays),
+          }
+        : {}),
       updatedAt: now,
     });
   });

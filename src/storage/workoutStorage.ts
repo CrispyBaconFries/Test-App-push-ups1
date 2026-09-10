@@ -111,6 +111,29 @@ export interface WorkoutStats {
   longestStreakDays: number;
   /** Most reps done in a single session, ever. */
   bestSessionReps: number;
+  /**
+   * Meiste Liegestütze an einem einzelnen Kalendertag, über alle Sessions dieses Tages
+   * zusammengezählt.
+   *
+   * Bewusst getrennt von `bestSessionReps`: Wer an einem Tag dreimal zehn Liegestütze
+   * macht, hat 30 an dem Tag geschafft, aber seine beste Session bleibt 10. Für "wie
+   * viel schaffe ich am Tag" ist die Tagessumme die Zahl, die zählt.
+   *
+   * Der Tag ist der *lokale* Kalendertag (siehe `localDayKey`), nicht der UTC-Tag - sonst
+   * würde ein Training um 23:30 in Berlin auf den Folgetag rutschen.
+   */
+  bestDayReps: number;
+  /** An welchem Tag `bestDayReps` erreicht wurde (`YYYY-MM-DD`), `null` ohne Sessions. */
+  bestDayKey: string | null;
+  /** Anzahl Kalendertage, an denen überhaupt trainiert wurde. */
+  activeDays: number;
+  /** Liegestütze je Trainingstag - Tage ohne Training zählen NICHT als Null mit. */
+  averageRepsPerActiveDay: number;
+  /**
+   * Form-Score über *alle* Wiederholungen hinweg, nicht der Schnitt der Session-Schnitte:
+   * Eine Session mit 2 Wiederholungen darf nicht genauso schwer wiegen wie eine mit 40.
+   */
+  averageFormScore: number;
   /** Highest average form score of any single session, ever (session must have at least one rep). */
   bestAverageFormScore: number;
   mostCommonIssue: FormIssue | null;
@@ -149,7 +172,34 @@ export function computeStats(sessions: WorkoutSession[], frozenDayKeys: Readonly
     }
   }
 
-  const workoutDays = new Set(sessions.map((s) => localDayKey(new Date(s.finishedAtIso))));
+  // Liegestütze je Kalendertag zusammenzählen - Grundlage für Tagesbestleistung,
+  // Trainingstage und den Schnitt je Trainingstag.
+  const repsPerDay = new Map<string, number>();
+  for (const session of sessions) {
+    const key = localDayKey(new Date(session.finishedAtIso));
+    repsPerDay.set(key, (repsPerDay.get(key) ?? 0) + session.totalReps);
+  }
+  let bestDayReps = 0;
+  let bestDayKey: string | null = null;
+  for (const [key, reps] of repsPerDay) {
+    // `>` und nicht `>=`: Bei Gleichstand gewinnt der frühere Tag, damit die Anzeige
+    // nicht bei jedem gleich guten Tag auf ein neues Datum springt.
+    if (reps > bestDayReps) {
+      bestDayReps = reps;
+      bestDayKey = key;
+    }
+  }
+  const activeDays = repsPerDay.size;
+  const averageRepsPerActiveDay = activeDays === 0 ? 0 : Math.round(totalReps / activeDays);
+
+  const totalRepCount = sessions.reduce((sum, session) => sum + session.reps.length, 0);
+  const formScoreSum = sessions.reduce(
+    (sum, session) => sum + session.reps.reduce((inner, rep) => inner + rep.formScore, 0),
+    0
+  );
+  const averageFormScore = totalRepCount === 0 ? 0 : Math.round(formScoreSum / totalRepCount);
+
+  const workoutDays = new Set(repsPerDay.keys());
   let currentStreakDays = 0;
   const cursor = new Date();
   for (;;) {
@@ -167,6 +217,11 @@ export function computeStats(sessions: WorkoutSession[], frozenDayKeys: Readonly
     currentStreakDays,
     longestStreakDays,
     bestSessionReps,
+    bestDayReps,
+    bestDayKey,
+    activeDays,
+    averageRepsPerActiveDay,
+    averageFormScore,
     bestAverageFormScore,
     mostCommonIssue,
   };

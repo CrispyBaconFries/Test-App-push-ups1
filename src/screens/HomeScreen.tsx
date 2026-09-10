@@ -365,6 +365,7 @@ export function HomeScreen({ navigation }: Props) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Bestleistungen</Text>
           <View style={[styles.statsRow, { marginTop: 14 }]}>
+            <StatTile icon="today-outline" value={`${stats.bestDayReps}`} label="Bester Tag" />
             <StatTile icon="trending-up" value={`${stats.bestSessionReps}`} label="Beste Session" />
             <StatTile icon="checkmark-done" value={`${stats.bestAverageFormScore}`} label="Bester Score" />
             <StatTile icon="trophy-outline" value={`${stats.longestStreakDays}`} label="Rekord-Streak" />

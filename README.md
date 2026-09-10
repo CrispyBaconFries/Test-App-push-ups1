@@ -1405,6 +1405,55 @@ synchronisierten Feldern (`totalReps`, `weeklyReps`, `totalPoints`, `lp`, `wins`
 `losses`, `avatar`, `frameThemeId`) - dafür synct `syncTrainingProgress`
 (playerProfileStore.ts) jetzt zusätzlich `totalPoints`, nicht nur `totalReps`.
 
+### Bestleistungen und Durchschnittswerte (10.09.2026)
+
+Das Profil zeigt zwei zusätzliche Karten. Alle Werte kommen aus `computeStats`
+(`src/storage/workoutStorage.ts`) und sind dort mit Tests abgedeckt.
+
+**Bestleistungen**
+
+| Wert | Bedeutung |
+|---|---|
+| Meiste an einem Tag | Alle Sessions eines **Kalendertages** zusammengezählt, mit Datum |
+| Beste Session | Meiste Liegestütze in einem einzelnen Training |
+| Längste Streak | Längste je erreichte Serie aufeinanderfolgender Trainingstage |
+| Bester Form-Score | Bester Schnitt einer einzelnen Session |
+
+**Auf einen Blick**
+
+| Wert | Bedeutung |
+|---|---|
+| Trainingstage | Kalendertage, an denen überhaupt trainiert wurde |
+| Schnitt je Trainingstag | Liegestütze / Trainingstage — **Ruhetage zählen nicht als Null mit** |
+| Form-Score im Schnitt | Über *alle* Wiederholungen, nicht der Schnitt der Session-Schnitte |
+| Trainings gesamt | Anzahl Sessions |
+
+Drei Entscheidungen dahinter, die leicht anders ausfallen könnten:
+
+- **Tag ≠ Session.** Wer dreimal am Tag zehn Liegestütze macht, hat 30 an dem Tag
+  geschafft — seine beste *Session* bleibt 10. Für „wie viel schaffe ich am Tag" ist die
+  Tagessumme die Zahl, die zählt, deshalb stehen beide Werte nebeneinander.
+- **Lokaler Kalendertag, nicht UTC.** Ein Training um 23:30 in Berlin ist für den Nutzer
+  noch „heute", in UTC aber schon morgen — sonst würde es auf den Folgetag rutschen und
+  die Tagesbestleistung zerreißen. Dieselbe Regel wie bei der Streak (`localDayKey`).
+- **Form-Score nach Wiederholungen gewichtet.** Eine Session mit 2 Wiederholungen darf
+  nicht so schwer wiegen wie eine mit 40. Der Schnitt der Session-Schnitte wäre in einem
+  Beispiel aus den Tests 75, richtig gewichtet sind es 98.
+
+Bei Gleichstand behält die Tagesbestleistung den **früheren** Tag — sonst springt das
+angezeigte Datum bei jedem gleich guten Tag auf ein neues.
+
+**Auch auf fremden Profilen.** `syncTrainingProgress` synchronisiert `bestDayReps`,
+`bestSessionReps` und `longestStreakDays` in `players/{uid}` mit, sodass ein Tap auf jemanden
+in der Rangliste dessen Rekorde zeigt. Zusammengeführt wird als **Höchstwert**, nie nach
+unten: Wer die App neu installiert und damit seine lokale Historie verliert, soll nicht auch
+noch seine Online-Rekorde auf die frische, niedrige Historie zurückgesetzt bekommen. Profile,
+die seit dieser Änderung noch nicht trainiert haben, haben die Felder noch nicht — dann bleibt
+die Karte weg, statt überall Nullen anzuzeigen.
+
+Auf dem Startbildschirm steht „Bester Tag" jetzt ebenfalls in der Bestleistungen-Karte,
+damit beide Ansichten dasselbe zeigen.
+
 **Level-Kurve** (`src/gamification/points.ts`, ersetzt die frühere flache "alle 250
 Punkte ein Level"-Kurve): Level 1-50, gedeckelt. Level N zu erreichen kostet
 `100 + (N-2)*25` Punkte mehr als Level N-1 (Level 2 kostet 100, Level 3 kostet 125, ...,

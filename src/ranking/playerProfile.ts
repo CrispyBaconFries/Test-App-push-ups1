@@ -22,6 +22,18 @@ export interface RankedPlayerProfile {
   weeklyBucketKey: string;
   /** Wie `totalReps`, aber die Form-Score-gewichteten Punkte (`src/gamification/points.ts`) - Grundlage fürs Level auf dem Profil-Screen, auch für fremde Profile (siehe ProfileScreen.tsx). */
   totalPoints: number;
+  /**
+   * Persönliche Rekorde, aus den lokalen WorkoutSessions mitsynchronisiert (siehe
+   * `syncTrainingProgress`). Optional, weil Profile aus der Zeit davor sie nicht haben -
+   * dann zeigt der Profil-Screen sie schlicht nicht an.
+   *
+   * Sie werden als *Höchstwert* zusammengeführt und nie heruntergesetzt: Wer die App neu
+   * installiert und damit seine lokale Historie verliert, soll nicht auch noch seine
+   * Rekorde im Online-Profil verlieren.
+   */
+  bestDayReps?: number;
+  bestSessionReps?: number;
+  longestStreakDays?: number;
   /** Gekauftes Rahmen-Theme aus dem Münz-Shop (siehe frameThemes.ts) - 'default' = normale Rang-Farbe. */
   frameThemeId: FrameThemeId;
   /** Kurzer, teilbarer Code zum Hinzufügen als Freund (siehe friendsStore.ts) - einmalig bei Profilerstellung generiert. */
@@ -46,6 +58,9 @@ export function createDefaultPlayerProfile(
     weeklyReps: 0,
     weeklyBucketKey: weekKey(new Date(now)),
     totalPoints: 0,
+    bestDayReps: 0,
+    bestSessionReps: 0,
+    longestStreakDays: 0,
     frameThemeId: 'default',
     friendCode: generateDuelCode(),
     updatedAt: now,

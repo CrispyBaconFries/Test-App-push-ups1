@@ -150,3 +150,92 @@ describe('computeStats personal bests', () => {
     expect(stats.bestAverageFormScore).toBe(0);
   });
 });
+
+describe('computeStats Tagesbestleistung', () => {
+  function sessionWithReps(iso: string, repCount: number, formScore = 90): WorkoutSession {
+    return buildSession(
+      Array.from({ length: repCount }, () => rep(formScore)),
+      iso,
+      iso
+    );
+  }
+
+  it('zählt mehrere Sessions desselben Tages zur Tagessumme zusammen', () => {
+    // Der eigentliche Punkt: Wer dreimal am Tag zehn macht, hat 30 an dem Tag geschafft -
+    // seine beste *Session* bleibt trotzdem 10.
+    const stats = computeStats([
+      sessionWithReps('2026-09-10T08:00:00+02:00', 10),
+      sessionWithReps('2026-09-10T13:00:00+02:00', 10),
+      sessionWithReps('2026-09-10T19:00:00+02:00', 10),
+      sessionWithReps('2026-09-11T09:00:00+02:00', 25),
+    ]);
+
+    expect(stats.bestDayReps).toBe(30);
+    expect(stats.bestDayKey).toBe('2026-09-10');
+    expect(stats.bestSessionReps).toBe(25);
+  });
+
+  it('gruppiert nach lokalem Kalendertag, nicht nach UTC-Tag', () => {
+    // 23:30 Berliner Zeit ist für den Nutzer noch "heute", in UTC aber schon morgen.
+    const stats = computeStats([
+      sessionWithReps('2026-09-10T23:30:00+02:00', 10),
+      sessionWithReps('2026-09-10T20:00:00+02:00', 10),
+    ]);
+
+    expect(stats.bestDayKey).toBe('2026-09-10');
+    expect(stats.bestDayReps).toBe(20);
+    expect(stats.activeDays).toBe(1);
+  });
+
+  it('behält bei Gleichstand den früheren Tag', () => {
+    // Sonst würde die Anzeige bei jedem gleich guten Tag auf ein neues Datum springen.
+    const stats = computeStats([
+      sessionWithReps('2026-09-10T09:00:00+02:00', 20),
+      sessionWithReps('2026-09-11T09:00:00+02:00', 20),
+    ]);
+    expect(stats.bestDayKey).toBe('2026-09-10');
+  });
+
+  it('ist ohne Sessions 0 bzw. null statt NaN', () => {
+    const stats = computeStats([]);
+    expect(stats.bestDayReps).toBe(0);
+    expect(stats.bestDayKey).toBeNull();
+    expect(stats.activeDays).toBe(0);
+    expect(stats.averageRepsPerActiveDay).toBe(0);
+    expect(stats.averageFormScore).toBe(0);
+  });
+});
+
+describe('computeStats Durchschnittswerte', () => {
+  function sessionWithReps(iso: string, repCount: number, formScore = 90): WorkoutSession {
+    return buildSession(
+      Array.from({ length: repCount }, () => rep(formScore)),
+      iso,
+      iso
+    );
+  }
+
+  it('rechnet den Schnitt je TRAININGSTAG, nicht je Kalendertag', () => {
+    // Trainingsfreie Tage dürfen den Schnitt nicht als Nullen drücken - sonst würde ein
+    // Ruhetag wie ein schlechtes Training aussehen.
+    const stats = computeStats([
+      sessionWithReps('2026-09-01T09:00:00+02:00', 30),
+      sessionWithReps('2026-09-10T09:00:00+02:00', 10),
+    ]);
+
+    expect(stats.activeDays).toBe(2);
+    expect(stats.averageRepsPerActiveDay).toBe(20);
+  });
+
+  it('gewichtet den Form-Score nach Wiederholungen, nicht nach Sessions', () => {
+    // Eine Session mit 2 Wiederholungen darf nicht so schwer wiegen wie eine mit 40.
+    const stats = computeStats([
+      sessionWithReps('2026-09-10T09:00:00+02:00', 40, 100),
+      sessionWithReps('2026-09-10T18:00:00+02:00', 2, 50),
+    ]);
+
+    // Schnitt der Session-Schnitte wäre 75 - richtig gewichtet sind es 98.
+    expect(stats.averageFormScore).toBe(98);
+    expect(stats.bestAverageFormScore).toBe(100);
+  });
+});
