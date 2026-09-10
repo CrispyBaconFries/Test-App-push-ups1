@@ -64,7 +64,7 @@ const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
   flames: {
     id: 'flames',
     label: 'Flammen',
-    description: 'Züngelnde Flammen am unteren Rand, die nach oben auslaufen.',
+    description: 'Züngelnde Flammenzungen rund um den Rahmen, jede in eigenem Takt.',
   },
   lightning: {
     id: 'lightning',

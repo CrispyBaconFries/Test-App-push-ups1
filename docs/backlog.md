@@ -137,14 +137,22 @@ morgen abzustimmen:
 
 | | Ansatz | Deckt ab | Aufwand |
 |---|---|---|---|
-| a | **Web-Vorschau** via `npx expo start --web` — `react-native-web` und `react-dom` sind bereits Abhängigkeiten | alle Screens ohne Kamera, Sofort-Reload im PC-Browser inkl. DevTools | gering |
+| a | ~~**Web-Vorschau**~~ — **erledigt am 10.09.2026**: `npm run web`, siehe README „Web-Vorschau" | alle Screens, **auch** die Anzeigen über dem Kamerabild (Attrappe statt Kamera) | erledigt |
 | b | **Zentrale `src/theme/layout.ts`** — alle Positionen, Größen, Abstände an einer Stelle statt in 14 StyleSheets | alles | gering–mittel |
 | c | **DEV-Layout-Modus in der App** — Overlay-Elemente per Finger verschieben, Werte als JSON exportieren und in `layout.ts` übernehmen | nur die Kamera-Overlays, die (a) nicht darstellen kann | mittel |
 | d | **DEV-Screen-Galerie** mit Mockdaten — jeden Screen-Zustand direkt anspringen, ohne ihn erspielen zu müssen | alle Screens | mittel |
 
 Empfehlung: erst (a) + (b), das deckt den Großteil der Oberfläche mit dem geringsten
-Aufwand ab. (c) nur für WorkoutScreen, BossFightScreen und DuelScreen — dort geht es um
-Overlays über dem Kamerabild, die eine Web-Vorschau prinzipbedingt nicht zeigen kann.
+Aufwand ab.
+
+**(a) ist erledigt und hat sich sofort bezahlt gemacht** — zwei echte Fehler in der
+Effekt-Werkstatt, die weder Typprüfung noch Tests finden konnten (siehe README). Die
+Annahme in der Zeile für (c) hat sich dabei als falsch erwiesen: Die Web-Vorschau zeigt die
+Kamera-Overlays sehr wohl, weil die Kamera-Attrappe eine ruhige dunkle Fläche rendert und
+alles darüber echt bleibt. **(c) ist damit vorerst hinfällig** — es bliebe nur der Wunsch,
+Elemente per Finger zu verschieben statt Zahlen zu ändern, und dafür ist (b) der kürzere Weg.
+
+**(b) ist der nächste Schritt.**
 
 ## 4. Firebase App Check (Play Integrity)
 
@@ -176,7 +184,9 @@ Eigenes Dokument: [`docs/grafik-plan.md`](grafik-plan.md). Kurz:
    kommt (Rangliste, Profil, Duell) und mit welchen Werten. Bis dahin ist die Werkstatt ein
    Werkzeug und ändert am Aussehen der App nichts.
 2. **Zentrale `src/theme/layout.ts`** — Größen, Abstände und Radien an einer Stelle statt
-   in 14 StyleSheets (das ist auch Punkt 3 dieses Backlogs).
+   in 14 StyleSheets (das ist auch Punkt 3 dieses Backlogs). **Der nächste Schritt**: Seit
+   die Web-Vorschau steht (`npm run web`), ist das keine Aufräumaktion mehr, sondern ein
+   Werkzeug — die Wirkung einer geänderten Zahl ist sofort im Browser sichtbar.
 3. **Erst danach Bilddateien**: acht Avatar-Motive per Bild-KI (fertiger Prompt steht im
    Dokument), Abzeichen und Boss-Motive aus CC0-Sätzen (kenney.nl) oder game-icons.net —
    Letzteres nur zusammen mit einem Danksagungen-Bildschirm, CC BY verlangt Namensnennung.

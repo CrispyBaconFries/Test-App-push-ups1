@@ -249,30 +249,36 @@ function Spark({
 
 /** Züngelnde Flammen rund um den Rahmen. */
 function FlamesEffect({ settings, colors }: EffectProps) {
-  const count = particleCount(settings.intensity, 3, 7);
+  const count = particleCount(settings.intensity, 5, 9);
   const baseDuration = cycleDurationMs(settings.speed, 1800, 500);
-  const length = settings.size * 0.42;
-  const radius = settings.size / 2 + length;
   const spread = useMemo(() => phases(count), [count]);
   const opacity = effectOpacity(settings.intensity);
 
   return (
     <Layer>
-      {spread.map((phase, i) => (
-        <Flame
-          key={i}
-          // Gleichmäßig über den ganzen Kreis verteilt: Flammen nur unten sähen aus, als
-          // stünde der Avatar auf einem Lagerfeuer - gemeint ist eine Aura aus Feuer.
-          angleDeg={(360 * i) / count}
-          durationMs={Math.round(baseDuration * (0.75 + phase * 0.6))}
-          delayMs={Math.round(baseDuration * phase)}
-          radius={radius}
-          length={length}
-          width={settings.size * 0.2}
-          colors={colors}
-          opacity={opacity}
-        />
-      ))}
+      {spread.map((phase, i) => {
+        // Gleich lange Zungen in gleichmäßigem Abstand sahen in der Web-Vorschau aus wie
+        // Blütenblätter, nicht wie Feuer. Beides wird deshalb bewusst ungleich gemacht -
+        // aus derselben festen Phase, damit es bei jedem Render gleich bleibt.
+        const length = settings.size * (0.34 + phase * 0.26);
+        return (
+          <Flame
+            key={i}
+            // Gleichmäßig über den ganzen Kreis verteilt (Flammen nur unten sähen aus, als
+            // stünde der Avatar auf einem Lagerfeuer), aber mit Versatz gegen die Symmetrie.
+            angleDeg={(360 * i) / count + (phase - 0.5) * 18}
+            durationMs={Math.round(baseDuration * (0.75 + phase * 0.6))}
+            delayMs={Math.round(baseDuration * phase)}
+            radius={settings.size / 2 + length}
+            length={length}
+            // Deutlich schmaler als zuvor (0,2): Eine Flamme ist hoch und schmal, eine
+            // breite Zunge liest sich als Blatt.
+            width={settings.size * 0.13}
+            colors={colors}
+            opacity={opacity}
+          />
+        );
+      })}
     </Layer>
   );
 }
@@ -297,14 +303,20 @@ function Flame({
   opacity: number;
 }) {
   const loop = useLoop(durationMs, delayMs);
-  const gradientId = `flame-${Math.round(radius)}-${Math.round(angleDeg)}`;
+  // Eindeutig je Zunge: Zwei `<RadialGradient>` mit derselben Kennung wären im Browser
+  // ein einziger Verlauf (SVG-Kennungen gelten dort dokumentweit).
+  const gradientId = `flame-${Math.round(radius)}-${Math.round(angleDeg * 10)}`;
 
   return (
     <Animated.View
       pointerEvents="none"
       style={[
         styles.stacked,
-        { width: radius * 2, height: radius * 2, alignItems: 'center' },
+        // `justifyContent: 'flex-start'` ist hier NICHT kosmetisch: `styles.stacked`
+        // zentriert seinen Inhalt, die Flamme säße damit mitten auf dem Avatar statt an
+        // dessen Rand - unsichtbar hinter dem Ring. Genauso wie bei `Orbit` muss der
+        // Inhalt oben am Kastenrand kleben, denn der Radius IST die halbe Kastenbreite.
+        { width: radius * 2, height: radius * 2, alignItems: 'center', justifyContent: 'flex-start' },
         { transform: [{ rotate: `${angleDeg}deg` }] },
       ]}
     >
@@ -320,14 +332,25 @@ function Flame({
       >
         <Svg width={width} height={length} viewBox="0 0 20 44">
           <Defs>
-            <RadialGradient id={gradientId} cx="50%" cy="80%" r="70%">
+            {/* Heißer Kern unten am Ring, nach oben auslaufend - so herum, weil eine
+                Flamme dort am hellsten ist, wo sie brennt, nicht an der Spitze. */}
+            <RadialGradient id={gradientId} cx="50%" cy="88%" r="85%">
               <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.95} />
-              <Stop offset="45%" stopColor={colors[0]} stopOpacity={0.9} />
+              <Stop offset="30%" stopColor={colors[0]} stopOpacity={0.95} />
+              <Stop offset="75%" stopColor={colors[0]} stopOpacity={0.45} />
               <Stop offset="100%" stopColor={colors[colors.length - 1]} stopOpacity={0} />
             </RadialGradient>
           </Defs>
-          {/* Tropfenform: unten breit und rund, oben zu einer Spitze auslaufend. */}
-          <Path d="M10 0 C 15 14, 20 22, 20 30 A 10 10 0 0 1 0 30 C 0 22, 5 14, 10 0 Z" fill={`url(#${gradientId})`} />
+          {/*
+            Flammen-Silhouette, Spitze oben (= vom Avatar weg).
+            Die vorige Tropfenform (unten breit und rund) las sich in der Web-Vorschau als
+            Blütenblatt: Eine Flamme ist unten SCHMAL, wird im unteren Drittel am breitesten
+            und läuft von dort lang aus.
+          */}
+          <Path
+            d="M10 0 C 13 14, 19 25, 19 33 A 9 9 0 0 1 1 33 C 1 25, 7 14, 10 0 Z"
+            fill={`url(#${gradientId})`}
+          />
         </Svg>
       </Animated.View>
     </Animated.View>
@@ -396,7 +419,8 @@ function Bolt({
       pointerEvents="none"
       style={[
         styles.stacked,
-        { width: radius * 2, height: radius * 2, alignItems: 'center' },
+        // Siehe `Flame`: Ohne `flex-start` läge der Blitz mitten auf dem Avatar.
+        { width: radius * 2, height: radius * 2, alignItems: 'center', justifyContent: 'flex-start' },
         { transform: [{ rotate: `${angleDeg}deg` }] },
       ]}
     >
@@ -518,6 +542,18 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    /**
+     * Der Effekt gehört HINTER den Avatar - ohne das legt er sich darüber und dämpft
+     * Zahl und Foto.
+     *
+     * Warum es nicht reicht, ihn im JSX vor den Avatar zu schreiben: Auf dem Handy
+     * entscheidet die Reihenfolge der Geschwister, im Browser aber nicht - dort malt CSS
+     * jedes *positionierte* Element über seine statischen Geschwister, unabhängig von der
+     * Reihenfolge. In der Web-Vorschau lag die Aura deshalb quer über der Zahl. `zIndex`
+     * gilt auf beiden Plattformen und macht die Absicht außerdem ausdrücklich, statt sie
+     * einer Reihenfolge im JSX zu überlassen, die jeder Umbau versehentlich dreht.
+     */
+    zIndex: -1,
   },
   /**
    * Mehrere Teilchen sollen übereinander in der Mitte liegen, nicht nebeneinander.

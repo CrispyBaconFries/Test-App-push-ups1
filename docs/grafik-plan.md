@@ -72,6 +72,13 @@ Format dafür heißt **Lottie**: Vektor, klein (10–100 KB), beliebig skalierba
 **Empfehlung: erst A, und B nur für die zwei, drei Effekte, bei denen A sichtbar
 schlechter aussieht.** Nicht andersherum.
 
+> **Stand 10.09.2026, nach der ersten Runde in der Web-Vorschau:** Leuchten, Lichtlauf,
+> Funken und Aura sehen im Code-Weg gut aus. **Flammen und Blitze** sind die Kandidaten für
+> Lottie — nicht weil die Form nicht hinzubekommen wäre, sondern weil beide Effekte über
+> ihre *Bewegung* funktionieren (Flackern, Aufblitzen) und eine Form, die sich nicht
+> verändern kann, davon nur die Hälfte liefert. Entschieden wird das erst, wenn chris sie
+> in Bewegung gesehen hat.
+
 ## Vorschlag C — Fertige Grafiksätze für die Schmuck-Grafik
 
 Für Avatar-Motive, Boss-Illustrationen und Abzeichen:

@@ -9,7 +9,16 @@ const REMINDER_TAG = 'daily-training-reminder';
 
 const DEFAULT_BODY = 'Schau vorbei und schließ deine täglichen Missionen im Liegestütz-Coach ab.';
 
+/**
+ * Geplante Benachrichtigungen gibt es auf dem Web nicht - `expo-notifications` wirft dort
+ * "The method or property ... is not available on web". Die Web-Vorschau (siehe
+ * `src/web-stubs/README.md`) ist zum Anschauen von Oberflächen da, nicht zum Stellen von
+ * Erinnerungen; deshalb ist hier alles ein stilles Nichts statt eines Fehlers.
+ */
+const NOTIFICATIONS_AVAILABLE = Platform.OS !== 'web';
+
 async function findScheduledReminder() {
+  if (!NOTIFICATIONS_AVAILABLE) return null;
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   return scheduled.find((n) => n.content.data?.tag === REMINDER_TAG) ?? null;
 }
@@ -19,6 +28,7 @@ export async function isDailyReminderEnabled(): Promise<boolean> {
 }
 
 async function scheduleReminder(body: string): Promise<void> {
+  if (!NOTIFICATIONS_AVAILABLE) return;
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
       name: 'Trainings-Erinnerung',
@@ -48,6 +58,9 @@ async function scheduleReminder(body: string): Promise<void> {
  * false without scheduling anything if permission was denied.
  */
 export async function enableDailyReminder(body: string = DEFAULT_BODY): Promise<boolean> {
+  // `false` und nicht `true`: In der Web-Vorschau wurde nichts gestellt, und der Schalter
+  // auf dem Startbildschirm soll das ehrlich zeigen statt eine Erinnerung vorzugaukeln.
+  if (!NOTIFICATIONS_AVAILABLE) return false;
   const { granted } = await Notifications.requestPermissionsAsync();
   if (!granted) return false;
 

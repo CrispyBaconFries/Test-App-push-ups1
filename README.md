@@ -864,6 +864,66 @@ pro Sekunde — genau in dem Pfad, der ohnehin am meisten zu tun hat. Dafür gib
 `usePushUpAnalyzer()` (`src/pose/usePushUpAnalyzer.ts`), von allen drei Bildschirmen
 benutzt.
 
+## Web-Vorschau: Layout am PC ändern, ohne Gradle und ohne Handy
+
+```bash
+npm run web
+```
+
+Öffnet die App im Browser mit Sofort-Reload. Jede Änderung an Layout, Abständen, Farben,
+Texten oder Animationen ist in ein bis zwei Sekunden sichtbar — statt eines
+Gradle-Builds und eines Handys.
+
+**Was funktioniert:** alle Bildschirme, Kacheln, Listen, die Effekt-Werkstatt, Missionen,
+Shop, Profil, Länderspiel. Auch die Anzeigen, die im Training **über** dem Kamerabild
+liegen (Zähler, Form-Hinweis, Startpositions-Overlay) — dahinter liegt statt der Kamera
+eine ruhige dunkle Fläche.
+
+**Was nicht funktioniert und auch nicht soll:** Kamera, Posenerkennung, Zählen,
+Google-Anmeldung, Benachrichtigungen. Die Web-Vorschau ist ein *Design*-Werkzeug, kein
+Testgerät. Was gezählt wird, entscheidet weiterhin nur das Handy.
+
+### Wie das ohne zweite Codebasis geht
+
+Drei native Pakete gibt es im Browser nicht. Für `platform === 'web'` leitet
+`metro.config.js` sie auf Attrappen in `src/web-stubs/` um; der Android-Build sieht davon
+nichts und benutzt weiterhin die echten Pakete.
+
+Der eigentliche Blocker war `react-native-vision-camera`: Es wirft schon **beim Import**
+„VisionCamera currently does not work on web" — nicht erst beim Benutzen. Ohne die
+Umleitung bleibt die ganze Vorschau weiß, auch auf Bildschirmen ohne Kamera. Dazu kamen
+zwei kleinere: `expo-secure-store` gibt es auf dem Web nicht (das Profil weicht dort auf
+AsyncStorage aus — **nur** für die Vorschau, unverschlüsselt; auf dem Handy bleibt es beim
+Schlüsselbund des Betriebssystems), und geplante Benachrichtigungen sind dort ein stilles
+Nichts statt eines Fehlers.
+
+### Was die Vorschau sofort eingebracht hat
+
+Zwei echte Fehler in der frisch gebauten Effekt-Werkstatt, die weder `tsc` noch die Tests
+finden konnten — beide wären erst chris auf dem Handy aufgefallen, nach einem kompletten
+Release-Build:
+
+1. **Flammen und Blitze lagen mitten auf dem Avatar** statt an seinem Rand, also unsichtbar
+   hinter dem Ring. Ursache: Der Kasten, der sie auf ihre Kreisbahn dreht, zentriert seinen
+   Inhalt — er muss ihn oben am Rand halten, denn der Radius *ist* die halbe Kastenbreite.
+2. **Die Effektebene lag über dem Avatar** statt dahinter und dämpfte Zahl und Foto. Auf
+   dem Handy entscheidet die Reihenfolge der Geschwister, im Browser aber nicht: CSS malt
+   jedes *positionierte* Element über seine statischen Geschwister, unabhängig von der
+   Reihenfolge. Behoben mit einem ausdrücklichen `zIndex`, der auf beiden Plattformen gilt.
+
+### Und wo sie an ihre Grenze kommt
+
+„Flammen" liest sich in einem **Standbild** wie ein Blütenblatt, nicht wie Feuer. Ich habe
+die Silhouette dreimal überarbeitet und dabei gemerkt: Das ist die falsche Frage an ein
+Standbild. Feuer erkennt man am **Flackern**, nicht an der Form — ein eingefrorener
+Einzelbild-Ausschnitt jeder Flammenanimation sieht aus wie ein Klecks. Dasselbe gilt für
+„Blitze", die die meiste Zeit aus sind.
+
+Ehrlich gesagt: **Leuchten, Lichtlauf, Funken und Aura kann ich am Standbild beurteilen,
+Flammen und Blitze nicht.** Die entscheidet, wer sie sich in Bewegung ansieht — am Handy
+oder mit `npm run web`. Bleiben sie auch dort unbefriedigend, ist das das Argument für
+Lottie (siehe `docs/grafik-plan.md`), und dann mit Grund statt auf Verdacht.
+
 ## Effekt-Werkstatt (Werkzeug, kein Spielinhalt)
 
 Erreichbar über den Startbildschirm: **🎨 Effekt-Werkstatt (DEV)**.
