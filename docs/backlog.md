@@ -202,3 +202,21 @@ Eigenes Dokument: [`docs/grafik-plan.md`](grafik-plan.md). Kurz:
 Lottie (`lottie-react-native`) bleibt bewusst Reserve für die zwei, drei Effekte, bei denen
 der Code-Weg sichtbar schlechter aussieht — es ist eine neue native Abhängigkeit und damit
 ein neuer Prebuild samt Gradle-Risiko.
+
+## 6. Diagnose aus der Vorzeige-App — Stand 10.09.2026
+
+Erledigt: **Fehlergrenze und Fehlerbericht** (siehe README, „Wenn etwas abstürzt"). Ein
+Absturz ist damit keine weiße Fläche mehr, sondern eine teilbare Nachricht.
+
+Damit gibt es drei Kanäle aus der App heraus, und alle drei brauchen chris' aktives Teilen:
+
+| Kanal | Wofür | Knopf |
+|---|---|---|
+| Kalibrier-Log | Wiederholungen, verworfene Bewegungen, Grundhaltung | 🧪 immer sichtbar |
+| Fehlerbericht | Abstürze und gefangene Fehler | ⚠️ nur wenn etwas aufgezeichnet wurde |
+| Effekt-Werkstatt | die gewählte Optik als eine Zeile | 🎨 über den Startbildschirm |
+
+**Noch offen:** Ein Fehler, der die App beendet, *bevor* AsyncStorage geschrieben hat, geht
+verloren — bei einem nativen Absturz (MediaPipe, Kamera) hilft nur ein Absturzberichts-SDK,
+und das wäre eine neue native Abhängigkeit. Bisher gab es keinen solchen Fall; erst wenn
+einer auftritt, lohnt die Diskussion.

@@ -864,6 +864,52 @@ pro Sekunde — genau in dem Pfad, der ohnehin am meisten zu tun hat. Dafür gib
 `usePushUpAnalyzer()` (`src/pose/usePushUpAnalyzer.ts`), von allen drei Bildschirmen
 benutzt.
 
+## Wenn etwas abstürzt: Fehlergrenze und Fehlerbericht
+
+**Das Problem, das das löst:** chris hat eine Installation, und das ist der Release-Build —
+kein Metro, kein Kabel, kein Logcat (siehe CLAUDE.md). Stürzte bisher irgendein Bildschirm
+ab, riss React den kompletten Baum ab und übrig blieb eine **weiße Fläche**. Was bei mir
+ankam, war „die App geht nicht", und jede Fehlersuche begann bei null — eine Runde pro
+Build.
+
+Jetzt greifen zwei Netze:
+
+**1. `ErrorBoundary`** (`src/components/ErrorBoundary.tsx`) fängt Fehler beim *Zeichnen* ab
+und zeigt: was passiert ist, einen Knopf „Fehlerbericht teilen", einen Knopf „Nochmal
+versuchen" — und den Satz, der nach einem Absturz als Erstes gebraucht wird: *„Dein
+Trainingsverlauf ist davon nicht betroffen."*
+
+**2. `installGlobalErrorHandler()`** (`src/diagnostics/globalErrorHandler.ts`) fängt alles
+*außerhalb* des Zeichnens: Knopf-Handler, Zeitgeber, den Kamera-Frame-Pfad, nicht
+abgefangene Zusagen. In dieser App sitzt dort das meiste — die Posenerkennung läuft
+ausschließlich in Rückrufaktionen. Der bisherige Behandler wird aufgehoben und danach
+weiter aufgerufen, nicht ersetzt: Ihn zu verschlucken würde aus einem sichtbaren Absturz
+eine App machen, die einfach einfriert.
+
+Beides landet in `src/diagnostics/errorLog.ts` — Meldung, Aufrufliste, Ort, Zeit,
+App-Version. Auf dem Startbildschirm erscheint **nur dann** ein roter Knopf, wenn wirklich
+etwas aufgezeichnet wurde (lang drücken löscht, wie beim Kalibrier-Log).
+
+**Zum Datenschutz:** Aufgezeichnet werden keine Nutzerdaten — kein Name, keine E-Mail,
+keine Trainingsdaten. Eine Aufrufliste *kann* theoretisch Variableninhalte enthalten,
+deshalb geht der Bericht ausschließlich über den Teilen-Dialog: chris sieht vor dem
+Abschicken, was drinsteht, und entscheidet an wen. Nichts verlässt das Gerät von allein.
+
+**Zwei Entwurfsentscheidungen mit Begründung:**
+
+- `recordError()` wirft **nie** selbst. Sie läuft in einem Fehlerbehandler — würde sie bei
+  vollem Speicher ihrerseits werfen, entstünde aus einem behandelbaren Fehler ein Absturz,
+  und zwar genau in dem Moment, in dem die App sich gerade fängt.
+- Beim Überlauf werden die **ältesten** Einträge behalten. Bei einem Fehler, der sich bei
+  jedem Frame wiederholt, zeigt der erste die Ursache und alle folgenden nur deren Folgen.
+  Der Bericht sagt dazu, wenn die Aufzeichnung voll war.
+
+**Geprüft, nicht behauptet:** 12 Tests, darunter einer, der die Fehlergrenze wirklich einen
+Fehler fangen lässt — eine Fehlergrenze ist der klassische Fall von Code, der nie läuft und
+dessen Versagen genau dann auffällt, wenn man ihn gebraucht hätte. Dazu wurde in der
+Web-Vorschau ein echter Renderfehler erzwungen (`Array.prototype.map` gekapert) und
+nachgesehen, dass tatsächlich der Fehlerbildschirm erscheint statt einer weißen Fläche.
+
 ## Ein Ort für Abstände, Rundungen und Schriftgrößen
 
 `src/theme/layout.ts`. Jede Abstands-, Rundungs- und Schriftzahl der App läuft durch

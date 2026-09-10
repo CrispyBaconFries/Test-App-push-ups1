@@ -26,6 +26,7 @@ import { useAuth } from '../auth/AuthContext';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
 import { clearCalibrationLog, countCalibrationEntries, shareCalibrationLog } from '../pose/calibrationLogger';
+import { clearErrorLog, countErrors, shareErrorLog } from '../diagnostics/errorLog';
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
 import { colors } from '../theme/colors';
@@ -132,6 +133,8 @@ export function HomeScreen({ navigation }: Props) {
   const [frozenDayKeys, setFrozenDayKeys] = useState<Set<string>>(new Set());
   const [heldStreakFreezes, setHeldStreakFreezes] = useState<number | null>(null);
   const [streakJustSaved, setStreakJustSaved] = useState(false);
+  /** Wie viele Fehler die App bisher aufgezeichnet hat (siehe src/diagnostics/errorLog.ts). */
+  const [recordedErrors, setRecordedErrors] = useState(0);
   const auth = useAuth();
 
   // useFocusEffect already fires on initial mount (the screen is "focused" as soon as
@@ -140,6 +143,9 @@ export function HomeScreen({ navigation }: Props) {
     useCallback(() => {
       loadSessions().then(setSessions);
       loadDuelLog().then(setDuelLog);
+      // Bei jedem Fokussieren neu zählen, nicht nur beim ersten Start: Ein Fehler kann
+      // gerade eben erst passiert sein - beim Training, aus dem man hierher zurückkommt.
+      countErrors().then(setRecordedErrors).catch(() => setRecordedErrors(0));
     }, [])
   );
 
@@ -231,6 +237,42 @@ export function HomeScreen({ navigation }: Props) {
             <Text style={styles.subtitle}>Handy vor dir auf dem Boden – die Frontkamera prüft deine Form live.</Text>
           </View>
         </View>
+
+        {/*
+          Nur sichtbar, wenn wirklich etwas aufgezeichnet wurde. Ein Dauerknopf "Fehler
+          melden" wäre auf einem Startbildschirm ein ständiges Versprechen, dass gleich
+          etwas kaputtgeht; so ist er ein Hinweis, der auffällt, weil er sonst nicht da ist.
+        */}
+        {recordedErrors > 0 && (
+          <Pressable
+            style={({ pressed }) => [styles.errorReportButton, pressed && styles.pressed]}
+            onPress={() =>
+              shareErrorLog()
+                .then((count) => Alert.alert('Fehlerbericht', `${count} Einträge geteilt.`))
+                .catch((e: Error) => Alert.alert('Fehlerbericht', e.message))
+            }
+            // Wie beim Kalibrier-Log: Löschen nur über langes Drücken, damit ein
+            // Danebentippen keine Information vernichtet, die sich nicht wiederholen lässt.
+            onLongPress={() =>
+              Alert.alert('Fehleraufzeichnung löschen?', `${recordedErrors} Einträge werden gelöscht.`, [
+                { text: 'Abbrechen', style: 'cancel' },
+                {
+                  text: 'Löschen',
+                  style: 'destructive',
+                  onPress: () =>
+                    clearErrorLog()
+                      .then(() => setRecordedErrors(0))
+                      .catch(() => undefined),
+                },
+              ])
+            }
+          >
+            <Text style={styles.errorReportButtonText}>
+              ⚠️ {recordedErrors} {recordedErrors === 1 ? 'Fehler' : 'Fehler'} aufgezeichnet – Bericht teilen
+            </Text>
+            <Text style={styles.errorReportHint}>lang drücken zum Löschen</Text>
+          </Pressable>
+        )}
 
         {/* DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - Button
             entfernen, sobald die Schwellwert-Kalibrierung abgeschlossen ist. */}
@@ -534,6 +576,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: space(2),
     lineHeight: font(18),
+  },
+  errorReportButton: {
+    backgroundColor: 'rgba(255,90,95,0.12)',
+    borderRadius: radius(12),
+    borderWidth: 1,
+    borderColor: colors.danger,
+    paddingVertical: space(10),
+    paddingHorizontal: space(12),
+    alignItems: 'center',
+    marginBottom: space(16),
+  },
+  errorReportButtonText: {
+    fontFamily: fonts.semiBold,
+    fontSize: font(12),
+    color: colors.danger,
+    textAlign: 'center',
+  },
+  errorReportHint: {
+    fontFamily: fonts.regular,
+    fontSize: font(10),
+    color: colors.textSecondary,
+    marginTop: space(2),
   },
   // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - Styles entfernen,
   // sobald die Schwellwert-Kalibrierung abgeschlossen ist.
