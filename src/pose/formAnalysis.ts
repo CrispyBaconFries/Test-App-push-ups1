@@ -1,4 +1,5 @@
 import {
+  allInFrame,
   allVisible,
   angleAtPoint,
   getLandmark,
@@ -13,6 +14,7 @@ import {
   StartPositionGate,
   type PostureBaseline,
   type StartPositionCriteria,
+  type StartPositionFrame,
   type StartPositionProgress,
 } from './startPosition';
 
@@ -234,6 +236,22 @@ export interface PushUpThresholds {
    * Formnote zu erfinden.
    */
   minTrackedFrameRatio: number;
+  /**
+   * Sicherheitsabstand zum Bildrand (Anteil der Bildbreite/-höhe), innerhalb dessen eine
+   * Landmarke noch als "im Bild" gilt.
+   *
+   * Warum diese Prüfung überhaupt gebraucht wird, steht bei `allInFrame` in
+   * landmarks.ts: MediaPipe liefert auch für Körperteile außerhalb des Bildes
+   * Koordinaten - geschätzte -, und der Sichtbarkeitswert, mit dem man sie normalerweise
+   * aussortieren würde, kommt bei `react-native-mediapipe` nie in JS an. Ohne diese
+   * Prüfung rechnet die Analyse mit erfundenen Punkten weiter: Genau daher kamen
+   * Zählungen, während jemand noch halb außerhalb des Bildes stand, und Hüftwinkel, die
+   * innerhalb einer Sitzung zwischen 10° und 158° sprangen.
+   *
+   * 0,02 (2 %) statt exakt der Bildkante: Eine Landmarke direkt am Rand ist bereits
+   * halb geraten, weil der Körperteil dort schon angeschnitten ist.
+   */
+  frameMargin: number;
 }
 
 export const DEFAULT_THRESHOLDS: PushUpThresholds = {
@@ -251,6 +269,7 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   minRepDurationMs: 600,
   maxRepDurationMs: 12000,
   minTrackedFrameRatio: 0.6,
+  frameMargin: 0.02,
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -336,6 +355,18 @@ export function personalThresholds(
  * würde - dann aber als `number` typisiert, was später NaN in jede Mittelwertbildung
  * trägt.
  */
+/**
+ * Wie waagerecht die Strecke `a`-`b` im Bild liegt: 1 = ganz waagerecht, 0 = ganz
+ * senkrecht. Nur zur Aufzeichnung - siehe `PostureBaseline.torsoHorizontalRatio`.
+ */
+function horizontalRatio(a: { x: number; y: number }, b: { x: number; y: number }): number | null {
+  const dx = Math.abs(b.x - a.x);
+  const dy = Math.abs(b.y - a.y);
+  const total = dx + dy;
+  if (total === 0) return null;
+  return dx / total;
+}
+
 function roundOrNull(value: number): number | null {
   return Number.isFinite(value) ? Math.round(value) : null;
 }
@@ -489,9 +520,19 @@ export class PushUpAnalyzer {
    */
   processFrame(
     pose: Pose,
-    timestampMs: number
+    timestampMs: number,
+    imageLandmarks?: Pose
   ): { live: LiveFeedback; completedRep: RepResult | null; discardedRep: DiscardedRep | null } {
     const t = this.thresholds;
+    /**
+     * Eine Landmarke ist nur brauchbar, wenn sie sowohl sicher erkannt als auch
+     * tatsächlich im Bild ist. Die zweite Hälfte trägt auf dem echten Gerät die ganze
+     * Last: `allVisible` ist dort wirkungslos, weil `react-native-mediapipe` den
+     * Sichtbarkeitswert nie durchreicht (siehe landmarks.ts). Ohne `imageLandmarks` -
+     * etwa in Tests - bleibt es beim alten Verhalten.
+     */
+    const usable = (indices: number[]) =>
+      allVisible(pose, indices, t.minVisibility) && allInFrame(imageLandmarks, indices, t.frameMargin);
 
     // Der Zeitablauf wird VOR der Sichtbarkeitsprüfung ausgewertet. Sonst könnte eine
     // Wiederholung, die genau deshalb hängt, weil das Tracking weggebrochen ist, nie
@@ -512,7 +553,7 @@ export class PushUpAnalyzer {
     // MediaPipe to trust, and requiring them here used to mean the rep counter simply
     // never advanced past 'up' whenever that happened - no rep ever counted, regardless
     // of how clean the push-up itself was.
-    if (!allVisible(pose, [idx.shoulder, idx.elbow, idx.wrist], t.minVisibility)) {
+    if (!usable([idx.shoulder, idx.elbow, idx.wrist])) {
       // Mitzählen, statt den Ausfall stillschweigend zu überspringen: Am Ende der
       // Wiederholung entscheidet dieser Anteil darüber, ob die Formwerte überhaupt
       // belastbar sind.
@@ -520,7 +561,7 @@ export class PushUpAnalyzer {
       // Auch ein Frame ohne verwertbare Pose gehört in das Startpositions-Fenster: Er
       // verwirft die bisher gesammelte Haltezeit (wer zwischendurch aus dem Bild
       // verschwindet, hat nicht durchgehend gehalten) und lässt die Notbremse weiterlaufen.
-      const startPosition = this.gate ? this.pushToGate(null, null, null, timestampMs) : null;
+      const startPosition = this.gate ? this.pushToGate(null, timestampMs) : null;
       return {
         live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null, startPosition },
         completedRep: null,
@@ -533,9 +574,9 @@ export class PushUpAnalyzer {
     const wrist = getLandmark(pose, idx.wrist)!;
     const elbowAngleDeg = angleAtPoint(shoulder, elbow, wrist);
 
-    const hasHip = allVisible(pose, [idx.hip], t.minVisibility);
-    const hasKnee = allVisible(pose, [idx.knee], t.minVisibility);
-    const hasEar = allVisible(pose, [idx.ear], t.minVisibility);
+    const hasHip = usable([idx.hip]);
+    const hasKnee = usable([idx.knee]);
+    const hasEar = usable([idx.ear]);
     const hip = hasHip ? getLandmark(pose, idx.hip)! : null;
     const knee = hasKnee ? getLandmark(pose, idx.knee)! : null;
     const ear = hasEar ? getLandmark(pose, idx.ear)! : null;
@@ -547,12 +588,18 @@ export class PushUpAnalyzer {
     const elbowFlareDeg = hip ? angleAtPoint(elbow, shoulder, hip) : null;
     const neckAngleDeg = ear && hip ? angleAtPoint(ear, shoulder, hip) : null;
     const hipSagDeviation = hip && knee ? signedPerpendicularDeviation2D(shoulder, knee, hip) : null;
+    // Wie waagerecht der Rumpf im Bild liegt (1 = waagerecht, 0 = senkrecht). Nur
+    // aufgezeichnet, nicht geprüft - warum, steht bei `PostureBaseline.torsoHorizontalRatio`.
+    const torsoHorizontalRatio = hip ? horizontalRatio(shoulder, hip) : null;
 
     // Vor dem Scharfschalten läuft die Zustandsmaschine gar nicht. Der Weg in die
     // Position hinein kann damit keine Wiederholung mehr erzeugen - er *sieht* für einen
     // Ellbogenwinkel-Zähler nämlich genau wie eine aus (siehe `startPosition.ts`).
     if (this.gate) {
-      const startPosition = this.pushToGate(elbowAngleDeg, hipStraightnessDeg, neckAngleDeg, timestampMs);
+      const startPosition = this.pushToGate(
+        { elbowAngleDeg, hipStraightnessDeg, neckAngleDeg, elbowFlareDeg, torsoHorizontalRatio },
+        timestampMs
+      );
       return {
         live: {
           phase: this.phase,
@@ -675,12 +722,17 @@ export class PushUpAnalyzer {
    * Schwellwerte bereits gesetzt.
    */
   private pushToGate(
-    elbowAngleDeg: number | null,
-    hipStraightnessDeg: number | null,
-    neckAngleDeg: number | null,
+    measured: Omit<StartPositionFrame, 'timeMs'> | null,
     timestampMs: number
   ): StartPositionProgress | null {
-    const outcome = this.gate!.push({ timeMs: timestampMs, elbowAngleDeg, hipStraightnessDeg, neckAngleDeg });
+    const outcome = this.gate!.push({
+      timeMs: timestampMs,
+      elbowAngleDeg: measured?.elbowAngleDeg ?? null,
+      hipStraightnessDeg: measured?.hipStraightnessDeg ?? null,
+      neckAngleDeg: measured?.neckAngleDeg ?? null,
+      elbowFlareDeg: measured?.elbowFlareDeg ?? null,
+      torsoHorizontalRatio: measured?.torsoHorizontalRatio ?? null,
+    });
     if (!outcome.ready) return outcome.progress;
     this.gate = null;
     this.baseline = outcome.baseline;

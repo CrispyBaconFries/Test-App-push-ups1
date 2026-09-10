@@ -18,6 +18,7 @@ const TITLES: Record<StartPositionStatus, string> = {
   NO_POSE: 'Ich sehe dich nicht',
   ARMS_BENT: 'Geh in die Liegestütz-Position',
   NOT_A_PLANK: 'Geh in die Liegestütz-Position',
+  STANDING: 'Geh in die Liegestütz-Position',
   MOVING: 'Ruhig halten',
   HOLDING: 'Ruhig halten',
 };
@@ -26,6 +27,7 @@ const HINTS: Record<StartPositionStatus, string> = {
   NO_POSE: 'Stell das Handy weiter weg, sodass Kopf, Schultern und Arme im Bild sind.',
   ARMS_BENT: 'Arme durchstrecken – die obere Position eines Liegestützes.',
   NOT_A_PLANK: 'Körper strecken: Schultern, Hüfte und Knie auf einer Linie.',
+  STANDING: 'Du stehst noch – Hände auf den Boden, Schultern über die Hände.',
   MOVING: 'Noch etwas unruhig – kurz nicht bewegen.',
   HOLDING: 'Position wird vermessen …',
 };

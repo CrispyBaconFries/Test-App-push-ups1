@@ -6,20 +6,31 @@ import { percentile } from './stats';
  *
  * # Warum es das gibt
  *
- * chris stellt das Handy auf den Boden, geht zwei Schritte zurück und geht in den Stütz.
- * Dabei wurden ein bis zwei Wiederholungen gezählt, die keine waren. Der naheliegende
- * Verdacht war "das Skelett springt beim Hinlegen wild herum" - die Messdaten sagen etwas
- * anderes: Das Tracking war lückenlos (0 verlorene Frames), die Bewegung war sauber
- * erfasst. Sie *war* nur einfach eine Beugung und Streckung der Arme, und genau darauf
- * schaut eine Zustandsmaschine, die den Ellbogenwinkel verfolgt. Der Gang in die Position
- * ist für sie nicht von einem Liegestütz zu unterscheiden.
+ * chris stellt das Handy auf den Boden und geht zwei Schritte zurück. Noch **stehend** und
+ * nur teilweise im Bild steht bereits die erste Zählung auf dem Schirm; bis er dann Hände
+ * und Füße aufgesetzt hat, die zweite.
+ *
+ * Drei Ursachen, die zusammenwirken:
+ *
+ * 1. **Halb außerhalb des Bildes.** MediaPipe liefert auch für Körperteile außerhalb des
+ *    Bildes Koordinaten - geschätzte. Aussortieren würde man sie über den
+ *    Sichtbarkeitswert, aber der kommt bei `react-native-mediapipe` nie in JS an. Der
+ *    Zähler rechnete also mit erfundenen Armen. Dagegen hilft die Prüfung auf die
+ *    Bildkoordinaten (`allInFrame` in landmarks.ts), nicht diese Datei.
+ * 2. **Stehen sieht aus wie Stütz.** Winkel sind richtungslos: Wer aufrecht steht, hat
+ *    genauso gestreckte Arme und einen genauso geraden Körper wie jemand im Stütz. Genau
+ *    dafür gibt es hier `minTorsoArmAngleDeg` - der Oberarm hängt beim Stehen am Rumpf,
+ *    im Stütz steht er quer dazu.
+ * 3. **Der Weg nach unten ist eine Armbeugung.** Hinknien und Hände aufsetzen beugt und
+ *    streckt den Arm tatsächlich. Für eine Zustandsmaschine, die den Ellbogenwinkel
+ *    verfolgt, ist das von einem Liegestütz nicht zu unterscheiden.
  *
  * Deshalb wird hier nicht die Bewegung besser gefiltert, sondern gar nicht erst gezählt,
- * solange nicht bewiesen ist, dass die Ausgangsposition erreicht wurde. Beweis heißt:
- * Arme gestreckt, Körper im Stütz, und beides **ruhig gehalten**. Das Ruhighalten ist der
- * entscheidende Teil - ohne es ließe sich die Bedingung auch im Vorbeigehen erfüllen, weil
- * jeder Weg nach unten durch die Stützhaltung *hindurch* führt. Nur bleibt niemand dabei
- * zwei Sekunden lang innerhalb weniger Grad stehen.
+ * solange nicht bewiesen ist, dass die Ausgangsposition erreicht wurde. Beweis heißt: Arme
+ * gestreckt, Körper gestreckt, Arme unter den Schultern - und das alles **ruhig
+ * gehalten**. Das Ruhighalten ist gegen Punkt 3 der entscheidende Teil: Jeder Weg nach
+ * unten führt durch die Stützhaltung *hindurch*, aber niemand bleibt dabei zwei Sekunden
+ * lang innerhalb weniger Grad stehen.
  *
  * # Warum kein Kopf-Rahmen
  *
@@ -38,8 +49,15 @@ export type StartPositionStatus =
   | 'NO_POSE'
   /** Arme nicht durchgestreckt - das ist nicht die obere Position eines Liegestützes. */
   | 'ARMS_BENT'
-  /** Hüfte messbar, aber der Körper ist nicht im Stütz (kniend, stehend, auf dem Weg). */
+  /** Hüfte messbar, aber der Körper ist abgeknickt (kniend, gebückt, auf dem Weg nach unten). */
   | 'NOT_A_PLANK'
+  /**
+   * Aufrecht statt im Stütz: Arme hängen am Körper statt unter den Schultern.
+   *
+   * Eigener Status und nicht Teil von `NOT_A_PLANK`, weil der Hinweis ein anderer ist -
+   * "Körper strecken" wäre hier der falsche Rat, gestreckt ist er schon.
+   */
+  | 'STANDING'
   /** Haltung stimmt, wackelt aber noch zu stark - typisch für den Moment des Hinlegens. */
   | 'MOVING'
   /** Alles stimmt, die Haltezeit läuft. */
@@ -61,6 +79,23 @@ export interface StartPositionCriteria {
    * fällt der Unterkörper oft aus dem Bild, und daran darf der Start nicht scheitern.
    */
   minHipStraightnessDeg: number;
+  /**
+   * Kleinster Winkel Ellbogen-Schulter-Hüfte, ab dem der Arm unter der Schulter steht
+   * statt am Körper zu hängen.
+   *
+   * Das ist die Bedingung, die **Stehen** von **Stütz** unterscheidet - und ohne sie ist
+   * die ganze Prüfung wertlos. Winkel sind richtungslos: Wer aufrecht steht, hat
+   * genauso gestreckte Arme (Schulter-Ellbogen-Handgelenk rund 175°) und genauso einen
+   * geraden Körper (Schulter-Hüfte-Knie rund 180°) wie jemand im Stütz. Zwei Sekunden
+   * ruhig stehen sähe damit aus wie eine eingenommene Startposition, und der
+   * anschließende Weg nach unten wäre wieder eine Fehlzählung.
+   *
+   * Der Unterschied liegt im Arm: Beim Stehen hängt der Oberarm parallel zum Rumpf
+   * (Winkel rund 5-25°), im Stütz zeigt er zum Boden und steht damit quer zum Rumpf. Die
+   * aufgezeichneten Wiederholungen (`docs/messdaten/`) melden hier 58-101°; 35° lässt
+   * also reichlich Luft nach unten und schließt die hängenden Arme trotzdem klar aus.
+   */
+  minTorsoArmAngleDeg: number;
   /** Zulässige Spannweite des Ellbogenwinkels innerhalb des Haltefensters (Grad). */
   maxElbowJitterDeg: number;
   /** Zulässige Spannweite des Hüftwinkels innerhalb des Haltefensters (Grad). */
@@ -92,6 +127,7 @@ export interface StartPositionCriteria {
 export const DEFAULT_START_POSITION_CRITERIA: StartPositionCriteria = {
   minElbowAngleDeg: 160,
   minHipStraightnessDeg: 110,
+  minTorsoArmAngleDeg: 35,
   maxElbowJitterDeg: 8,
   maxHipJitterDeg: 12,
   holdMs: 2000,
@@ -119,6 +155,20 @@ export interface PostureBaseline {
   elbowJitterDeg: number;
   /** Dasselbe für die Hüfte. `null`, wenn nie messbar. */
   hipJitterDeg: number | null;
+  /** Winkel Ellbogen-Schulter-Hüfte in der gehaltenen Position. `null`, wenn nie messbar. */
+  neutralElbowFlareDeg: number | null;
+  /**
+   * Wie waagerecht der Rumpf im Bild lag (1 = waagerecht, 0 = senkrecht).
+   *
+   * Bewusst **nur gemessen und nicht geprüft**: Das wäre der physikalisch sauberste Weg,
+   * Stehen von Stütz zu unterscheiden - er hängt aber daran, wie MediaPipes
+   * `worldLandmarks` gegenüber dem Bild ausgerichtet sind, und das lässt sich nur auf
+   * einem echten Gerät nachweisen, nicht in Tests. Bis dahin macht diese Zahl die
+   * Annahme überprüfbar: Stehen sollte hier deutlich unter 0,5 liegen, ein Stütz
+   * deutlich darüber. Stimmt das über mehrere Aufzeichnungen, kann daraus eine zweite,
+   * unabhängige Bedingung werden.
+   */
+  torsoHorizontalRatio: number | null;
   /** Anzahl Frames im Haltefenster und dessen tatsächliche Dauer - macht die Messung bewertbar. */
   samples: number;
   heldMs: number;
@@ -138,6 +188,8 @@ interface Sample {
   elbowAngleDeg: number;
   hipStraightnessDeg: number | null;
   neckAngleDeg: number | null;
+  elbowFlareDeg: number | null;
+  torsoHorizontalRatio: number | null;
 }
 
 /** Ein Frame, wie ihn `PushUpAnalyzer` ohnehin schon berechnet hat. `null` heißt "nicht messbar". */
@@ -147,6 +199,13 @@ export interface StartPositionFrame {
   elbowAngleDeg: number | null;
   hipStraightnessDeg: number | null;
   neckAngleDeg: number | null;
+  /** Winkel Ellbogen-Schulter-Hüfte: unterscheidet Stütz (Arm quer zum Rumpf) von Stehen (Arm am Rumpf). */
+  elbowFlareDeg: number | null;
+  /**
+   * Wie waagerecht der Rumpf im Bild liegt: 1 = ganz waagerecht (Stütz), 0 = ganz
+   * senkrecht (Stehen). Wird **nur aufgezeichnet, nicht geprüft** - siehe `PostureBaseline`.
+   */
+  torsoHorizontalRatio: number | null;
 }
 
 export type StartPositionOutcome =
@@ -205,12 +264,20 @@ export class StartPositionGate {
     if (frame.hipStraightnessDeg !== null && frame.hipStraightnessDeg < c.minHipStraightnessDeg) {
       return this.notReady('NOT_A_PLANK', timedOut, true);
     }
+    // Aufrecht stehen erfüllt beide Bedingungen oben - gestreckte Arme, gerader Körper.
+    // Erst der Arm-zu-Rumpf-Winkel trennt die beiden Haltungen. Wie bei der Hüfte nur
+    // geprüft, wenn messbar (er braucht ebenfalls die Hüfte).
+    if (frame.elbowFlareDeg !== null && frame.elbowFlareDeg < c.minTorsoArmAngleDeg) {
+      return this.notReady('STANDING', timedOut, true);
+    }
 
     this.samples.push({
       timeMs: frame.timeMs,
       elbowAngleDeg: frame.elbowAngleDeg,
       hipStraightnessDeg: frame.hipStraightnessDeg,
       neckAngleDeg: frame.neckAngleDeg,
+      elbowFlareDeg: frame.elbowFlareDeg,
+      torsoHorizontalRatio: frame.torsoHorizontalRatio,
     });
 
     // Vorne kürzen, bis die Ruhe-Toleranzen wieder eingehalten sind.
@@ -262,6 +329,8 @@ export class StartPositionGate {
     const elbow = this.samples.map((s) => s.elbowAngleDeg);
     const hip = this.samples.map((s) => s.hipStraightnessDeg).filter((v): v is number => v !== null);
     const neck = this.samples.map((s) => s.neckAngleDeg).filter((v): v is number => v !== null);
+    const flare = this.samples.map((s) => s.elbowFlareDeg).filter((v): v is number => v !== null);
+    const horizontal = this.samples.map((s) => s.torsoHorizontalRatio).filter((v): v is number => v !== null);
     // Median und nicht Mittelwert: Ein einzelner verrutschter Frame im Haltefenster darf
     // die Grundlinie nicht verschieben, auf der anschließend die ganze Sitzung bewertet wird.
     return {
@@ -270,6 +339,8 @@ export class StartPositionGate {
       neutralNeckAngleDeg: neck.length > 0 ? Math.round(percentile(neck, 50)) : null,
       elbowJitterDeg: Math.round(span(elbow)),
       hipJitterDeg: hip.length > 0 ? Math.round(span(hip)) : null,
+      neutralElbowFlareDeg: flare.length > 0 ? Math.round(percentile(flare, 50)) : null,
+      torsoHorizontalRatio: horizontal.length > 0 ? Math.round(percentile(horizontal, 50) * 100) / 100 : null,
       samples: this.samples.length,
       heldMs: Math.round(heldMs),
     };

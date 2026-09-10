@@ -150,7 +150,15 @@ export function DuelScreen({ route, navigation }: Props) {
 
       if (finishedRef.current) return; // Zählung stoppt hart mit dem Duell-Ende.
 
-      const { live, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
+      const { live, completedRep, discardedRep } = analyzer.processFrame(
+        worldLandmarks,
+        Date.now(),
+        // Die Bildlandmarken sind die einzige verlässliche Auskunft darüber, ob ein
+        // Körperteil überhaupt IM Bild ist: MediaPipe liefert auch für alles außerhalb
+        // Koordinaten, und der Sichtbarkeitswert, der das aussortieren würde, kommt bei
+        // react-native-mediapipe nie in JS an (siehe landmarks.ts).
+        imageLandmarks
+      );
       setActiveIssue(live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null);
       setStartPosition(live.startPosition);
 

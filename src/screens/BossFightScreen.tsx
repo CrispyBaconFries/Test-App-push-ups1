@@ -98,7 +98,15 @@ export function BossFightScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
+    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(
+      worldLandmarks,
+      Date.now(),
+      // Die Bildlandmarken sind die einzige verlässliche Auskunft darüber, ob ein
+      // Körperteil überhaupt IM Bild ist: MediaPipe liefert auch für alles außerhalb
+      // Koordinaten, und der Sichtbarkeitswert, der das aussortieren würde, kommt bei
+      // react-native-mediapipe nie in JS an (siehe landmarks.ts).
+      imageLandmarks
+    );
     setLive(liveResult);
 
     // Startposition gerade fertig eingenommen - siehe WorkoutScreen für die Begründung.

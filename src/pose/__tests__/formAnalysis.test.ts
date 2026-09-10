@@ -1,3 +1,4 @@
+import type { PostureBaseline } from '../startPosition';
 import {
   DEFAULT_THRESHOLDS,
   personalThresholds,
@@ -60,9 +61,17 @@ function partialSweep(topDeg: number, bottomDeg: number, frames: number): number
  */
 const ARMING_FRAMES = 80; // 80 * 33 ms = 2640 ms, deutlich über den geforderten 2000 ms
 
+/**
+ * Winkel Ellbogen-Schulter-Hüfte im Stütz. Der Vorgabewert von `buildFrame` (30°) liegt
+ * unter der Schwelle, ab der die Startposition den Arm als "unter der Schulter" statt
+ * "am Körper hängend" ansieht - für die Startposition muss der Testkörper deshalb einen
+ * realistischen Stütz-Wert haben (gemessen wurden 58-101°, siehe docs/messdaten/).
+ */
+const PLANK_FLARE_DEG = 75;
+
 function armAnalyzer(analyzer: PushUpAnalyzer, startMs: number): number {
   for (let i = 0; i < ARMING_FRAMES; i++) {
-    analyzer.processFrame(buildFrame({ elbowAngleDeg: 172 }), startMs + i * FRAME_MS);
+    analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, flareDeg: PLANK_FLARE_DEG }), startMs + i * FRAME_MS);
   }
   return startMs + ARMING_FRAMES * FRAME_MS;
 }
@@ -500,6 +509,21 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
     );
   }
 
+  function baselineFixture(overrides: Partial<PostureBaseline> = {}): PostureBaseline {
+    return {
+      topElbowAngleDeg: 172,
+      neutralHipStraightnessDeg: 180,
+      neutralNeckAngleDeg: 175,
+      elbowJitterDeg: 1,
+      hipJitterDeg: 2,
+      neutralElbowFlareDeg: 75,
+      torsoHorizontalRatio: 0.9,
+      samples: 60,
+      heldMs: 2000,
+      ...overrides,
+    };
+  }
+
   /**
    * Der Weg in die Liegestütz-Position, so wie chris ihn beschreibt: Handy hinstellen,
    * zwei Schritte zurück, hinknien, Hände aufsetzen, Körper strecken.
@@ -510,14 +534,22 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
    * Ellbogenwinkel 117-130°.
    */
   function walkIntoPosition(): Pose[] {
-    const kneeling = Array.from({ length: 25 }, (_, i) => {
+    // 1. Zwei Sekunden aufrecht stehen: Arme gestreckt, Körper gerade, Arme am Körper.
+    //    Das ist der Fall, den chris beschreibt - hier wurde die erste Fehlzählung
+    //    ausgelöst, und eine reine Winkelprüfung kann ihn nicht von einem Stütz trennen.
+    const standing = Array.from({ length: 60 }, () =>
+      buildFrame({ elbowAngleDeg: 175, flareDeg: 12, hipOffsetY: 0 })
+    );
+    // 2. Hinknien, Hände aufsetzen, Körper strecken.
+    const goingDown = Array.from({ length: 25 }, (_, i) => {
       const phase = i / 24;
       return buildFrame({
         elbowAngleDeg: 175 - 55 * Math.sin(phase * Math.PI), // 175° -> 120° -> 175°
         hipOffsetY: 1.0 - 0.9 * phase, // stark abgeknickt -> zunehmend gestreckt
+        flareDeg: 12 + 63 * phase, // Arm löst sich vom Körper und kommt unter die Schulter
       });
     });
-    return kneeling;
+    return [...standing, ...goingDown];
   }
 
   it('zählt den Weg in die Position nicht als Wiederholung', () => {
@@ -546,7 +578,7 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
 
     // 2. Ruhig halten - schaltet scharf.
     for (let i = 0; i < 80; i++) {
-      analyzer.processFrame(buildFrame({ elbowAngleDeg: 172 }), t);
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, flareDeg: PLANK_FLARE_DEG }), t);
       t += FRAME_MS;
     }
     expect(analyzer.isArmed()).toBe(true);
@@ -566,14 +598,20 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
   it('meldet solange den Grund, warum noch nicht gezählt wird', () => {
     const analyzer = new PushUpAnalyzer();
 
-    const bent = analyzer.processFrame(buildFrame({ elbowAngleDeg: 120 }), 0);
+    const bent = analyzer.processFrame(buildFrame({ elbowAngleDeg: 120, flareDeg: PLANK_FLARE_DEG }), 0);
     expect(bent.live.startPosition?.status).toBe('ARMS_BENT');
     expect(bent.live.startPosition?.requiredMs).toBe(2000);
 
-    const kneeling = analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, hipOffsetY: 1.0 }), FRAME_MS);
+    const kneeling = analyzer.processFrame(
+      buildFrame({ elbowAngleDeg: 172, hipOffsetY: 1.0, flareDeg: PLANK_FLARE_DEG }),
+      FRAME_MS
+    );
     expect(kneeling.live.startPosition?.status).toBe('NOT_A_PLANK');
 
-    const outOfFrame = analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, visibility: 0.1 }), 2 * FRAME_MS);
+    const outOfFrame = analyzer.processFrame(
+      buildFrame({ elbowAngleDeg: 172, visibility: 0.1, flareDeg: PLANK_FLARE_DEG }),
+      2 * FRAME_MS
+    );
     expect(outOfFrame.live.startPosition?.status).toBe('NO_POSE');
     expect(outOfFrame.live.trackingOk).toBe(false);
   });
@@ -609,7 +647,10 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
 
     const calibrated = new PushUpAnalyzer();
     for (let i = 0; i < 80; i++) {
-      calibrated.processFrame(buildFrame({ elbowAngleDeg: 172, hipOffsetY: neutralOffset }), i * FRAME_MS);
+      calibrated.processFrame(
+        buildFrame({ elbowAngleDeg: 172, hipOffsetY: neutralOffset, flareDeg: PLANK_FLARE_DEG }),
+        i * FRAME_MS
+      );
     }
     expect(calibrated.getThresholds().minHipStraightnessDeg).toBe(130); // 150 - 20
 
@@ -640,31 +681,17 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
   it('lockert höchstens bis zur Untergrenze, auch bei schlechter Grundhaltung', () => {
     // Wer mit durchgesackter Hüfte einsteigt, darf sich das nicht als "normal" für den
     // Rest der Sitzung bescheinigen lassen.
-    const baseline = {
-      topElbowAngleDeg: 172,
-      neutralHipStraightnessDeg: 115,
-      neutralNeckAngleDeg: 60,
-      elbowJitterDeg: 1,
-      hipJitterDeg: 2,
-      samples: 60,
-      heldMs: 2000,
-    };
-
-    const personal = personalThresholds(baseline);
+    const personal = personalThresholds(
+      baselineFixture({ neutralHipStraightnessDeg: 115, neutralNeckAngleDeg: 60 })
+    );
     expect(personal.minHipStraightnessDeg).toBe(DEFAULT_THRESHOLDS.minHipStraightnessDeg - 25);
     expect(personal.minNeckAngleDeg).toBe(DEFAULT_THRESHOLDS.minNeckAngleDeg - 25);
   });
 
   it('lässt Schwellwerte unangetastet, was in der Startposition nicht messbar war', () => {
-    const personal = personalThresholds({
-      topElbowAngleDeg: 172,
-      neutralHipStraightnessDeg: null,
-      neutralNeckAngleDeg: null,
-      elbowJitterDeg: 1,
-      hipJitterDeg: null,
-      samples: 60,
-      heldMs: 2000,
-    });
+    const personal = personalThresholds(
+      baselineFixture({ neutralHipStraightnessDeg: null, neutralNeckAngleDeg: null, hipJitterDeg: null })
+    );
 
     expect(personal.minHipStraightnessDeg).toBeUndefined();
     expect(personal.minNeckAngleDeg).toBeUndefined();
@@ -673,19 +700,39 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
   it('fasst die Ellbogen-Schwellen bewusst nicht an', () => {
     // Sie entscheiden, OB gezählt wird. Ein Fehler dort kostet Wiederholungen, ein
     // Fehler bei Hüfte oder Nacken nur Punkte.
-    const personal = personalThresholds({
-      topElbowAngleDeg: 150,
-      neutralHipStraightnessDeg: 150,
-      neutralNeckAngleDeg: 140,
-      elbowJitterDeg: 1,
-      hipJitterDeg: 2,
-      samples: 60,
-      heldMs: 2000,
-    });
+    const personal = personalThresholds(
+      baselineFixture({ topElbowAngleDeg: 150, neutralHipStraightnessDeg: 150, neutralNeckAngleDeg: 140 })
+    );
 
     expect(personal.elbowUpDeg).toBeUndefined();
     expect(personal.elbowAttemptDeg).toBeUndefined();
     expect(personal.goodDepthElbowDeg).toBeUndefined();
+  });
+
+  it('zählt nichts, solange jemand nur ruhig vor der Kamera steht', () => {
+    // Der zweite Teil dessen, was chris beschreibt: erst stehen (dabei kam die erste
+    // Fehlzählung), dann hinlegen (dabei die zweite). Weder das eine noch das andere
+    // darf die Zählung starten.
+    const analyzer = new PushUpAnalyzer();
+    let t = 0;
+    const seen: RepResult[] = [];
+
+    walkIntoPosition().forEach((pose) => {
+      const { completedRep } = analyzer.processFrame(pose, t);
+      if (completedRep) seen.push(completedRep);
+      t += FRAME_MS;
+    });
+
+    expect(seen).toHaveLength(0);
+    expect(analyzer.isArmed()).toBe(false);
+  });
+
+  it('nennt "du stehst noch" als eigenen Grund', () => {
+    const analyzer = new PushUpAnalyzer();
+    // Alles gestreckt, aber die Arme hängen am Körper statt unter den Schultern.
+    const { live } = analyzer.processFrame(buildFrame({ elbowAngleDeg: 175, flareDeg: 12 }), 0);
+
+    expect(live.startPosition?.status).toBe('STANDING');
   });
 
   it('verlangt nach reset() wieder die Startposition', () => {
@@ -697,6 +744,90 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
     expect(analyzer.isArmed()).toBe(false);
     expect(analyzer.getBaseline()).toBeNull();
     expect(analyzer.getThresholds().minHipStraightnessDeg).toBe(DEFAULT_THRESHOLDS.minHipStraightnessDeg);
+  });
+});
+
+describe('PushUpAnalyzer: nur was wirklich im Bild ist', () => {
+  /**
+   * Normalisierte Bildkoordinaten (`landmarks`, nicht `worldLandmarks`). Alles liegt
+   * mittig im Bild, außer den ausdrücklich genannten Indizes - die legt MediaPipe für
+   * Körperteile außerhalb des Bildes durchaus auch jenseits von 0..1 ab.
+   */
+  function imageFrame(outOfFrame: number[] = []): Pose {
+    return Array.from({ length: 33 }, (_, i) =>
+      outOfFrame.includes(i) ? { x: 1.4, y: 0.5, z: 0 } : { x: 0.5, y: 0.5, z: 0 }
+    );
+  }
+
+  function playWithImage(analyzer: PushUpAnalyzer, poses: Pose[], image: Pose, startMs = 0) {
+    const reps: RepResult[] = [];
+    let last: ReturnType<PushUpAnalyzer['processFrame']> | null = null;
+    poses.forEach((pose, i) => {
+      last = analyzer.processFrame(pose, startMs + i * FRAME_MS, image);
+      if (last.completedRep) reps.push(last.completedRep);
+    });
+    return { reps, live: last!.live };
+  }
+
+  /** Startposition einnehmen, mit ausdrücklich mitgegebenen Bildkoordinaten. */
+  function armWithImage(analyzer: PushUpAnalyzer, image: Pose, startMs = 0): number {
+    for (let i = 0; i < 80; i++) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, flareDeg: 75 }), startMs + i * FRAME_MS, image);
+    }
+    return startMs + 80 * FRAME_MS;
+  }
+
+  it('zählt gar nicht, solange der Arm nicht vollständig im Bild ist', () => {
+    // Genau der Fall aus chris' Beschreibung: Er geht rückwärts von der Kamera weg und
+    // ist dabei nur teilweise im Bild - und bekommt trotzdem schon die erste Zählung.
+    // MediaPipe liefert für den Arm dann geschätzte Koordinaten, und der
+    // Sichtbarkeitswert, der das aussortieren würde, kommt bei react-native-mediapipe
+    // nie in JS an (siehe landmarks.ts).
+    const analyzer = new PushUpAnalyzer();
+    const wristOutside = imageFrame([PoseLandmarkIndex.rightWrist]);
+
+    const armed = armWithImage(analyzer, wristOutside);
+    expect(analyzer.isArmed()).toBe(false);
+
+    const { reps, live } = playWithImage(analyzer, repFrames(90), wristOutside, armed);
+    expect(reps).toHaveLength(0);
+    expect(live.trackingOk).toBe(false);
+    expect(live.startPosition?.status).toBe('NO_POSE');
+  });
+
+  it('zählt wieder, sobald der Arm im Bild ist', () => {
+    const analyzer = new PushUpAnalyzer();
+    const allInside = imageFrame();
+
+    const armed = armWithImage(analyzer, allInside);
+    expect(analyzer.isArmed()).toBe(true);
+
+    const { reps } = playWithImage(analyzer, repFrames(90), allInside, armed);
+    expect(reps).toHaveLength(1);
+  });
+
+  it('bewertet die Hüfte nicht, wenn das Knie außerhalb des Bildes liegt', () => {
+    // Vorher wurde aus einem erfundenen Knie ein Hüftwinkel berechnet - das ist die
+    // wahrscheinlichste Quelle der Hüftwerte, die innerhalb einer Sitzung zwischen 10°
+    // und 158° sprangen. Lieber gar keine Aussage als eine geratene.
+    const analyzer = new PushUpAnalyzer();
+    const kneeOutside = imageFrame([PoseLandmarkIndex.rightKnee]);
+
+    const armed = armWithImage(analyzer, kneeOutside);
+    const { reps } = playWithImage(analyzer, repFrames(90, { hipOffsetY: 0.5 }), kneeOutside, armed);
+
+    expect(reps).toHaveLength(1);
+    expect(reps[0].minHipStraightnessDeg).toBeNull();
+    expect(reps[0].issues).not.toContain('HIPS_SAGGING');
+  });
+
+  it('bleibt ohne Bildkoordinaten beim alten Verhalten', () => {
+    // Die Bildlandmarken sind ein optionales Argument: Wer sie nicht mitgibt (Tests,
+    // ältere Aufrufer), bekommt die Prüfung nicht aufgezwungen.
+    const analyzer = new PushUpAnalyzer();
+    const { reps } = runFrames(analyzer, repFrames(90));
+
+    expect(reps).toHaveLength(1);
   });
 });
 

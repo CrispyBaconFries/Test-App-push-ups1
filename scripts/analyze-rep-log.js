@@ -118,13 +118,23 @@ if (discards.length > 0) {
 // Grundhaltung von 180° etwas anderes als bei 150°.
 if (baselines.length > 0) {
   console.log('\n--- Grundhaltung (Startposition) --------------------------------------------');
-  console.log('  Zeit                 Ellbogen  Hüfte  Nacken  Zittern  Frames  gehalten');
+  console.log('  Zeit                 Ellbogen  Hüfte  Nacken  Flare  waagerecht  Frames  gehalten');
   for (const b of baselines) {
     const time = (b.recordedAtIso ?? '').slice(0, 19).replace('T', ' ');
     const num = (v) => (typeof v === 'number' ? String(v).padStart(5) : '    -');
     console.log(
       `  ${time}  ${num(b.topElbowAngleDeg)}°    ${num(b.neutralHipStraightnessDeg)}°  ` +
-        `${num(b.neutralNeckAngleDeg)}°   ${num(b.elbowJitterDeg)}°  ${String(b.samples).padStart(6)}  ${String(b.heldMs).padStart(6)} ms`
+        `${num(b.neutralNeckAngleDeg)}°  ${num(b.neutralElbowFlareDeg)}°  ` +
+        `${num(b.torsoHorizontalRatio)}       ${String(b.samples).padStart(6)}  ${String(b.heldMs).padStart(6)} ms`
+    );
+  }
+  // Prüfbare Annahme: Ein Stütz sollte im Bild deutlich waagerecht liegen. Bestätigt sich
+  // das, kann daraus eine von der Hüfte unabhängige Stehen-Erkennung werden (siehe README).
+  const horizontal = defined(baselines.map((b) => b.torsoHorizontalRatio));
+  if (horizontal.length > 0) {
+    console.log(
+      `  -> Rumpflage im Bild: ${Math.min(...horizontal)}-${Math.max(...horizontal)} ` +
+        '(1 = waagerecht/Stütz, 0 = senkrecht/stehend). Deutlich über 0,5 = Annahme bestätigt.'
     );
   }
   const hips = defined(baselines.map((b) => b.neutralHipStraightnessDeg));

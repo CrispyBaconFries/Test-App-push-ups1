@@ -167,3 +167,34 @@ export function signedPerpendicularDeviation2D(from: Point3D, to: Point3D, p: Po
 export function allVisible(pose: Pose, indices: number[], minVisibility = MIN_VISIBILITY): boolean {
   return indices.every((i) => visibility(getLandmark(pose, i)) >= minVisibility);
 }
+
+/**
+ * Liegen alle genannten Landmarken tatsächlich IM Kamerabild?
+ *
+ * Warum es das braucht: MediaPipe liefert immer alle 33 Landmarken - auch für
+ * Körperteile, die gar nicht im Bild sind. Die werden dann *geschätzt*, und zwar
+ * durchaus mit Koordinaten außerhalb von 0..1. Normalerweise würde man solche Punkte
+ * über ihren Sichtbarkeitswert aussortieren, aber genau der kommt bei
+ * `react-native-mediapipe` nie in JS an (siehe `visibility()` oben) - `allVisible()` ist
+ * auf dem echten Gerät damit wirkungslos.
+ *
+ * Die normalisierten Bildkoordinaten sind der Ersatz dafür: Ein Punkt außerhalb von
+ * 0..1 liegt nachweislich außerhalb des Bildes und ist damit geraten, nicht gemessen.
+ * Genau daher kamen sowohl Zählungen, während jemand noch halb außerhalb des Bildes
+ * stand, als auch die wilden Hüftwerte - ein aus dem Bild ragendes Knie wurde erfunden
+ * und der Winkel Schulter-Hüfte-Knie daraus berechnet.
+ *
+ * `pose` sind hier die **Bild**-Landmarken (`landmarks`), nicht die `worldLandmarks`:
+ * Letztere sind hüftzentriert und metrisch, aus ihnen lässt sich der Bildrand nicht
+ * ablesen. Fehlen die Bildlandmarken (z. B. in Tests), gilt alles als im Bild.
+ */
+export function allInFrame(pose: Pose | undefined, indices: number[], margin = 0): boolean {
+  if (!pose) return true;
+  return indices.every((i) => {
+    const landmark = getLandmark(pose, i);
+    if (!landmark) return false;
+    return (
+      landmark.x >= margin && landmark.x <= 1 - margin && landmark.y >= margin && landmark.y <= 1 - margin
+    );
+  });
+}

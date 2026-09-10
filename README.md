@@ -492,24 +492,65 @@ zwei Sekunden ruhig gehalten wurde, läuft die Zustandsmaschine gar nicht.** Der
 Position kann damit gar keine Wiederholung mehr erzeugen, unabhängig davon, wie er
 aussieht (`src/pose/startPosition.ts`).
 
-**Warum das Ruhighalten der entscheidende Teil ist.** Der Verdacht war zuerst „das
-Skelett springt beim Hinlegen wild herum". Die Messdaten sagen etwas anderes: Das Tracking
-war lückenlos, 0 verlorene Frames. Die Bewegung war sauber erfasst - sie *war* nur einfach
-eine Beugung und Streckung der Arme, und genau darauf schaut ein Zähler, der den
-Ellbogenwinkel verfolgt. Eine Prüfung auf „Arme gestreckt und Körper im Stütz" allein
-würde deshalb nichts ändern: Jeder Weg nach unten führt durch diese Haltung *hindurch*.
-Nur bleibt niemand dabei zwei Sekunden lang innerhalb weniger Grad stehen. Das Haltefenster
-wandert bei einer langsamen Abwärtsbewegung einfach mit, statt zu wachsen - als Test
-abgedeckt („schaltet NICHT scharf, wenn die Position nur langsam durchlaufen wird").
+**Drei Ursachen, nicht eine.** chris' genaue Beschreibung: Er geht **stehend** rückwärts
+vom Handy weg, ist dabei nur teilweise im Bild - und hat schon die erste Zählung. Bis er
+Hände und Füße aufgesetzt hat, die zweite. Das sind zwei verschiedene Fehler plus ein
+dritter, der beide begünstigt:
+
+1. **Halb außerhalb des Bildes.** MediaPipe liefert auch für Körperteile außerhalb des
+   Bildes Koordinaten — *geschätzte*, teils mit normalisierten Werten jenseits von 0..1.
+   Aussortieren würde man sie über den Sichtbarkeitswert — aber genau der kommt bei
+   `react-native-mediapipe` **nie** in JS an (dokumentiert in `landmarks.ts`, war schon
+   vorher bekannt: `allVisible()` ist auf dem echten Gerät wirkungslos). Der Zähler hat
+   also mit erfundenen Armen gerechnet. Dagegen hilft jetzt `allInFrame()`: eine Landmarke
+   außerhalb des Bildes ist keine Messung.
+2. **Stehen sieht aus wie Stütz.** Winkel sind richtungslos. Wer aufrecht steht, hat
+   genauso gestreckte Arme (Schulter–Ellbogen–Handgelenk rund 175°) und einen genauso
+   geraden Körper (Schulter–Hüfte–Knie rund 180°) wie jemand im Stütz. Eine Prüfung nur auf
+   diese beiden Winkel hätte zwei Sekunden ruhiges Stehen als „Startposition eingenommen"
+   durchgewinkt — und den anschließenden Weg nach unten wieder als Wiederholung gezählt.
+   Der Unterschied liegt im **Arm zum Rumpf** (Ellbogen–Schulter–Hüfte): beim Stehen hängt
+   der Oberarm am Körper (5–25°), im Stütz steht er quer dazu (gemessen 58–101°). Schwelle:
+   35°.
+3. **Der Weg nach unten ist eine echte Armbeugung.** Hinknien und Hände aufsetzen beugt und
+   streckt den Arm tatsächlich — für einen Zähler, der den Ellbogenwinkel verfolgt, nicht
+   von einem Liegestütz zu unterscheiden. Dagegen hilft das Ruhighalten: Jeder Weg nach
+   unten führt durch die Stützhaltung *hindurch*, aber niemand bleibt dabei zwei Sekunden
+   lang innerhalb weniger Grad stehen. Das Haltefenster wandert bei einer langsamen
+   Abwärtsbewegung mit, statt zu wachsen.
+
+**Korrektur zu einer früheren Einschätzung in diesem README:** Hier stand, die Messdaten
+zeigten lückenloses Tracking, das Skelett springe also nicht. Das war die falsche Frage an
+die Daten. Der Kalibrier-Log zeichnet nur abgeschlossene und verworfene *Wiederholungen*
+auf — dass die Person dabei halb außerhalb des Bildes war, konnte er gar nicht zeigen, weil
+diese Information nirgends erfasst wurde. „0 verlorene Frames" hieß nur „`allVisible()` hat
+nie Nein gesagt", und Nein sagen konnte es auf diesem Gerät nie.
 
 Kleines Zittern kostet nicht die ganze Haltezeit: Das Fenster wird vorne gekürzt, bis die
 Spannweite wieder passt (8° Ellbogen, 12° Hüfte), statt komplett verworfen zu werden.
 Verworfen wird es nur, wenn die Position wirklich verlassen wird - Arme gebeugt, Körper
-abgeknickt, oder Pose weg.
+abgeknickt, aufrecht, oder Pose weg.
 
 **Der Bildschirm sagt, woran es hakt.** „Ich sehe dich nicht" / „Arme durchstrecken" /
-„Körper strecken" / „Ruhig halten", dazu ein Balken, der sich füllt, und ein Ton, sobald es
-losgeht. Das ist Absicht: Wer davor liegt, kann sonst nur raten, warum nichts passiert.
+„Körper strecken" / „Du stehst noch" / „Ruhig halten", dazu ein Balken, der sich füllt, und
+ein Ton, sobald es losgeht. Das ist Absicht: Wer davor liegt, kann sonst nur raten, warum
+nichts passiert.
+
+**Nebenwirkung der Bildprüfung, die eigenständig zählt:** Auch die *Formwerte* rechnen
+nicht mehr mit geschätzten Punkten. Ein Knie außerhalb des Bildes wurde bisher erfunden und
+der Winkel Schulter–Hüfte–Knie daraus berechnet — das ist die wahrscheinlichste Quelle der
+Hüftwerte, die innerhalb einer Sitzung zwischen 10° und 158° sprangen (siehe die
+Sitzungstabelle unter „Kalibrier-Log auswerten"). Jetzt gilt: lieber gar keine Aussage als
+eine geratene. `minHipStraightnessDeg` ist dann schlicht `null` und die Prüfung fällt aus.
+
+**Was noch offen ist:** Der Arm-zu-Rumpf-Winkel braucht die Hüfte. Ist sie nicht im Bild,
+entfällt die Stehen-Prüfung — dann könnte theoretisch wieder im Stehen scharf geschaltet
+werden. Der physikalisch sauberere Weg wäre, die Rumpflage im Bild zu prüfen (waagerecht =
+Stütz, senkrecht = Stehen). Das hängt aber daran, wie MediaPipes `worldLandmarks` gegenüber
+dem Bild ausgerichtet sind, und das lässt sich nur auf einem echten Gerät nachweisen. Der
+Wert wird deshalb bereits als `torsoHorizontalRatio` in der Grundhaltung mitgemessen (1 =
+waagerecht, 0 = senkrecht) — bestätigt sich die Annahme über mehrere Aufzeichnungen, wird
+daraus eine zweite, von der Hüfte unabhängige Bedingung.
 
 **Notbremse:** Nach 30 Sekunden wird auch ohne erfolgreiches Halten scharf geschaltet -
 dann mit den allgemeinen Schwellwerten. Ein Bildschirm, der unter ungünstigen Bedingungen

@@ -21,9 +21,44 @@ function play(
   return { readyAfter, baseline };
 }
 
+type Measured = Omit<StartPositionFrame, 'timeMs'>;
+
+/** Ein Frame mit sinnvollen Vorgaben für einen sauberen Stütz. */
+function frame(overrides: Partial<Measured> = {}): Measured {
+  return {
+    elbowAngleDeg: 172,
+    hipStraightnessDeg: 178,
+    neckAngleDeg: 150,
+    elbowFlareDeg: 75,
+    torsoHorizontalRatio: 0.9,
+    ...overrides,
+  };
+}
+
 /** Eine ruhig gehaltene, saubere Stützposition. */
-function hold(count: number, elbowAngleDeg = 172, hipStraightnessDeg: number | null = 178, neckAngleDeg: number | null = 150) {
-  return Array.from({ length: count }, () => ({ elbowAngleDeg, hipStraightnessDeg, neckAngleDeg }));
+function hold(count: number, overrides: Partial<Measured> = {}): Measured[] {
+  return Array.from({ length: count }, () => frame(overrides));
+}
+
+/**
+ * Aufrecht stehen, Arme hängen am Körper.
+ *
+ * Die Zahlen sind der springende Punkt dieser Prüfung: Arme *sind* gestreckt, Körper
+ * *ist* gerade - genau wie im Stütz. Nur der Oberarm liegt am Rumpf an statt quer dazu.
+ */
+function standing(count: number): Measured[] {
+  return hold(count, { elbowAngleDeg: 175, hipStraightnessDeg: 178, elbowFlareDeg: 12, torsoHorizontalRatio: 0.08 });
+}
+
+/** Gar keine verwertbare Pose. */
+function noPose(count: number): Measured[] {
+  return hold(count, {
+    elbowAngleDeg: null,
+    hipStraightnessDeg: null,
+    neckAngleDeg: null,
+    elbowFlareDeg: null,
+    torsoHorizontalRatio: null,
+  });
 }
 
 describe('StartPositionGate', () => {
@@ -39,6 +74,8 @@ describe('StartPositionGate', () => {
     expect(baseline!.neutralHipStraightnessDeg).toBe(178);
     expect(baseline!.neutralNeckAngleDeg).toBe(150);
     expect(baseline!.elbowJitterDeg).toBe(0);
+    expect(baseline!.neutralElbowFlareDeg).toBe(75);
+    expect(baseline!.torsoHorizontalRatio).toBe(0.9);
     expect(baseline!.heldMs).toBeGreaterThanOrEqual(2000);
   });
 
@@ -47,18 +84,16 @@ describe('StartPositionGate', () => {
     // *hindurch*. Alle Einzelbedingungen (Arme gestreckt, Körper im Stütz) sind dabei
     // erfüllt - nur eben nie zwei Sekunden lang am selben Fleck.
     const gate = new StartPositionGate();
-    const slowDescent = Array.from({ length: 120 }, (_, i) => ({
-      elbowAngleDeg: 178 - i * 0.15, // 178° -> 160° über rund vier Sekunden
-      hipStraightnessDeg: 178,
-      neckAngleDeg: 150,
-    }));
+    const slowDescent = Array.from({ length: 120 }, (_, i) =>
+      frame({ elbowAngleDeg: 178 - i * 0.15 }) // 178° -> 160° über rund vier Sekunden
+    );
 
     expect(play(gate, slowDescent).readyAfter).toBeNull();
   });
 
   it('verwirft die bisherige Haltezeit, wenn die Arme zwischendurch gebeugt werden', () => {
     const gate = new StartPositionGate();
-    const frames = [...hold(40), ...hold(3, 120), ...hold(30)];
+    const frames = [...hold(40), ...hold(3, { elbowAngleDeg: 120 }), ...hold(30)];
 
     // 40 + 30 Frames wären zusammen genug - aber eben nicht am Stück.
     expect(play(gate, frames).readyAfter).toBeNull();
@@ -67,11 +102,7 @@ describe('StartPositionGate', () => {
 
   it('verwirft die bisherige Haltezeit, wenn die Pose zwischendurch verloren geht', () => {
     const gate = new StartPositionGate();
-    const frames = [
-      ...hold(40),
-      ...Array.from({ length: 3 }, () => ({ elbowAngleDeg: null, hipStraightnessDeg: null, neckAngleDeg: null })),
-      ...hold(30),
-    ];
+    const frames = [...hold(40), ...noPose(3), ...hold(30)];
 
     expect(play(gate, frames).readyAfter).toBeNull();
   });
@@ -79,20 +110,24 @@ describe('StartPositionGate', () => {
   it('nennt den Grund, warum die Startposition nicht angenommen wird', () => {
     const gate = new StartPositionGate();
 
-    gate.push({ timeMs: 0, elbowAngleDeg: null, hipStraightnessDeg: null, neckAngleDeg: null });
+    gate.push({ ...noPose(1)[0], timeMs: 0 });
     expect(gate.getStatus()).toBe('NO_POSE');
 
-    gate.push({ timeMs: FRAME_MS, elbowAngleDeg: 120, hipStraightnessDeg: 178, neckAngleDeg: 150 });
+    gate.push({ ...frame({ elbowAngleDeg: 120 }), timeMs: FRAME_MS });
     expect(gate.getStatus()).toBe('ARMS_BENT');
 
-    // Kniend oder auf dem Weg nach unten: Arme gestreckt, Körper aber abgeknickt.
-    gate.push({ timeMs: 2 * FRAME_MS, elbowAngleDeg: 172, hipStraightnessDeg: 70, neckAngleDeg: 150 });
+    // Kniend oder gebückt: Arme gestreckt, Körper aber abgeknickt.
+    gate.push({ ...frame({ hipStraightnessDeg: 70 }), timeMs: 2 * FRAME_MS });
     expect(gate.getStatus()).toBe('NOT_A_PLANK');
 
-    gate.push({ timeMs: 3 * FRAME_MS, elbowAngleDeg: 172, hipStraightnessDeg: 178, neckAngleDeg: 150 });
+    // Aufrecht: alles gestreckt, aber die Arme hängen am Körper.
+    gate.push({ ...standing(1)[0], timeMs: 3 * FRAME_MS });
+    expect(gate.getStatus()).toBe('STANDING');
+
+    gate.push({ ...frame(), timeMs: 4 * FRAME_MS });
     expect(gate.getStatus()).toBe('MOVING');
 
-    gate.push({ timeMs: 4 * FRAME_MS, elbowAngleDeg: 172, hipStraightnessDeg: 178, neckAngleDeg: 150 });
+    gate.push({ ...frame(), timeMs: 5 * FRAME_MS });
     expect(gate.getStatus()).toBe('HOLDING');
   });
 
@@ -100,7 +135,10 @@ describe('StartPositionGate', () => {
     // Ein tief vor der Person stehendes Handy hat den Unterkörper oft gar nicht im Bild.
     // Daran darf der Start nicht scheitern - die Hüftbedingung entfällt dann einfach.
     const gate = new StartPositionGate();
-    const { readyAfter, baseline } = play(gate, hold(80, 172, null, null));
+    const { readyAfter, baseline } = play(
+      gate,
+      hold(80, { hipStraightnessDeg: null, neckAngleDeg: null, elbowFlareDeg: null, torsoHorizontalRatio: null })
+    );
 
     expect(readyAfter).not.toBeNull();
     expect(baseline!.neutralHipStraightnessDeg).toBeNull();
@@ -112,11 +150,7 @@ describe('StartPositionGate', () => {
     const gate = new StartPositionGate();
     // ±2° Rauschen liegt innerhalb der Toleranz von 8° und darf nicht bei jedem Frame
     // von vorn beginnen lassen - sonst könnte niemand mit echtem Tracking je starten.
-    const jittery = Array.from({ length: 80 }, (_, i) => ({
-      elbowAngleDeg: 172 + (i % 3) - 1,
-      hipStraightnessDeg: 178,
-      neckAngleDeg: 150,
-    }));
+    const jittery = Array.from({ length: 80 }, (_, i) => frame({ elbowAngleDeg: 172 + (i % 3) - 1 }));
 
     expect(play(gate, jittery).readyAfter).not.toBeNull();
   });
@@ -125,11 +159,7 @@ describe('StartPositionGate', () => {
     // Ein Bildschirm, der unter ungünstigen Bedingungen nie zu zählen anfängt, ist
     // schlimmer als eine gelegentliche Fehlzählung.
     const gate = new StartPositionGate({ timeoutMs: 5000 });
-    const nothingUseful = Array.from({ length: 200 }, () => ({
-      elbowAngleDeg: null,
-      hipStraightnessDeg: null,
-      neckAngleDeg: null,
-    }));
+    const nothingUseful = noPose(200);
 
     const { readyAfter, baseline } = play(gate, nothingUseful);
     expect(readyAfter).not.toBeNull();
@@ -139,9 +169,9 @@ describe('StartPositionGate', () => {
 
   it('meldet den Fortschritt, damit die Anzeige einen Balken füllen kann', () => {
     const gate = new StartPositionGate();
-    let last = gate.push({ timeMs: 0, elbowAngleDeg: 172, hipStraightnessDeg: 178, neckAngleDeg: 150 });
+    let last = gate.push({ ...frame(), timeMs: 0 });
     for (let i = 1; i <= 30; i++) {
-      last = gate.push({ timeMs: i * FRAME_MS, elbowAngleDeg: 172, hipStraightnessDeg: 178, neckAngleDeg: 150 });
+      last = gate.push({ ...frame(), timeMs: i * FRAME_MS });
     }
 
     expect(last.ready).toBe(false);
@@ -151,13 +181,31 @@ describe('StartPositionGate', () => {
     expect(last.progress.status).toBe('HOLDING');
   });
 
+  it('schaltet NICHT scharf, wenn jemand nur ruhig steht', () => {
+    // Der Fall, den chris beschreibt: Er geht vom Handy weg und bleibt stehen. Arme
+    // gestreckt, Körper gerade, minutenlang bewegungslos - für eine reine Winkelprüfung
+    // ununterscheidbar von einem Stütz. Erst der Arm-zu-Rumpf-Winkel trennt beides.
+    const gate = new StartPositionGate();
+
+    expect(play(gate, standing(200)).readyAfter).toBeNull();
+    expect(gate.getStatus()).toBe('STANDING');
+  });
+
+  it('schaltet auch dann nicht scharf, wenn Stehen direkt in den Stütz übergeht', () => {
+    // Erst stehen, dann hinlegen: Die Haltezeit darf nicht schon beim Stehen anlaufen und
+    // im Stütz nur noch weiterzählen - sonst wäre der Weg nach unten wieder eine
+    // Wiederholung.
+    const gate = new StartPositionGate();
+    const frames = [...standing(50), ...hold(20)];
+
+    expect(play(gate, frames).readyAfter).toBeNull();
+  });
+
   it('braucht genug Frames, nicht nur genug Zeit', () => {
     // Drei Frames im Abstand von je einer Sekunde ergeben rechnerisch zwei Sekunden
     // Haltezeit - dazwischen könnte aber alles passiert sein.
     const gate = new StartPositionGate();
-    const outcome = [0, 1000, 2000, 3000].map((timeMs) =>
-      gate.push({ timeMs, elbowAngleDeg: 172, hipStraightnessDeg: 178, neckAngleDeg: 150 })
-    );
+    const outcome = [0, 1000, 2000, 3000].map((timeMs) => gate.push({ ...frame(), timeMs }));
 
     expect(outcome.every((o) => !o.ready)).toBe(true);
   });
