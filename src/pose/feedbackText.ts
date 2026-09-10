@@ -59,6 +59,7 @@ export function framingLabelDe(framing: FramingIssue | null): string {
  */
 export const DISCARD_NOTICE_DE: Partial<Record<RepDiscardReason, string>> = {
   TOO_SHALLOW: 'Nicht gezählt – der Arm muss sich deutlich beugen',
+  ARMS_NOT_SUPPORTING: 'Nicht gezählt – die Arme müssen dich tragen, Hände unter die Schultern',
   TOO_SHORT: 'Nicht gezählt – zu schnell für eine Wiederholung',
   NOT_A_PLANK: 'Nicht gezählt – Körper strecken und tiefer gehen',
 };

@@ -20,6 +20,7 @@ const TITLES: Record<StartPositionStatus, string> = {
   ARMS_BENT: 'Geh in die Liegestütz-Position',
   NOT_A_PLANK: 'Geh in die Liegestütz-Position',
   STANDING: 'Geh in die Liegestütz-Position',
+  ARMS_NOT_SUPPORTING: 'Geh in die Liegestütz-Position',
   MOVING: 'Ruhig halten',
   HOLDING: 'Ruhig halten',
 };
@@ -29,6 +30,7 @@ const HINTS: Record<StartPositionStatus, string> = {
   ARMS_BENT: 'Arme durchstrecken – die obere Position eines Liegestützes.',
   NOT_A_PLANK: 'Körper strecken: Schultern, Hüfte und Knie auf einer Linie.',
   STANDING: 'Du stehst noch – Hände auf den Boden, Schultern über die Hände.',
+  ARMS_NOT_SUPPORTING: 'Die Arme müssen dich tragen – Hände unter die Schultern, nicht nach vorn gestreckt.',
   MOVING: 'Fast – halt die Position kurz, wo sie ist.',
   HOLDING: 'Position wird vermessen …',
 };

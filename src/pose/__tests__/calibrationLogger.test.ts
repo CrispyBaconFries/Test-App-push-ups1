@@ -60,6 +60,7 @@ const discarded: DiscardedRep = {
   outOfFrameFrames: 0,
   minElbowAngleDeg: 130,
   maxElbowAngleDeg: 150,
+  maxElbowFlareDeg: 62,
 };
 
 describe('calibrationLogger', () => {

@@ -213,6 +213,17 @@ describe('StartPositionGate', () => {
     expect(play(gate, jittery).readyAfter).not.toBeNull();
   });
 
+  it('schaltet nicht scharf, wenn jemand kniend die Arme nach vorn streckt', () => {
+    // Die Gegenrichtung zum Stehen, und derselbe Trick eine Ebene tiefer: Arme gestreckt,
+    // Körper (bis zum Knie) gerade - nur zeigt der Oberarm nach vorn statt zum Boden.
+    // Gemessen wurden dabei 133-177° (Aufzeichnung vom 10.09.2026, 19:03 Uhr), in der
+    // Grundhaltung dagegen 63-67°.
+    const gate = new StartPositionGate();
+
+    expect(play(gate, hold(200, { elbowFlareDeg: 174 })).readyAfter).toBeNull();
+    expect(gate.getStatus()).toBe('ARMS_NOT_SUPPORTING');
+  });
+
   it('schaltet als Notbremse auch ohne gültige Haltung scharf, aber ohne Grundhaltung', () => {
     // Ein Bildschirm, der unter ungünstigen Bedingungen nie zu zählen anfängt, ist
     // schlimmer als eine gelegentliche Fehlzählung.

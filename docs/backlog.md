@@ -158,12 +158,18 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
    Unterarm-Verkürzung unabhängig ist. Erst damit ist „tiefer gehen" wieder eine Aussage
    über die Ausführung statt über die Kameraperspektive. Braucht Zeitreihen (Punkt 5).
 
-3. **Grenzfälle des Bewegungsumfangs beobachten.** `minRepRangeDeg` (45°) sperrt seit dem
+3. **Grenzfälle der beiden Zählschwellen beobachten.** `minRepRangeDeg` (45°) sperrt seit dem
    10.09.2026 reine Kopfbewegungen aus (nachgewiesen an 21 nachgestellten Wiederholungen).
    Zwei der 34 echten Wiederholungen desselben Abends fielen mit 39°/40° ebenfalls durch.
    Ob das bei anderen Personen oder Kamerawinkeln häufiger passiert, sagt der neue Wert
    `elbowRangeDeg` in jeder aufgezeichneten Wiederholung — `npm run analyze:reps` stellt
    ihn der Schwelle gegenüber. Häufen sich Werte knapp darüber, ist 45° zu hoch.
+
+   Dasselbe gilt für `notAPushUpFlareDeg` (120°), das seit dem 10.09.2026 kniende
+   Armbewegungen aussperrt. Der schlechteste Flare einer echten Wiederholung lag bisher bei
+   98° — aber in einer Aufzeichnung *vor* der Bildausschnitt-Prüfung gibt es eine mit 115°.
+   Verworfene Bewegungen halten den Wert jetzt als `maxElbowFlareDeg` fest; taucht ein
+   `ARMS_NOT_SUPPORTING` mit knapp über 120° auf, war es vermutlich eine echte.
 
 4. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
    Konfidenzwerte im nativen Bridge-Code (`ConvertHelpers.kt`); `visibility` ist bei uns

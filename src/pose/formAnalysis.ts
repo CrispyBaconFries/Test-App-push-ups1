@@ -46,7 +46,9 @@ export type RepDiscardReason =
   | 'TRACKING_LOST'
   | 'NOT_A_PLANK'
   /** Der Arm hat sich kaum gebeugt - siehe `PushUpThresholds.minRepRangeDeg`. */
-  | 'TOO_SHALLOW';
+  | 'TOO_SHALLOW'
+  /** Der Oberarm lag in der Rumpflinie statt quer dazu - siehe `PushUpThresholds.notAPushUpFlareDeg`. */
+  | 'ARMS_NOT_SUPPORTING';
 
 /**
  * Eine verworfene Wiederholung. Wird nicht gezählt und nicht bewertet, aber gemeldet -
@@ -82,6 +84,15 @@ export interface DiscardedRep {
    */
   minElbowAngleDeg: number | null;
   maxElbowAngleDeg: number | null;
+  /**
+   * Größter Winkel Ellbogen-Schulter-Hüfte während der verworfenen Bewegung, `null` wenn
+   * die Hüfte nie messbar war.
+   *
+   * Seit dem 10.09.2026 dabei, weil `ARMS_NOT_SUPPORTING` an dieser Zahl hängt: Ohne sie
+   * ließe sich in einer Aufzeichnung nicht unterscheiden, ob die Schwelle von 120° gerade
+   * knapp oder deutlich überschritten wurde - und damit nicht prüfen, ob sie richtig liegt.
+   */
+  maxElbowFlareDeg: number | null;
 }
 
 /**
@@ -251,6 +262,51 @@ export interface PushUpThresholds {
    */
   minRepRangeDeg: number;
   /**
+   * Winkel Ellbogen-Schulter-Hüfte, ab dem der Oberarm **in** der Rumpflinie liegt statt
+   * quer dazu - dann trägt der Arm den Körper nicht, und es war kein Liegestütz.
+   *
+   * # Wogegen das ist (10.09.2026, zweiter Trick)
+   *
+   * Nachdem das Kopfwippen ausgesperrt war, hat chris den nächsten Weg gefunden: auf den
+   * Knien sitzen und nur die Arme in der Luft beugen und strecken, der Oberkörper bewegt
+   * sich nicht. Der Ellbogen beugt sich dabei **wirklich** - `minRepRangeDeg` greift
+   * also nicht, die aufgezeichneten Bewegungsumfänge liegen bei 47-102°, mitten im
+   * Bereich echter Wiederholungen.
+   *
+   * Was sich stattdessen unterscheidet, ist die *Richtung* des Oberarms. Im Liegestütz
+   * steht er quer zum Rumpf und zeigt zum Boden; wer kniend die Arme nach vorn hält,
+   * verlängert damit die Rumpflinie. Gemessen (alle Sitzungen mit Startpositions-Sperre):
+   *
+   * | Sitzung | Wiederholungen | Ellbogen-Flare |
+   * |---|---|---|
+   * | 10.09. 17:43 (echt) | 15 | 54-88° |
+   * | 10.09. 18:18 (echt) | 19 | 56-61° |
+   * | 10.09. 18:32 (Kopfwippen) | 20 | 59-98° |
+   * | 10.09. 19:03 (**nur Arme, kniend**) | 21 | **63-177°, Median 174°** |
+   *
+   * Bei 120° fällt keine einzige echte Wiederholung durch (schlechtester Wert 98°) und 19
+   * der 21 Armbewegungen. Die zwei, die bleiben, hatten 77° und 63° - in diesen beiden
+   * Momenten stand der Arm tatsächlich quer zum Rumpf, sie sind an dieser Messung nicht
+   * von einem Liegestütz zu unterscheiden.
+   *
+   * # Warum nicht über die Hüfte
+   *
+   * Der naheliegende zweite Weg wäre der Hüftwinkel: kniend 110-114°, echt 121-163°. Er
+   * wird bewusst **nicht** benutzt. Der Abstand beträgt 7°, und genau so groß ist das
+   * gemessene Rauschen der Hüfte in der Startposition (`hipSpreadDeg` 6-9° in allen drei
+   * Aufzeichnungen). Eine Schwelle in dieser Lücke würde echte Wiederholungen wegwerfen,
+   * sobald jemand einen halben Meter weiter links liegt.
+   *
+   * # Nicht zu verwechseln mit `maxElbowFlareDeg` (80°)
+   *
+   * Die andere Zahl bewertet die *Technik* ("Ellenbogen näher am Körper führen") und
+   * kostet Punkte. Diese hier entscheidet, ob überhaupt gezählt wird, und liegt deshalb
+   * weit darüber: Sie soll nicht Technik beurteilen, sondern eine Haltung ausschließen,
+   * die kein Liegestütz ist. Dieselbe Trennung wie bei `goodDepthElbowDeg` /
+   * `minRepRangeDeg`.
+   */
+  notAPushUpFlareDeg: number;
+  /**
    * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
    * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
    * erreicht wurde.
@@ -402,6 +458,7 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   minPlankHipStraightnessDeg: 110,
   notAPlankDepthDeg: 95,
   minRepRangeDeg: 45,
+  notAPushUpFlareDeg: 120,
   repReversalToleranceDeg: 15,
   goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
@@ -604,6 +661,7 @@ export class PushUpAnalyzer {
     TRACKING_LOST: 0,
     NOT_A_PLANK: 0,
     TOO_SHALLOW: 0,
+    ARMS_NOT_SUPPORTING: 0,
   };
 
   constructor(thresholds: Partial<PushUpThresholds> = {}, startPosition: Partial<StartPositionCriteria> = {}) {
@@ -626,7 +684,14 @@ export class PushUpAnalyzer {
     this.repIndex = 0;
     this.acc = null;
     this.lockedSide = null;
-    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0, TOO_SHALLOW: 0 };
+    this.discardCounts = {
+      TOO_SHORT: 0,
+      TOO_LONG: 0,
+      TRACKING_LOST: 0,
+      NOT_A_PLANK: 0,
+      TOO_SHALLOW: 0,
+      ARMS_NOT_SUPPORTING: 0,
+    };
     this.thresholds = this.baseThresholds;
     this.baseline = null;
     this.gate = new StartPositionGate(this.gateCriteria);
@@ -930,6 +995,7 @@ export class PushUpAnalyzer {
       outOfFrameFrames: acc.outOfFrameFrames,
       minElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.min(...acc.elbowAngles)) : null,
       maxElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.max(...acc.elbowAngles)) : null,
+      maxElbowFlareDeg: acc.elbowFlare.length ? Math.round(Math.max(...acc.elbowFlare)) : null,
     };
     this.discardCounts[reason] += 1;
     this.acc = null;
@@ -1013,6 +1079,14 @@ export class PushUpAnalyzer {
     // verlieren, sondern gar nicht erst gezählt werden.
     if (elbowRangeDeg < t.minRepRangeDeg) {
       return { rep: null, discarded: this.discardRep('TOO_SHALLOW', timestampMs) };
+    }
+
+    // Der Oberarm lag in der Rumpflinie statt quer dazu: Dann hat der Arm den Körper nicht
+    // getragen. Im nachgestellten Fall vom 10.09.2026 war das Knien mit in der Luft
+    // gebeugten Armen - eine echte Armbeugung, die `minRepRangeDeg` deshalb passiert.
+    // `NaN > x` ist false, eine nie gemessene Hüfte führt also nie zum Verwerfen.
+    if (elbowFlareDeg >= t.notAPushUpFlareDeg) {
+      return { rep: null, discarded: this.discardRep('ARMS_NOT_SUPPORTING', timestampMs) };
     }
 
     // Weder Stützposition noch Tiefe: Das war der Weg in die Position hinein oder wieder

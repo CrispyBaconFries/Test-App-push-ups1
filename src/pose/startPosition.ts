@@ -75,6 +75,15 @@ export type StartPositionStatus =
    * "Körper strecken" wäre hier der falsche Rat, gestreckt ist er schon.
    */
   | 'STANDING'
+  /**
+   * Kniend mit ausgestreckten Armen statt im Stütz: Der Oberarm verlängert die Rumpflinie,
+   * statt quer dazu zu stehen.
+   *
+   * Eigener Status und nicht Teil von `STANDING`, obwohl beides derselbe Winkel ist - nur
+   * an den entgegengesetzten Enden. Beim Stehen hängt der Arm *am* Rumpf (kleiner Winkel),
+   * hier zeigt er *von ihm weg* (großer Winkel), und der Rat ist ein anderer.
+   */
+  | 'ARMS_NOT_SUPPORTING'
   /** Haltung stimmt, wackelt aber noch zu stark - typisch für den Moment des Hinlegens. */
   | 'MOVING'
   /** Alles stimmt, die Haltezeit läuft. */
@@ -113,6 +122,22 @@ export interface StartPositionCriteria {
    * also reichlich Luft nach unten und schließt die hängenden Arme trotzdem klar aus.
    */
   minTorsoArmAngleDeg: number;
+  /**
+   * Größter Winkel Ellbogen-Schulter-Hüfte, bei dem der Arm noch quer zum Rumpf steht.
+   *
+   * Die Gegenrichtung zu `minTorsoArmAngleDeg`, und aus demselben Grund nötig: Wer kniend
+   * die Arme nach vorn hält, hat gestreckte Arme und einen (bis zum Knie) geraden Körper -
+   * für eine reine Winkelprüfung ununterscheidbar vom Stütz. Der Unterschied ist wieder
+   * der Arm, diesmal am anderen Ende der Skala: Er verlängert die Rumpflinie, statt quer
+   * dazu zu stehen.
+   *
+   * Ohne diese Schranke ließe sich die Startposition kniend einnehmen, und der ganze
+   * anschließende Satz wäre in einer Haltung, die kein Liegestütz ist. Die aufgezeichneten
+   * Grundhaltungen (`docs/messdaten/`) melden hier 63-67°; 120° lässt also reichlich Luft
+   * nach oben und schließt die vorgestreckten Arme (gemessen 133-177°) klar aus. Dieselbe
+   * Zahl wie `PushUpThresholds.notAPushUpFlareDeg`, aus demselben Grund.
+   */
+  maxTorsoArmAngleDeg: number;
   /**
    * Zulässiges **Rauschen** des Ellbogenwinkels im Haltefenster (Grad), gemessen als
    * robuste Spannweite zwischen `jitterTailPercent` und `100 - jitterTailPercent`.
@@ -196,6 +221,7 @@ export const DEFAULT_START_POSITION_CRITERIA: StartPositionCriteria = {
   minElbowAngleDeg: 160,
   minHipStraightnessDeg: 110,
   minTorsoArmAngleDeg: 35,
+  maxTorsoArmAngleDeg: 120,
   maxElbowJitterDeg: 14,
   maxHipJitterDeg: 22,
   maxElbowDriftDeg: 5,
@@ -491,6 +517,14 @@ export class StartPositionGate {
       return {
         status: 'STANDING',
         graceMs: near(frame.elbowFlareDeg, c.minTorsoArmAngleDeg, c.maxElbowJitterDeg),
+      };
+    }
+    // Und dasselbe am anderen Ende: kniend mit vorgestreckten Armen. Auch das erfüllt
+    // "Arme gestreckt" und "Körper gerade", ist aber kein Stütz.
+    if (frame.elbowFlareDeg !== null && frame.elbowFlareDeg > c.maxTorsoArmAngleDeg) {
+      return {
+        status: 'ARMS_NOT_SUPPORTING',
+        graceMs: near(-frame.elbowFlareDeg, -c.maxTorsoArmAngleDeg, c.maxElbowJitterDeg),
       };
     }
     return null;

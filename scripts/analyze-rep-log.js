@@ -108,13 +108,17 @@ if (discards.length > 0) {
     // Ein TRACKING_LOST mit vielen "aus dem Bild"-Frames heißt "steh weiter weg vom
     // Handy", eines mit 0 heißt "MediaPipe hat die Pose verloren" - zwei völlig
     // verschiedene Ursachen, die ohne diese Zahl gleich aussehen.
+    // Seit dem 10.09.2026: Bei ARMS_NOT_SUPPORTING ist genau diese Zahl der Grund. Ohne sie
+    // laesst sich nicht sehen, ob die Schwelle von 120 Grad knapp oder deutlich
+    // ueberschritten wurde - und damit nicht pruefen, ob sie richtig liegt.
+    const flare = typeof d.maxElbowFlareDeg === 'number' ? `, Flare bis ${d.maxElbowFlareDeg}°` : '';
     const outOfFrame =
       typeof d.outOfFrameFrames === 'number' && d.outOfFrameFrames > 0
         ? `, davon ${d.outOfFrameFrames} ausserhalb des Bildes`
         : '';
     console.log(
-      `    ${String(d.reason).padEnd(14)} ${String(d.durationMs).padStart(6)} ms, ` +
-        `${d.trackedFrames} Frames verfolgt / ${d.untrackedFrames} verloren${outOfFrame}, ${range}${hint}`
+      `    ${String(d.reason).padEnd(20)} ${String(d.durationMs).padStart(6)} ms, ` +
+        `${d.trackedFrames} Frames verfolgt / ${d.untrackedFrames} verloren${outOfFrame}, ${range}${flare}${hint}`
     );
   }
 } else {

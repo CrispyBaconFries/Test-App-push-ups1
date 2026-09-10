@@ -485,6 +485,54 @@ Arm wirklich bewegt, und das ist der Unterschied zwischen „daneben liegen und 
 nicken" und „Liegestütze machen, nur schlecht". Die ehrlichen Grenzen stehen weiter unten
 unter „Faire Zählung / Anti-Cheat".
 
+### Kniend die Arme bewegen ist auch kein Liegestütz (10.09.2026)
+
+Nachdem das Kopfwippen ausgesperrt war, hat chris den nächsten Weg gefunden: **auf den
+Knien sitzen und nur die Arme in der Luft beugen und strecken**, der Oberkörper bewegt sich
+nicht. 21 Wiederholungen wurden gezählt.
+
+**Gegen diesen Trick hilft der Bewegungsumfang nicht.** Der Ellbogen beugt sich hier
+*wirklich* — die aufgezeichneten Umfänge liegen bei 47–102°, also mitten im Bereich echter
+Wiederholungen. `minRepRangeDeg` (45°) greift zu Recht nicht.
+
+**Was sich unterscheidet, ist die Richtung des Oberarms.** Im Liegestütz steht er quer zum
+Rumpf und zeigt zum Boden; wer kniend die Arme nach vorn hält, verlängert damit die
+Rumpflinie. Der Winkel Ellbogen–Schulter–Hüfte (`maxElbowFlareDeg`) misst genau das:
+
+| Sitzung | Wiederholungen | Ellbogen-Flare |
+|---|---|---|
+| 10.09. 17:43 (echt) | 15 | 54–88° |
+| 10.09. 18:18 (echt) | 19 | 56–61° |
+| 10.09. 18:32 (Kopfwippen) | 20 | 59–98° |
+| 10.09. 19:03 (**nur Arme, kniend**) | 21 | **63–177°, Median 174°** |
+
+`notAPushUpFlareDeg` steht deshalb bei **120°**: 22° über dem schlechtesten Wert, den eine
+echte Wiederholung je erreicht hat, und 13° unter dem niedrigsten, der ausgesperrt werden
+muss. Damit fällt **keine** echte Wiederholung durch und **19 der 21** Armbewegungen.
+Verworfen wird als `ARMS_NOT_SUPPORTING`.
+
+**Die zwei, die durchkommen, sollen hier stehen:** Sie hatten 77° und 63° Flare — in diesen
+beiden Momenten stand der Arm tatsächlich quer zum Rumpf. An dieser Messung sind sie von
+einem Liegestütz nicht zu unterscheiden, und die zweite (Hüfte 137°, Flare 63°) war
+vermutlich auch einer.
+
+**Warum nicht über die Hüfte.** Der naheliegende zweite Weg wäre der Hüftwinkel: kniend
+110–114°, echt 121–163°. Er wird bewusst *nicht* benutzt. Der Abstand beträgt 7° — und
+genau so groß ist das gemessene Rauschen der Hüfte in der Startposition (`hipSpreadDeg`
+6–9° in allen drei Aufzeichnungen). Eine Schwelle in dieser Lücke würde echte
+Wiederholungen wegwerfen, sobald jemand einen halben Meter weiter links liegt. Eine Zahl,
+deren Trennschärfe kleiner ist als ihr Rauschen, trennt nichts.
+
+**Nicht zu verwechseln mit `maxElbowFlareDeg` (80°).** Die andere Zahl bewertet die
+*Technik* („Ellenbogen näher am Körper führen") und kostet Punkte. Diese hier entscheidet,
+ob überhaupt gezählt wird — dieselbe Trennung wie bei `goodDepthElbowDeg` (105°, Punkte)
+gegenüber `minRepRangeDeg` (45°, Zählung).
+
+**Auch die Startposition prüft das jetzt** (`maxTorsoArmAngleDeg`, ebenfalls 120°). Sonst
+ließe sich die Kalibrierung kniend einnehmen, und der ganze Satz liefe in einer Haltung,
+die kein Liegestütz ist. Die Anzeige sagt dann: „Die Arme müssen dich tragen – Hände unter
+die Schultern, nicht nach vorn gestreckt."
+
 #### Ein Verwurf ist nicht mehr stumm
 
 Bisher blieb der Zähler bei einem Verwurf einfach stehen. Für jemanden, der eine
@@ -493,6 +541,7 @@ dieselbe Sackgasse wie beim Ruhighalten, nur eine Ebene später. Jetzt steht fü
 Sekunden in der Hinweiszeile, was los war:
 
 - `TOO_SHALLOW` → „Nicht gezählt – der Arm muss sich deutlich beugen"
+- `ARMS_NOT_SUPPORTING` → „Nicht gezählt – die Arme müssen dich tragen, Hände unter die Schultern"
 - `TOO_SHORT` → „Nicht gezählt – zu schnell für eine Wiederholung"
 - `NOT_A_PLANK` → „Nicht gezählt – Körper strecken und tiefer gehen"
 
@@ -1652,11 +1701,13 @@ die ohne Werkzeug funktionierten):
 2. **Im Stütz liegen und nur den Kopf wippen** zählt nicht mehr — der Bewegungsumfang des
    Ellbogens muss mindestens 45° betragen (`minRepRangeDeg`, siehe „Kopfwippen ist kein
    Liegestütz").
-3. **Zucken statt Wiederholungen** zählt nicht mehr — `minRepDurationMs` (600 ms) und die
+3. **Kniend die Arme in der Luft beugen** zählt nicht mehr — der Oberarm muss quer zum
+   Rumpf stehen, nicht in seiner Verlängerung (`notAPushUpFlareDeg`, 120°).
+4. **Zucken statt Wiederholungen** zählt nicht mehr — `minRepDurationMs` (600 ms) und die
    Umkehrpunkt-Erkennung.
 
-Alle drei verlangen jetzt eine echte Armbewegung. Wer trotzdem tricksen will, muss dafür
-sehr flache, aber echte Liegestütze machen — dann ist es Technik-Diskussion, nicht
+Alle vier verlangen jetzt eine echte Armbewegung im Stütz. Wer trotzdem tricksen will, muss
+dafür sehr flache, aber echte Liegestütze machen — dann ist es Technik-Diskussion, nicht
 Manipulation.
 
 ### Sicherheit: was die Regeln erzwingen (10.09.2026)

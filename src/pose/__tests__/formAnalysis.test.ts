@@ -181,8 +181,13 @@ describe('PushUpAnalyzer', () => {
     expect(glitched.reps[0].formScore).toBe(100);
 
     // Gegenprobe: Dieselbe Abweichung über die ganze Wiederholung muss weiterhin auffallen.
+    // Schwächer angesetzt als vorher (175°/0,9), weil ein Flare in dieser Größenordnung
+    // seit dem 10.09.2026 gar nicht mehr gezählt wird (`notAPushUpFlareDeg`, 120°). Hier
+    // geht es um schlechte Technik, nicht um die Frage, ob es ein Liegestütz war: Diese
+    // Werte ergeben gemessene 112° - über der Bewertungsschwelle (80°), unter der
+    // Zählschwelle.
     const persistent = new PushUpAnalyzer();
-    const flagged = runFrames(persistent, repFrames(90, { flareDeg: 175, hipOffsetY: 0.9 }));
+    const flagged = runFrames(persistent, repFrames(90, { flareDeg: 95, hipOffsetY: 0.3 }));
     expect(flagged.reps[0].issues).toContain('ELBOWS_FLARED');
     expect(flagged.reps[0].issues).toContain('HIPS_SAGGING');
   });
@@ -249,6 +254,7 @@ describe('PushUpAnalyzer', () => {
       TRACKING_LOST: 0,
       NOT_A_PLANK: 0,
       TOO_SHALLOW: 0,
+      ARMS_NOT_SUPPORTING: 0,
     });
   });
 
@@ -534,6 +540,45 @@ describe('PushUpAnalyzer', () => {
     // 161 - 105 = 56, nicht 180 - 105 = 75.
     expect(reps[0].elbowRangeDeg).toBeGreaterThanOrEqual(50);
     expect(reps[0].elbowRangeDeg).toBeLessThanOrEqual(60);
+  });
+
+  it('zählt keine Armbewegung, bei der der Oberarm in der Rumpflinie liegt', () => {
+    // Nachgestellt aus der Aufzeichnung vom 10.09.2026, 19:03 Uhr: chris kniete und hat
+    // nur die Arme in der Luft gebeugt und gestreckt. Der Ellbogen bewegt sich dabei
+    // wirklich (Umfang 47-102°), `minRepRangeDeg` greift also nicht. Was sich
+    // unterscheidet, ist die Richtung des Oberarms: quer zum Rumpf im Stütz, in der
+    // Rumpflinie beim Knien (gemessen 63-177°, im Median 174°).
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, repFrames(95, { flareDeg: 174 }));
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['ARMS_NOT_SUPPORTING']);
+    expect(discards[0].maxElbowFlareDeg).toBeGreaterThanOrEqual(120);
+  });
+
+  it('lässt einen einzelnen verrutschten Frame die Zählung nicht kippen', () => {
+    // Dieselbe Absicherung wie bei den Formwerten: Der geprüfte Flare ist ein Perzentil
+    // über die Wiederholung, kein Extremwert. Ein Aussetzer mit 175° - in den Messdaten
+    // der Normalfall bei kurzem Trackingverlust - darf keine echte Wiederholung kosten.
+    const analyzer = new PushUpAnalyzer();
+    const frames = repFrames(95);
+    frames[15] = buildFrame({ elbowAngleDeg: 95, flareDeg: 175 });
+    const { reps, discards } = runFrames(analyzer, frames);
+
+    expect(discards).toEqual([]);
+    expect(reps).toHaveLength(1);
+  });
+
+  it('trennt die Flare-Bewertung von der Flare-Zählschwelle', () => {
+    // 95° sind schlechte Technik (Schwelle 80°) und werden bepunktet - aber es bleibt ein
+    // Liegestütz. Erst ab 120° ist der Arm so weit in der Rumpflinie, dass er den Körper
+    // nicht mehr trägt. Zwei Fragen, zwei Zahlen.
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, repFrames(95, { flareDeg: 95 }));
+
+    expect(discards).toEqual([]);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].issues).toContain('ELBOWS_FLARED');
   });
 
   it('gives the benefit of the doubt when the hip was never measurable', () => {
