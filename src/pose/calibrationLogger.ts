@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Share } from 'react-native';
-import type { DiscardedRep, RepResult } from './formAnalysis';
+import type { DiscardedRep, RepResult, RepTrace } from './formAnalysis';
 import type { PostureBaseline } from './startPosition';
 
 /**
@@ -59,10 +59,45 @@ export interface CalibrationBaselineEntry extends PostureBaseline, CalibrationEn
 }
 
 /**
+ * Der zeitliche Verlauf einer Bewegung (siehe `RepTrace`) - Frame für Frame statt auf
+ * Kennzahlen eingedampft.
+ *
+ * # Warum das begrenzt wird
+ *
+ * Ein Verlauf ist rund 40-mal so groß wie die Zusammenfassung derselben Bewegung. Der Log
+ * geht über den Teilen-Dialog als Text an eine andere App, und Android deckelt die Größe
+ * einer solchen Übergabe - ab etwa einem Megabyte bricht die Übergabe ab, und zwar
+ * *stillschweigend*: chris drückt auf Teilen, und es passiert nichts. Ein Log, der sich
+ * nicht mehr verschicken lässt, ist wertlos, egal wie gut die Daten darin sind.
+ *
+ * Deshalb `MAX_TRACES` und `MAX_TRACE_FRAMES`: Nach 30 aufgezeichneten Bewegungen wird
+ * keine weitere mehr mitgeschrieben, und eine einzelne Bewegung wird auf 60 Frames
+ * ausgedünnt (jeder zweite, jeder dritte, ...). 60 Frames sind bei 30 Bildern/s zwei
+ * Sekunden am Stück - für die Form des Verlaufs reicht das mit Abstand, dafür geht es um
+ * die grobe Kurve und nicht um einzelne Frames.
+ *
+ * Die Zusammenfassungen (`kind: 'rep'` / `'discarded'`) laufen davon unberührt weiter: Die
+ * kosten fast nichts, und die Auswertung der Schwellwerte hängt an ihnen.
+ */
+export interface CalibrationTraceEntry extends RepTrace, CalibrationEntryBase {
+  kind: 'trace';
+}
+
+/**
  * Einträge aus Aufzeichnungen vor dem 09.09.2026 haben kein `kind` - dort gab es nur
  * gezählte Wiederholungen. Beim Auswerten gilt "kein kind" deshalb als `'rep'`.
  */
-export type CalibrationEntry = CalibrationRepEntry | CalibrationDiscardEntry | CalibrationBaselineEntry;
+export type CalibrationEntry =
+  | CalibrationRepEntry
+  | CalibrationDiscardEntry
+  | CalibrationBaselineEntry
+  | CalibrationTraceEntry;
+
+/** Wie viele Bewegungsverläufe je Aufzeichnung höchstens mitgeschrieben werden. */
+const MAX_TRACES = 30;
+
+/** Auf wie viele Frames ein einzelner Verlauf ausgedünnt wird. */
+const MAX_TRACE_FRAMES = 60;
 
 async function loadLog(): Promise<CalibrationEntry[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -109,6 +144,56 @@ export async function recordCalibrationDiscard(
   await append({ ...discarded, kind: 'discarded', recordedAtIso: new Date().toISOString(), source });
 }
 
+/**
+ * Dünnt einen Verlauf auf höchstens `MAX_TRACE_FRAMES` aus, indem jeder n-te Frame behalten
+ * wird.
+ *
+ * Bewusst gleichmäßig und nicht "die ersten 60": Ein abgeschnittener Verlauf zeigt nur den
+ * Weg nach unten, und die Frage, um die es geht - wie sich Hinunter und Hinauf zueinander
+ * verhalten -, wäre damit gerade nicht mehr beantwortbar. Der letzte Frame bleibt
+ * unabhängig vom Raster erhalten, sonst fehlt der Abschluss der Bewegung.
+ */
+function thinTrace(trace: RepTrace): RepTrace {
+  const count = trace.t.length;
+  if (count <= MAX_TRACE_FRAMES) return trace;
+  // Geteilt durch `MAX - 1` und nicht durch `MAX`: Der letzte Frame kommt unten
+  // unabhaengig vom Raster dazu, und ohne diesen Platz waere das Ergebnis genau einen
+  // Frame zu lang.
+  const step = Math.ceil(count / (MAX_TRACE_FRAMES - 1));
+  const keep = (index: number) => index % step === 0 || index === count - 1;
+  const pick = <T,>(values: T[]): T[] => values.filter((_, index) => keep(index));
+  return {
+    outcome: trace.outcome,
+    t: pick(trace.t),
+    elbow: pick(trace.elbow),
+    hip: pick(trace.hip),
+    flare: pick(trace.flare),
+    neck: pick(trace.neck),
+    horiz: pick(trace.horiz),
+    sx: pick(trace.sx),
+    sy: pick(trace.sy),
+    wx: pick(trace.wx),
+    wy: pick(trace.wy),
+  };
+}
+
+/**
+ * Zeichnet den Verlauf einer Bewegung auf - bis `MAX_TRACES` erreicht sind, danach still
+ * nicht mehr.
+ *
+ * Warum ohne Fehler und ohne Hinweis: Der Aufrufer sitzt im Kamerapfad und könnte mit einem
+ * Fehler nichts anfangen. Dass die Grenze erreicht wurde, sagt später die Auswertung -
+ * `npm run analyze:reps` zählt die Verläufe und nennt die Zahl.
+ */
+export async function recordCalibrationTrace(
+  trace: RepTrace,
+  source: CalibrationEntry['source']
+): Promise<void> {
+  const log = await loadLog();
+  if (log.filter((entry) => entry.kind === 'trace').length >= MAX_TRACES) return;
+  await append({ ...thinTrace(trace), kind: 'trace', recordedAtIso: new Date().toISOString(), source });
+}
+
 export async function recordCalibrationBaseline(
   baseline: PostureBaseline,
   source: CalibrationEntry['source']
@@ -118,6 +203,14 @@ export async function recordCalibrationBaseline(
 
 export async function clearCalibrationLog(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY);
+}
+
+/**
+ * Die gesammelten Einträge. Nur für Tests und die Auswertung - die App selbst schreibt
+ * hier ausschließlich hinein und liest sie beim Teilen als JSON.
+ */
+export async function loadCalibrationLog(): Promise<CalibrationEntry[]> {
+  return loadLog();
 }
 
 /** Wie viele Einträge gerade gesammelt sind - für die Rückfrage vor dem Löschen. */

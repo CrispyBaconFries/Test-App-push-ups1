@@ -26,12 +26,14 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-import type { DiscardedRep, RepResult } from '../formAnalysis';
+import type { DiscardedRep, RepResult, RepTrace } from '../formAnalysis';
 import {
   clearCalibrationLog,
   countCalibrationEntries,
+  loadCalibrationLog,
   recordCalibrationDiscard,
   recordCalibrationRep,
+  recordCalibrationTrace,
 } from '../calibrationLogger';
 
 beforeEach(() => {
@@ -116,5 +118,59 @@ describe('calibrationLogger', () => {
     await recordCalibrationRep(rep(0), 'training');
     await clearCalibrationLog();
     expect(await countCalibrationEntries()).toBe(0);
+  });
+});
+
+/** Ein Verlauf mit `frames` Frames, alle Reihen index-gleich. */
+function trace(frames: number, outcome: RepTrace['outcome'] = 'rep'): RepTrace {
+  const row = <T,>(value: (i: number) => T): T[] => Array.from({ length: frames }, (_, i) => value(i));
+  return {
+    outcome,
+    t: row((i) => i * 33),
+    elbow: row((i) => 170 - i),
+    hip: row(() => 165),
+    flare: row(() => 60),
+    neck: row(() => 130),
+    horiz: row(() => 80),
+    sx: row(() => 500),
+    sy: row((i) => 400 + i),
+    wx: row(() => 700),
+    wy: row(() => 700),
+  };
+}
+
+describe('Bewegungsverläufe', () => {
+  it('dünnt lange Bewegungen aus, behält aber Anfang und Ende', async () => {
+    // Ein Verlauf ist rund 40-mal so groß wie die Zusammenfassung derselben Bewegung, und
+    // der Teilen-Dialog von Android bricht bei zu großen Übergaben still ab. Ein Log, der
+    // sich nicht mehr verschicken lässt, ist wertlos.
+    await recordCalibrationTrace(trace(300), 'training');
+    const log = await loadCalibrationLog();
+    const stored = log[0] as RepTrace;
+
+    expect(stored.t.length).toBeLessThanOrEqual(60);
+    expect(stored.t[0]).toBe(0);
+    // Der letzte Frame bleibt unabhängig vom Raster - sonst fehlt der Abschluss der Bewegung.
+    expect(stored.t[stored.t.length - 1]).toBe(299 * 33);
+    // Alle Reihen müssen weiterhin zueinander passen, sonst ist der Verlauf wertlos.
+    for (const row of [stored.elbow, stored.hip, stored.flare, stored.sy, stored.wy]) {
+      expect(row.length).toBe(stored.t.length);
+    }
+  });
+
+  it('zeichnet höchstens 30 Bewegungen auf und hört dann still auf', async () => {
+    for (let i = 0; i < 35; i++) await recordCalibrationTrace(trace(10), 'training');
+    const log = await loadCalibrationLog();
+
+    expect(log.filter((e) => e.kind === 'trace')).toHaveLength(30);
+  });
+
+  it('lässt die Zusammenfassungen von der Obergrenze unberührt', async () => {
+    // Die kosten fast nichts, und die Auswertung der Schwellwerte hängt an ihnen.
+    for (let i = 0; i < 35; i++) await recordCalibrationTrace(trace(10), 'training');
+    for (let i = 0; i < 5; i++) await recordCalibrationRep(rep(i), 'training');
+    const log = await loadCalibrationLog();
+
+    expect(log.filter((e) => e.kind === 'rep')).toHaveLength(5);
   });
 });

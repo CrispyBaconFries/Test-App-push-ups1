@@ -533,6 +533,72 @@ ließe sich die Kalibrierung kniend einnehmen, und der ganze Satz liefe in einer
 die kein Liegestütz ist. Die Anzeige sagt dann: „Die Arme müssen dich tragen – Hände unter
 die Schultern, nicht nach vorn gestreckt."
 
+### Der nächste Schritt: der Ablauf statt nur der Eckwerte (10.09.2026)
+
+chris' Einwand nach dem zweiten Trick, und er trifft den Kern:
+
+> „ich glaub wir brauchen eine mischung aus schwellenwerte als auch der ablauf der bewegung.
+> wie sich die werte dazwischen verhalten bis sie die schwelle erreichen, sprich
+> ausgangsposition, runter gehen, wieder hoch drücken."
+
+**Warum das der richtige Weg ist.** Bis hierher wird jede Bewegung auf vier Zahlen
+eingedampft — tiefster Ellbogenwinkel, Hüfte, Flare, Nacken. Damit lassen sich Schwellwerte
+prüfen, aber nicht die Frage beantworten, *wie* sich die Werte dazwischen verhalten. Und
+genau daran hängt der Unterschied: Ein Liegestütz ist kein Satz Extremwerte, sondern ein
+Ablauf, in dem sich mehrere Größen **gemeinsam** bewegen — der Ellbogen beugt sich, und
+*währenddessen* sinkt die Schulter zum Boden, während die Hände liegen bleiben.
+
+Wer kniend die Arme in der Luft beugt, erzeugt exakt dieselben Eckwerte. Aber die Schulter
+bleibt, wo sie ist, und die Hände wandern. **Eine Zusammenfassung kann diesen Unterschied
+nicht ausdrücken, ein Verlauf schon.**
+
+#### Warum erst aufzeichnen und dann entscheiden
+
+Für eine Regel über den Verlauf braucht es Schwellwerte, und die lassen sich hier nicht
+raten: Wie weit das Handgelenk in einem echten Liegestütz auf diesem Gerät wandert, weiß
+niemand — MediaPipes Handgelenk ist die unruhigste Landmarke im ganzen Skelett. Dieselbe
+Reihenfolge wie bei jedem Schwellwert davor (Nacken, Tiefe, Bewegungsumfang, Flare): erst
+messen, dann festlegen. Jede Zahl in dieser App, die aus einer Schätzung statt aus Daten
+kam, war hinterher falsch.
+
+Deshalb zeichnet die App seit dem 10.09.2026 den **Verlauf jeder Bewegung** auf
+(`RepTrace`), gezählte wie verworfene — der Vergleich zwischen beiden ist der ganze Zweck.
+Je Frame, index-gleich und mit Zeitstempel:
+
+| Reihe | was |
+|---|---|
+| `elbow` / `hip` / `flare` / `neck` | die vier Winkel, Frame für Frame |
+| `horiz` | Rumpflage im Bild (100 = waagerecht) |
+| `sx` `sy` / `wx` `wy` | **Schulter- und Handgelenkposition im Bild** |
+
+Die letzte Zeile ist die eigentlich interessante: die einzige aufgezeichnete Größe, die
+nicht aus Winkeln besteht — und damit die einzige, die „die Hände liegen fest" von „die
+Hände wandern" überhaupt unterscheiden kann.
+
+#### Die Kennzahl, um die es geht
+
+`npm run analyze:reps` rechnet aus den Verläufen **S/H** aus: der Weg der Schulter geteilt
+durch den Weg des Handgelenks, beides in Oberarmlängen (damit unabhängig davon, wie weit
+das Handy weg steht). Im Liegestütz liegen die Hände fest und die Schulter wandert zu ihnen
+— S/H deutlich über 1. Wer die Arme in der Luft beugt, hat es genau umgekehrt — S/H unter
+1. Dazu druckt das Skript den Ellbogenverlauf als Kurve, damit die Form der Bewegung
+sichtbar wird und nicht nur ihre Eckwerte.
+
+**Noch ist das eine Messung, keine Regel.** Die Schwelle kommt, wenn die erste Aufzeichnung
+mit Verläufen da ist — und nur dann, wenn die Zahlen sie hergeben. Sollte sich S/H auf dem
+Gerät als zu unruhig erweisen (das Handgelenk ist der wahrscheinlichste Kandidat dafür),
+steht das hier genauso, statt dass eine geratene Schwelle echte Wiederholungen wegwirft.
+
+#### Was die Aufzeichnung kostet
+
+Ein Verlauf ist rund 40-mal so groß wie die Zusammenfassung derselben Bewegung. Der Log
+geht über den Teilen-Dialog als Text an eine andere App, und Android deckelt die Größe
+einer solchen Übergabe — ab etwa einem Megabyte bricht sie ab, und zwar *stillschweigend*.
+Ein Log, der sich nicht mehr verschicken lässt, ist wertlos, egal wie gut die Daten darin
+sind. Deshalb: höchstens **30 Bewegungen** je Aufzeichnung, jede auf **60 Frames**
+ausgedünnt (gleichmäßig, nicht vorne abgeschnitten — sonst fehlt genau der Weg nach oben,
+um den es geht). Die Zusammenfassungen laufen davon unberührt weiter.
+
 #### Ein Verwurf ist nicht mehr stumm
 
 Bisher blieb der Zähler bei einem Verwurf einfach stehen. Für jemanden, der eine
@@ -1693,8 +1759,8 @@ Kurz gesagt: Die Zählung ist genauso fair/genau wie im Solo-Modus (gleiche Logi
 *nicht* hieb- und stichfest gegen einen absichtlich manipulierten Client — das ist eine
 bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen.
 
-**Was der Client selbst inzwischen aussortiert** (kein Anti-Cheat, aber die drei Tricks,
-die ohne Werkzeug funktionierten):
+**Was der Client selbst inzwischen aussortiert** (kein Anti-Cheat, aber die Tricks, die
+ohne Werkzeug funktionierten):
 
 1. **Vor der Kamera stehen und hinlegen** zählt nicht mehr — die Startposition muss
    eingenommen und ruhig gehalten werden, bevor die Zustandsmaschine überhaupt läuft.

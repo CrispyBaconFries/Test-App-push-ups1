@@ -96,6 +96,69 @@ export interface DiscardedRep {
 }
 
 /**
+ * Der zeitliche Verlauf **einer** Bewegung - jeder Frame, in Reihe, mit Zeitstempel.
+ *
+ * # Warum das existiert (10.09.2026)
+ *
+ * Bis hierher hat die Erkennung jede Bewegung auf vier Zahlen eingedampft: tiefster
+ * Ellbogenwinkel, Hüfte, Flare, Nacken. Damit lassen sich Schwellwerte prüfen - aber nicht
+ * die Frage beantworten, die chris gestellt hat: *wie* sich die Werte zwischen Anfang und
+ * Umkehrpunkt verhalten.
+ *
+ * Und genau daran hängt der nächste Schritt. Ein Liegestütz ist keine Menge von Extremwerten,
+ * sondern ein Ablauf, in dem sich mehrere Größen **gemeinsam** bewegen: Der Ellbogen beugt
+ * sich, und *währenddessen* sinkt die Schulter zum Boden, während die Hände liegen bleiben.
+ * Wer kniend die Arme in der Luft beugt, erzeugt dieselben Extremwerte - aber die Schulter
+ * bleibt, wo sie ist, und die Hände wandern. Eine Zusammenfassung kann diesen Unterschied
+ * nicht ausdrücken, ein Verlauf schon.
+ *
+ * # Warum erst aufzeichnen und dann entscheiden
+ *
+ * Für eine Regel über den Verlauf brauche ich Schwellwerte, und die kann ich nicht raten:
+ * Wie weit das Handgelenk in einem echten Liegestütz auf diesem Gerät wandert, weiß
+ * niemand - MediaPipes Handgelenk ist bekanntermaßen die unruhigste Landmarke. Deshalb
+ * zeichnet diese Struktur zuerst auf, was tatsächlich passiert. Dieselbe Reihenfolge wie
+ * bei allen Schwellwerten davor (Nacken, Tiefe, Bewegungsumfang): erst messen, dann
+ * festlegen - siehe README.
+ *
+ * Aufgezeichnet wird **jede** Bewegung, auch die verworfenen: Der Vergleich zwischen einem
+ * echten Liegestütz und einem ausgetricksten ist der ganze Zweck.
+ *
+ * `null` in einer Reihe heißt "in diesem Frame nicht messbar" - nicht 0. Die Reihen sind
+ * index-gleich zu `t`; anders als die Kennzahl-Arrays im Sammler, die einzeln gefiltert
+ * werden und deshalb nicht zueinander passen.
+ */
+export interface RepTrace {
+  /** `'rep'` wenn gezählt, sonst der Grund, aus dem verworfen wurde. */
+  outcome: 'rep' | RepDiscardReason;
+  /** Millisekunden seit Beginn der Bewegung, ein Eintrag je verwertbarem Frame. */
+  t: number[];
+  /** Schulter-Ellbogen-Handgelenk (Grad). */
+  elbow: number[];
+  /** Schulter-Hüfte-Knie (Grad). */
+  hip: (number | null)[];
+  /** Ellbogen-Schulter-Hüfte (Grad) - die Richtung des Oberarms zum Rumpf. */
+  flare: (number | null)[];
+  /** Ohr-Schulter-Hüfte (Grad). */
+  neck: (number | null)[];
+  /** Rumpflage im Bild × 100 (100 = waagerecht, 0 = senkrecht). */
+  horiz: (number | null)[];
+  /**
+   * Schulter- und Handgelenkposition im **Bild** × 1000 (normalisiert, kann außerhalb
+   * 0..1000 liegen - MediaPipe schätzt auch außerhalb des Bildes weiter).
+   *
+   * Die eigentlich interessante Reihe: Im Liegestütz liegen die Hände fest und die
+   * Schulter wandert zu ihnen hin; beim Armbeugen in der Luft ist es umgekehrt. Das ist
+   * die einzige hier aufgezeichnete Größe, die nicht aus Winkeln besteht - und damit die
+   * einzige, die diesen Unterschied überhaupt sehen kann.
+   */
+  sx: (number | null)[];
+  sy: (number | null)[];
+  wx: (number | null)[];
+  wy: (number | null)[];
+}
+
+/**
  * Eine gezählte und bewertete Wiederholung.
  *
  * Zu den vier Winkel-Kennzahlen: Sie sind seit dem 09.09.2026 bewusst **keine**
@@ -579,8 +642,23 @@ function roundOrNull(value: number): number | null {
  * einige Dutzend Zahlen - vernachlässigbar, und die Arrays werden mit jeder
  * Wiederholung neu angelegt.
  */
+interface TraceSample {
+  tMs: number;
+  elbow: number;
+  hip: number | null;
+  flare: number | null;
+  neck: number | null;
+  horiz: number | null;
+  sx: number | null;
+  sy: number | null;
+  wx: number | null;
+  wy: number | null;
+}
+
 interface RepAccumulator {
   startTimeMs: number;
+  /** Jeder verwertbare Frame dieser Bewegung, in Reihe - Grundlage für `RepTrace`. */
+  samples: TraceSample[];
   elbowAngles: number[];
   hipStraightness: number[];
   elbowFlare: number[];
@@ -600,6 +678,7 @@ interface RepAccumulator {
 function freshAccumulator(timeMs: number): RepAccumulator {
   return {
     startTimeMs: timeMs,
+    samples: [],
     elbowAngles: [],
     hipStraightness: [],
     elbowFlare: [],
@@ -650,6 +729,15 @@ export class PushUpAnalyzer {
   private readonly gateCriteria: Partial<StartPositionCriteria>;
   private baseline: PostureBaseline | null = null;
   /**
+   * Der Verlauf der zuletzt abgeschlossenen Bewegung, bis `processFrame` ihn zurückgibt.
+   *
+   * Über ein Feld und nicht über den Rückgabewert von `finishRep`/`discardRep`: Beide
+   * werden an mehreren Stellen der Zustandsmaschine aufgerufen, und der Verlauf müsste
+   * sonst durch jeden dieser Pfade einzeln durchgereicht werden - genau dort geht er dann
+   * irgendwann verloren.
+   */
+  private pendingTrace: RepTrace | null = null;
+  /**
    * Wie oft in dieser Sitzung eine Bewegung verworfen wurde, nach Grund. Rein
    * diagnostisch: Steigt hier etwas auffällig, stimmt etwas mit der Aufnahmesituation
    * nicht (Handy zu nah, Person halb aus dem Bild, Bildrate eingebrochen) - und nicht
@@ -694,6 +782,7 @@ export class PushUpAnalyzer {
     };
     this.thresholds = this.baseThresholds;
     this.baseline = null;
+    this.pendingTrace = null;
     this.gate = new StartPositionGate(this.gateCriteria);
   }
 
@@ -735,7 +824,16 @@ export class PushUpAnalyzer {
     pose: Pose,
     timestampMs: number,
     imageLandmarks?: Pose
-  ): { live: LiveFeedback; completedRep: RepResult | null; discardedRep: DiscardedRep | null } {
+  ): {
+    live: LiveFeedback;
+    completedRep: RepResult | null;
+    discardedRep: DiscardedRep | null;
+    /**
+     * Der Verlauf der gerade abgeschlossenen Bewegung - gezählt oder verworfen -, sonst
+     * `null`. Nur für die Aufzeichnung (siehe `RepTrace`), die Bewertung benutzt ihn nicht.
+     */
+    trace: RepTrace | null;
+  } {
     const t = this.thresholds;
     /**
      * Eine Landmarke ist nur brauchbar, wenn sie sowohl sicher erkannt als auch
@@ -797,6 +895,7 @@ export class PushUpAnalyzer {
         },
         completedRep: null,
         discardedRep,
+        trace: this.takeTrace(),
       };
     }
 
@@ -848,6 +947,7 @@ export class PushUpAnalyzer {
         },
         completedRep: null,
         discardedRep,
+        trace: this.takeTrace(),
       };
     }
 
@@ -925,6 +1025,27 @@ export class PushUpAnalyzer {
 
     if (this.acc && this.phase !== 'up') {
       this.acc.trackedFrames += 1;
+      // Der Verlauf: index-gleich und mit Zeitstempel, im Unterschied zu den
+      // Kennzahl-Arrays darunter, die einzeln gefiltert werden. Warum es das gibt, steht
+      // bei `RepTrace`.
+      const shoulderImage = imageLandmarks?.[idx.shoulder];
+      const wristImage = imageLandmarks?.[idx.wrist];
+      const per1000 = (v: number | undefined) => (v === undefined ? null : Math.round(v * 1000));
+      // Eigener Helfer statt `roundOrNull`: Der behandelt NaN ("nie gemessen"), hier geht
+      // es um bereits als `null` markierte Werte ("in diesem Frame nicht messbar").
+      const deg = (v: number | null) => (v === null ? null : Math.round(v));
+      this.acc.samples.push({
+        tMs: Math.round(timestampMs - this.acc.startTimeMs),
+        elbow: Math.round(elbowAngleDeg),
+        hip: deg(hipStraightnessDeg),
+        flare: deg(elbowFlareDeg),
+        neck: deg(neckAngleDeg),
+        horiz: torsoHorizontalRatio === null ? null : Math.round(torsoHorizontalRatio * 100),
+        sx: per1000(shoulderImage?.x),
+        sy: per1000(shoulderImage?.y),
+        wx: per1000(wristImage?.x),
+        wy: per1000(wristImage?.y),
+      });
       this.acc.elbowAngles.push(elbowAngleDeg);
       if (hipStraightnessDeg !== null) this.acc.hipStraightness.push(hipStraightnessDeg);
       if (elbowFlareDeg !== null) this.acc.elbowFlare.push(elbowFlareDeg);
@@ -951,6 +1072,7 @@ export class PushUpAnalyzer {
       },
       completedRep,
       discardedRep,
+      trace: this.takeTrace(),
     };
   }
 
@@ -985,8 +1107,42 @@ export class PushUpAnalyzer {
    * Wiederholungszähler wird bewusst nicht erhöht - eine verworfene Wiederholung darf
    * keine Nummer verbrauchen, sonst klaffen später Lücken in der Historie.
    */
+  /**
+   * Baut den Verlauf der gerade abgeschlossenen Bewegung. Muss aufgerufen werden, **bevor**
+   * `this.acc` geleert wird.
+   *
+   * Bewusst parallele Reihen statt einer Liste von Objekten: Das Ergebnis geht als JSON
+   * durch den Teilen-Dialog, und Android deckelt dessen Größe. `{"t":[0,33,66],...}` ist
+   * rund ein Drittel so lang wie `[{"t":0,...},{"t":33,...}]`, ohne dass ein Mensch es
+   * anders lesen müsste - ausgewertet wird es ohnehin am PC.
+   */
+  /** Gibt den zuletzt aufgezeichneten Verlauf heraus und vergisst ihn - genau einmal. */
+  private takeTrace(): RepTrace | null {
+    const trace = this.pendingTrace;
+    this.pendingTrace = null;
+    return trace;
+  }
+
+  private buildTrace(outcome: RepTrace['outcome']): RepTrace {
+    const samples = this.acc?.samples ?? [];
+    return {
+      outcome,
+      t: samples.map((f) => f.tMs),
+      elbow: samples.map((f) => f.elbow),
+      hip: samples.map((f) => f.hip),
+      flare: samples.map((f) => f.flare),
+      neck: samples.map((f) => f.neck),
+      horiz: samples.map((f) => f.horiz),
+      sx: samples.map((f) => f.sx),
+      sy: samples.map((f) => f.sy),
+      wx: samples.map((f) => f.wx),
+      wy: samples.map((f) => f.wy),
+    };
+  }
+
   private discardRep(reason: RepDiscardReason, timestampMs: number): DiscardedRep {
     const acc = this.acc!;
+    this.pendingTrace = this.buildTrace(reason);
     const discarded: DiscardedRep = {
       reason,
       durationMs: timestampMs - acc.startTimeMs,
@@ -1136,6 +1292,7 @@ export class PushUpAnalyzer {
       elbowRangeDeg: Math.round(elbowRangeDeg),
     };
 
+    this.pendingTrace = this.buildTrace('rep');
     this.acc = null;
     return { rep, discarded: null };
   }

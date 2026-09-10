@@ -581,6 +581,68 @@ describe('PushUpAnalyzer', () => {
     expect(reps[0].issues).toContain('ELBOWS_FLARED');
   });
 
+  it('zeichnet den Verlauf jeder Bewegung auf, gezählt wie verworfen', () => {
+    // Ohne den Verlauf lässt sich die Frage nicht beantworten, die den Unterschied
+    // ausmacht: Bewegt sich die Schulter zu den Händen (Liegestütz) oder wandern die
+    // Hände (Arme in der Luft beugen)? Beide erzeugen denselben Ellbogenwinkel.
+    const analyzer = new PushUpAnalyzer();
+    const startMs = armAnalyzer(analyzer, 0);
+    const traces: NonNullable<ReturnType<PushUpAnalyzer['processFrame']>['trace']>[] = [];
+    const play = (poses: Pose[], from: number) => {
+      poses.forEach((pose, i) => {
+        const out = analyzer.processFrame(pose, from + i * FRAME_MS);
+        if (out.trace) traces.push(out.trace);
+      });
+      return from + poses.length * FRAME_MS;
+    };
+
+    const afterRep = play(repFrames(95), startMs);
+    play(repFrames(95, { flareDeg: 174 }), afterRep);
+
+    expect(traces.map((t) => t.outcome)).toEqual(['rep', 'ARMS_NOT_SUPPORTING']);
+    for (const t of traces) {
+      // Index-gleich zu `t` - anders als die Kennzahl-Arrays im Sammler, die einzeln
+      // gefiltert werden. Passt das nicht, ist der ganze Verlauf wertlos.
+      expect(t.t.length).toBeGreaterThan(10);
+      for (const row of [t.elbow, t.hip, t.flare, t.neck, t.horiz, t.sx, t.sy, t.wx, t.wy]) {
+        expect(row).toHaveLength(t.t.length);
+      }
+      // Die Zeit läuft ab dem Beginn der Bewegung, nicht ab dem Start der Sitzung.
+      expect(t.t[0]).toBe(0);
+    }
+  });
+
+  it('hält im Verlauf fest, wo Schulter und Handgelenk im Bild waren', () => {
+    // Die einzige aufgezeichnete Größe, die nicht aus Winkeln besteht - und damit die
+    // einzige, die "die Hände liegen fest" von "die Hände wandern" unterscheiden kann.
+    // Geprüft wird, dass wirklich der Wert *dieses* Frames ankommt, in Tausendstel: Eine
+    // um einen Frame verschobene oder falsch skalierte Reihe fällt beim Auswerten nicht
+    // auf, macht die Auswertung aber falsch.
+    const analyzer = new PushUpAnalyzer();
+    const imageAt = (frame: number): Pose =>
+      Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5 + frame / 1000, z: 0 }));
+
+    let ms = 0;
+    for (let i = 0; i < ARMING_FRAMES; i++, ms += FRAME_MS) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, flareDeg: PLANK_FLARE_DEG }), ms, imageAt(0));
+    }
+
+    let trace: ReturnType<PushUpAnalyzer['processFrame']>['trace'] = null;
+    repFrames(95).forEach((pose, i) => {
+      const out = analyzer.processFrame(pose, ms + i * FRAME_MS, imageAt(i));
+      if (out.trace) trace = out.trace;
+    });
+
+    expect(trace).not.toBeNull();
+    expect(trace!.sy.every((v) => v !== null)).toBe(true);
+    // Der Verlauf beginnt dort, wo die Wiederholung beginnt - also erst, wenn der Arm
+    // unter `elbowUpDeg` fällt, ein paar Frames nach dem Start der Reihe. Deshalb keine
+    // feste Zahl, sondern der *Abstand*: genau ein Tausendstel je Frame, ohne Versatz.
+    expect(trace!.sy[0]).toBeGreaterThanOrEqual(500);
+    expect(trace!.sy[5]! - trace!.sy[0]!).toBe(5);
+    expect(trace!.sy[20]! - trace!.sy[0]!).toBe(20);
+  });
+
   it('gives the benefit of the doubt when the hip was never measurable', () => {
     // Füße und Hüfte außerhalb des Bildes: Die Stütz-Prüfung darf dann nicht greifen,
     // sonst verschwinden Wiederholungen wegen einer Kamera-Position statt wegen der Form.

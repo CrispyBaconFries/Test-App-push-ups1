@@ -31,7 +31,12 @@ import { syncNationsProgress } from '../nations/nationsSync';
 import { useAuth } from '../auth/AuthContext';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { recordCalibrationBaseline, recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
+import {
+  recordCalibrationBaseline,
+  recordCalibrationDiscard,
+  recordCalibrationRep,
+  recordCalibrationTrace,
+} from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
@@ -101,7 +106,7 @@ export function WorkoutScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(
+    const { live: liveResult, completedRep, discardedRep, trace } = analyzer.processFrame(
       worldLandmarks,
       Date.now(),
       // Die Bildlandmarken sind die einzige verlässliche Auskunft darüber, ob ein
@@ -169,6 +174,12 @@ export function WorkoutScreen({ navigation }: Props) {
       // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
       recordCalibrationDiscard(discardedRep, 'training').catch(() => {});
     }
+
+    // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+    // Der Verlauf JEDER Bewegung, gezählt wie verworfen: Erst der Vergleich zwischen
+    // beiden zeigt, woran sich ein echter Liegestütz von einem ausgetricksten
+    // unterscheidet (siehe `RepTrace`).
+    if (trace) recordCalibrationTrace(trace, 'training').catch(() => {});
 
     // Rebuilt every frame (no throttling) so the overlay tracks the camera in
     // near-real-time - it used to only update every 2nd result, which read as

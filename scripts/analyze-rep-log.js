@@ -211,6 +211,86 @@ if (withRange.length > 0) {
   console.log('\nBewegungsumfang: nicht aufgezeichnet (Aufzeichnung vor dem 10.09.2026?)');
 }
 
+// --- Bewegungsverlaeufe -----------------------------------------------------------------
+// Der Teil, der ueber Schwellwerte hinausgeht: Ein Liegestuetz ist kein Satz Extremwerte,
+// sondern ein Ablauf. Die entscheidende Frage laesst sich nur hier stellen - bewegt sich
+// die SCHULTER zu den Haenden hin (Liegestuetz), oder wandern die HAENDE (Arme in der
+// Luft beugen)? Beide erzeugen denselben Ellbogenwinkel-Verlauf.
+const traces = entries.filter((e) => e.kind === 'trace');
+if (traces.length > 0) {
+  console.log('\n--- Bewegungsverlaeufe ------------------------------------------------------');
+
+  const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+  // Groesste Entfernung zwischen zwei Punkten der Bahn. Nicht die Summe der Schritte:
+  // Die waechst mit dem Rauschen und mit der Dauer, die Spannweite nicht.
+  const span = (xs, ys) => {
+    let max = 0;
+    for (let i = 0; i < xs.length; i++) {
+      for (let j = i + 1; j < xs.length; j++) {
+        if (xs[i] == null || xs[j] == null) continue;
+        max = Math.max(max, dist(xs[i], ys[i], xs[j], ys[j]));
+      }
+    }
+    return max;
+  };
+  const spark = (values) => {
+    const bars = '▁▂▃▄▅▆▇█';
+    const ok = values.filter((v) => typeof v === 'number');
+    if (ok.length === 0) return '(nichts)';
+    const lo = Math.min(...ok);
+    const hi = Math.max(...ok);
+    return values
+      .map((v) => (typeof v !== 'number' ? ' ' : bars[Math.min(7, Math.floor(((v - lo) / (hi - lo || 1)) * 8))]))
+      .join('');
+  };
+
+  console.log('  Aufgezeichnet: ' + traces.length + ' Bewegungen' + (traces.length >= 30 ? ' (Obergrenze erreicht)' : ''));
+  console.log('\n  Ergebnis              Dauer  Ellbogen   Schulter  Handgel.  S/H   Ellbogenverlauf');
+  const rows = [];
+  for (const tr of traces) {
+    // Massstab: die Oberarmlaenge im Bild. Damit sind die Wege unabhaengig davon, wie weit
+    // das Handy weg steht - genau wie der Bewegungsumfang unabhaengig von der Perspektive ist.
+    const armLengths = tr.t
+      .map((_, i) => (tr.sx[i] == null || tr.wx[i] == null ? null : dist(tr.sx[i], tr.sy[i], tr.wx[i], tr.wy[i])))
+      .filter((v) => v !== null && v > 0);
+    const scale = armLengths.length ? median(armLengths) : null;
+    const shoulder = span(tr.sx, tr.sy);
+    const wrist = span(tr.wx, tr.wy);
+    const rel = (v) => (scale ? v / scale : null);
+    const ratio = wrist > 0 ? shoulder / wrist : null;
+    const elbows = tr.elbow.filter((v) => typeof v === 'number');
+    rows.push({ outcome: tr.outcome, shoulder: rel(shoulder), wrist: rel(wrist), ratio });
+    const num = (v, d = 2) => (v === null ? '   -  ' : v.toFixed(d).padStart(6));
+    console.log(
+      '  ' + String(tr.outcome).padEnd(20) +
+        String(tr.t[tr.t.length - 1] ?? 0).padStart(5) + ' ' +
+        String(Math.min(...elbows) + '-' + Math.max(...elbows) + '°').padStart(10) + ' ' +
+        num(rel(shoulder)) + '   ' + num(rel(wrist)) + ' ' + num(ratio, 1) + '   ' + spark(tr.elbow)
+    );
+  }
+
+  const gezaehlt = rows.filter((r) => r.outcome === 'rep' && r.ratio !== null).map((r) => r.ratio);
+  const verworfen = rows.filter((r) => r.outcome !== 'rep' && r.ratio !== null).map((r) => r.ratio);
+  console.log(
+    '\n  S/H = Weg der Schulter geteilt durch Weg des Handgelenks, beides in Oberarmlaengen.\n' +
+      '  Im Liegestuetz liegen die Haende fest und die Schulter wandert zu ihnen: S/H deutlich\n' +
+      '  ueber 1. Wer die Arme in der Luft beugt, hat es genau umgekehrt: S/H unter 1.'
+  );
+  if (gezaehlt.length && verworfen.length) {
+    console.log(
+      `  -> gezaehlt: Median ${median(gezaehlt).toFixed(1)} (${gezaehlt.length} Bewegungen), ` +
+        `verworfen: Median ${median(verworfen).toFixed(1)} (${verworfen.length}). ` +
+        (median(gezaehlt) > 2 * median(verworfen)
+          ? 'Klare Trennung - daraus laesst sich eine Regel bauen.'
+          : 'Keine klare Trennung - so taugt das Mass noch nicht als Regel.')
+    );
+  } else {
+    console.log('  -> Zum Vergleichen fehlen noch Verlaeufe der jeweils anderen Sorte.');
+  }
+} else {
+  console.log('\nBewegungsverlaeufe: nicht aufgezeichnet (Aufzeichnung vor dem 10.09.2026 abends?)');
+}
+
 console.log('\n--- Sitzungen ---------------------------------------------------------------');
 console.log('  #  Start                 n  Score  Tiefe  Hüfte (Spanne)    Flare  Nacken');
 sessions.forEach((s, i) => {

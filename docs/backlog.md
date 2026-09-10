@@ -53,8 +53,9 @@ Erkennung oder der Optik geraten statt begründet.
     Schwelle selbst ist am 10.09.2026 auf 105° korrigiert; offen ist die Kennzahl.
 11. Sichtbarkeit durch die native Bridge (Patch) — Punkt 1.4. Braucht Prebuild.
 12. Sitzungskontext erfassen — Punkt 1.5.
-13. Frame-Zeitreihen statt nur Kennzahlen — Punkt 1.6.
-    Dazu: Grenzfälle des Bewegungsumfangs beobachten — Punkt 1.3.
+13. **Regel aus den Bewegungsverläufen** — Punkt 1.6. Die Aufzeichnung steht; die Schwelle
+    braucht eine Aufzeichnung mit Verläufen (echte Sätze *und* Trickversuche im Vergleich).
+    Dazu: Grenzfälle der beiden Zählschwellen beobachten — Punkt 1.3.
 
 ### Phase 4 — vor einer Veröffentlichung
 
@@ -181,8 +182,17 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
    eine Selbsteinschätzung nach dem Satz. Ohne das mischen sich mehrere Personen aus
    unbekannten Perspektiven in einem Datensatz.
 
-6. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen nicht,
-   um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
+6. ~~**Zeitreihen statt nur Zusammenfassungen**~~ **Aufzeichnung steht seit 10.09.2026**
+   (`RepTrace`, siehe README „Der nächste Schritt: der Ablauf statt nur der Eckwerte").
+   Jede Bewegung wird Frame für Frame mitgeschrieben, gezählte wie verworfene, inklusive
+   Schulter- und Handgelenkposition im Bild. `npm run analyze:reps` rechnet daraus S/H aus
+   (Weg der Schulter geteilt durch Weg des Handgelenks).
+
+   **Offen ist die Regel daraus.** Sie kommt erst, wenn eine Aufzeichnung mit Verläufen
+   vorliegt und die Zahlen eine Schwelle hergeben — das Handgelenk ist MediaPipes
+   unruhigste Landmarke, und es kann gut sein, dass S/H auf dem Gerät zu sehr streut. Dann
+   steht das hier, statt dass eine geratene Schwelle echte Wiederholungen wegwirft.
+
 
 ## 2. Kalibrierung in der Startposition — ERLEDIGT (10.09.2026)
 

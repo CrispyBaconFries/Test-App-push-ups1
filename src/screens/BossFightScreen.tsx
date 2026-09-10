@@ -34,7 +34,12 @@ import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions'
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { recordCalibrationBaseline, recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
+import {
+  recordCalibrationBaseline,
+  recordCalibrationDiscard,
+  recordCalibrationRep,
+  recordCalibrationTrace,
+} from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
 import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
@@ -107,7 +112,7 @@ export function BossFightScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(
+    const { live: liveResult, completedRep, discardedRep, trace } = analyzer.processFrame(
       worldLandmarks,
       Date.now(),
       // Die Bildlandmarken sind die einzige verlässliche Auskunft darüber, ob ein
@@ -157,6 +162,12 @@ export function BossFightScreen({ navigation }: Props) {
       // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
       recordCalibrationDiscard(discardedRep, 'boss').catch(() => {});
     }
+
+    // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
+    // Der Verlauf JEDER Bewegung, gezählt wie verworfen: Erst der Vergleich zwischen
+    // beiden zeigt, woran sich ein echter Liegestütz von einem ausgetricksten
+    // unterscheidet (siehe `RepTrace`).
+    if (trace) recordCalibrationTrace(trace, 'boss').catch(() => {});
 
     // Rebuilt every frame (no throttling) - see WorkoutScreen's onResults for why.
     const frameDims = vc.getFrameDims(result);
