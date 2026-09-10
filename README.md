@@ -170,6 +170,66 @@ Danach müssen in der Ausgabe wieder alle Patches mit `✔` erscheinen. Hilft da
 räumt `npm ci` alles ab und installiert streng nach `package-lock.json` neu (dauert
 länger, ist aber garantiert sauber).
 
+### Wenn der Build mit `:app:packageRelease` abbricht
+
+```
+> Task :app:packageRelease FAILED
+Execution failed for task ':app:packageRelease'.
+> A failure occurred while executing com.android.build.gradle.tasks.PackageAndroidArtifact$IncrementalSplitterRunnable
+```
+
+**Das liegt nicht am Projektcode**, und das steht auch im Log selbst: Direkt darüber
+meldet Metro `Android Bundled … index.ts (1716 modules)` und `Done writing bundle output`.
+Der komplette JavaScript-Anteil ist also bereits übersetzt und geschrieben. `packageRelease`
+ist der Schritt *danach* — er packt die fertigen Teile zur APK zusammen und signiert sie.
+Ein Fehler im TypeScript-Code kann hier gar nicht mehr auftreten; der hätte den Build ein
+paar Zeilen früher beendet.
+
+**Woran es stattdessen liegt.** Der Schritt arbeitet *inkrementell*: Er baut die APK aus dem
+Zwischenstand des letzten Laufs. Im Log ist das an `1103 actionable tasks: 29 executed,
+1074 up-to-date` zu sehen — 97 % der Arbeit stammen aus dem Zwischenspeicher. Ist dieser
+Zwischenstand beschädigt oder liegt eine Datei darin gesperrt, bricht genau dieser Schritt
+ab. Typische Ursachen unter Windows: ein Virenscanner, der die halbfertige APK öffnet,
+mehrere parallele Gradle-Dienste (`3 incompatible Daemons could not be reused` weiter oben
+im Log ist ein Hinweis darauf), oder ein abgebrochener vorheriger Build.
+
+**Behebung** — die Dienste beenden und den Zwischenstand der App wegwerfen (nicht das ganze
+`android/`-Verzeichnis, das müsste sonst neu generiert werden):
+
+```powershell
+cd C:\Users\chris\StudioProjects\Test-App-push-ups1
+```
+
+```powershell
+.\android\gradlew.bat --stop
+```
+
+```powershell
+Remove-Item -Recurse -Force android\app\build
+```
+
+```powershell
+$env:JAVA_HOME = "C:\Users\chris\AppData\Local\Programs\Eclipse Adoptium\jdk-17.0.20.101-hotspot"
+```
+
+```powershell
+npm run android:release
+```
+
+Der nächste Build dauert dann länger (der Zwischenspeicher der App ist weg, der der
+nativen Module bleibt erhalten), packt die APK aber vollständig neu statt inkrementell.
+
+**Wenn es danach wieder auftritt**, fehlt die eigentliche Fehlermeldung — Gradle verbirgt
+sie hinter dem generischen `IncrementalSplitterRunnable`. Dieser Aufruf legt sie offen:
+
+```powershell
+.\android\gradlew.bat app:assembleRelease --stacktrace 2>&1 | Select-String -Pattern "Caused by" -Context 0,3
+```
+
+Dort steht dann, welche Datei sich nicht schreiben oder löschen ließ. Das ist die
+Information, die für eine echte Behebung fehlt — ohne sie bleibt jeder weitere Schritt
+geraten.
+
 ### Wenn der Build mit „build.ninja still dirty" abbricht
 
 ```
