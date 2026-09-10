@@ -30,17 +30,34 @@ import { percentile } from './stats';
  * gestreckt, Körper gestreckt, Arme unter den Schultern - und das alles **ruhig
  * gehalten**. Das Ruhighalten ist gegen Punkt 3 der entscheidende Teil: Jeder Weg nach
  * unten führt durch die Stützhaltung *hindurch*, aber niemand bleibt dabei zwei Sekunden
- * lang innerhalb weniger Grad stehen.
+ * lang in derselben Haltung.
  *
- * # Warum kein Kopf-Rahmen
+ * # Warum "ruhig" nicht "unbewegt" heißt (Änderung vom 10.09.2026)
  *
- * Ursprünglich war ein kopfförmiger Rahmen auf dem Bildschirm geplant, in den man sich
- * hineinstellt. Dagegen sprechen zwei Dinge: Er hängt an Bildschirmkoordinaten und damit
- * daran, wie das Handy gerade steht - kippt es leicht, stimmt der Rahmen nicht mehr. Und
- * er verlangt, dass man aus zwei Metern Entfernung im Stütz liegend Details auf einem am
- * Boden liegenden Handy erkennt. Das Halten der Position braucht dagegen keinen Blick auf
- * den Bildschirm: Es meldet sich über die Anzeige *und* über einen Ton, und es misst genau
- * das, was später gebraucht wird - die eigene Haltung, nicht die Lage im Bild.
+ * Die erste Fassung hat die Spannweite (größter minus kleinster Wert) über das ganze
+ * Haltefenster geprüft und bei Überschreitung vorne gekürzt. Auf dem Gerät war das
+ * unbrauchbar: Bei 30 Bildern/s stehen nach zwei Sekunden rund 60 Frames im Fenster, und
+ * die Spannweite ist der Abstand der **beiden extremsten** davon. Ein einziger
+ * verrutschter Frame - also genau das, was MediaPipe mehrmals pro Sekunde liefert - hat
+ * die Toleranz gesprengt und die gesammelte Haltezeit weggefressen. chris' Rückmeldung
+ * dazu: "Sobald sich eine Linie minimal bewegt, obwohl man selbst still hält, läuft der
+ * Timer von vorne los und man kommt nie zu den Liegestützen."
+ *
+ * Ein Extremwert ist die falsche Kennzahl für Rauschen - dieselbe Erkenntnis wie in
+ * `stats.ts` für die Formbewertung. Jetzt werden zwei Dinge getrennt geprüft, die vorher
+ * in einer Zahl vermischt waren:
+ *
+ * - **Rauschen** über die robuste Spannweite (10.-90. Perzentil): Die extremsten 20 %
+ *   der Frames dürfen liegen, wo sie wollen. Ein Ausreißer kostet nichts mehr.
+ * - **Wandern** über den Unterschied der *Mediane* von erstem und letztem Drittel des
+ *   Fensters. Der Median über rund 20 Frames ist gegen Rauschen praktisch unempfindlich
+ *   (der Zufallsfehler sinkt mit der Wurzel der Anzahl), reagiert aber sofort, wenn sich
+ *   die Haltung tatsächlich verschiebt.
+ *
+ * Damit darf es rauschen, wie es will, solange es nicht *wandert* - und genau das ist der
+ * Unterschied zwischen "hält still" und "geht gerade durch diese Haltung hindurch".
+ * Zusätzlich überlebt das Fenster kurze Aussetzer (`dropoutGraceMs`): Ein paar Frames
+ * ohne Pose sind ein Tracking-Schluckauf, kein Aufstehen.
  */
 
 /** Warum die Startposition (noch) nicht angenommen wurde - Grundlage für den Hinweis auf dem Bildschirm. */
@@ -96,10 +113,61 @@ export interface StartPositionCriteria {
    * also reichlich Luft nach unten und schließt die hängenden Arme trotzdem klar aus.
    */
   minTorsoArmAngleDeg: number;
-  /** Zulässige Spannweite des Ellbogenwinkels innerhalb des Haltefensters (Grad). */
+  /**
+   * Zulässiges **Rauschen** des Ellbogenwinkels im Haltefenster (Grad), gemessen als
+   * robuste Spannweite zwischen `jitterTailPercent` und `100 - jitterTailPercent`.
+   *
+   * Bewusst kein Extremwert-Abstand: Der wäre bei 60 Frames der Abstand der beiden
+   * schlechtesten - siehe die Erklärung oben am Modul. Hier dürfen die extremsten 20 %
+   * der Frames liegen, wo sie wollen.
+   *
+   * Dieselbe Zahl dient als Nachsicht an der *Eintrittsschwelle*: Ein Frame, der
+   * `minElbowAngleDeg` um höchstens diesen Betrag verfehlt, ist dasselbe Wackeln von der
+   * anderen Seite gesehen und verwirft das Fenster deshalb nicht (siehe `push`).
+   */
   maxElbowJitterDeg: number;
-  /** Zulässige Spannweite des Hüftwinkels innerhalb des Haltefensters (Grad). */
+  /** Dasselbe für den Hüftwinkel. Größer, weil die Hüfte ungenauer verfolgt wird und atmet. */
   maxHipJitterDeg: number;
+  /**
+   * Zulässiges **Wandern** des Ellbogenwinkels: Unterschied der Mediane von erstem und
+   * letztem Drittel des Fensters (Grad).
+   *
+   * Klein, und das darf es sein: Ein Median über rund 20 Frames schwankt selbst bei
+   * kräftigem Rauschen nur um etwa ein Grad. Was hier ausschlägt, ist echte Bewegung.
+   * Das ist die Bedingung, die den langsamen Weg nach unten aussperrt, während sie
+   * Zittern vollständig ignoriert.
+   */
+  maxElbowDriftDeg: number;
+  /** Dasselbe für die Hüfte - etwas großzügiger, weil Atmen den Hüftwinkel sichtbar bewegt. */
+  maxHipDriftDeg: number;
+  /** Welcher Anteil an jedem Ende bei der robusten Spannweite abgeschnitten wird (Prozent). */
+  jitterTailPercent: number;
+  /**
+   * Wie lange die Messung aussetzen oder knapp danebenliegen darf, ohne dass die
+   * gesammelte Haltezeit verfällt.
+   *
+   * MediaPipe verliert die Pose regelmäßig für ein, zwei Frames - bei einer Armbewegung
+   * vor dunklem Boden auch mal für ein Zehntel. Vorher hat jeder dieser Aussetzer das
+   * komplette Fenster gelöscht. Ein Aufstehen dauert deutlich länger als diese Spanne,
+   * ein Schluckauf deutlich kürzer.
+   */
+  dropoutGraceMs: number;
+  /**
+   * Dasselbe für Frames, die *deutlich* danebenliegen - ein Ellbogenwinkel von 130°, wo
+   * eben noch 172° stand.
+   *
+   * Warum es dafür überhaupt Nachsicht gibt: Solche Sprünge sind auf dem Gerät nachweislich
+   * Tracking-Fehler und keine Bewegung. In den aufgezeichneten Wiederholungen
+   * (`docs/messdaten/`) melden Frames, bei denen die Erkennung kurz aussetzte, einen
+   * Ellbogen-Flare von im Median 138° - ein Winkel, bei dem der Arm hinter dem Rücken
+   * stünde. Ein einzelner solcher Frame darf nicht zwei Sekunden Haltezeit kosten.
+   *
+   * Warum sie viel kürzer ist als `dropoutGraceMs`: Ein Wert weit neben der Schwelle
+   * *kann* eine andere Haltung sein. Über hundert Millisekunden ist er es dann auch -
+   * schneller kommt niemand in eine andere Haltung und wieder zurück. Vier Frames sind
+   * ein Glitch, fünfzehn sind eine Bewegung.
+   */
+  glitchGraceMs: number;
   /** Wie lange die Position ruhig gehalten werden muss. */
   holdMs: number;
   /**
@@ -128,12 +196,37 @@ export const DEFAULT_START_POSITION_CRITERIA: StartPositionCriteria = {
   minElbowAngleDeg: 160,
   minHipStraightnessDeg: 110,
   minTorsoArmAngleDeg: 35,
-  maxElbowJitterDeg: 8,
-  maxHipJitterDeg: 12,
+  maxElbowJitterDeg: 14,
+  maxHipJitterDeg: 22,
+  maxElbowDriftDeg: 5,
+  maxHipDriftDeg: 8,
+  jitterTailPercent: 10,
+  dropoutGraceMs: 400,
+  glitchGraceMs: 120,
   holdMs: 2000,
   minSamples: 12,
   timeoutMs: 30000,
 };
+
+/**
+ * Längster Zeitsprung zwischen zwei Frames, der noch voll als Haltezeit zählt.
+ *
+ * Ohne diese Deckelung würde ein überbrückter Aussetzer die Haltezeit *verlängern*: Wer
+ * eine Sekunde lang nicht erkannt wird, bekäme diese Sekunde geschenkt. Bei 30 Bildern/s
+ * sind 33 ms normal, 150 ms ist also reichlich Luft für eine schwankende Bildrate und
+ * trotzdem knapp genug, dass ein Aussetzer echte Haltezeit kostet.
+ */
+const MAX_GAP_BRIDGE_MS = 150;
+
+/**
+ * Ab so vielen Frames sind Rauschen und Wandern überhaupt beurteilbar.
+ *
+ * Darunter wird das Fenster nicht geprüft, sondern wachsen gelassen: Ein Median über drei
+ * Werte ist keine Aussage, und "unruhig" wäre bei jedem Neustart des Fensters die
+ * Standardantwort. Neun Frames sind drei je Drittel - das Minimum, mit dem der Vergleich
+ * erstes/letztes Drittel etwas bedeutet - und bei 30 Bildern/s keine drei Zehntelsekunden.
+ */
+const MIN_STABILITY_SAMPLES = 9;
 
 /**
  * Die eigene Haltung, gemessen in der ruhig gehaltenen Startposition.
@@ -151,10 +244,35 @@ export interface PostureBaseline {
   neutralHipStraightnessDeg: number | null;
   /** Ohr-Schulter-Hüfte-Winkel in derselben Haltung. `null`, wenn nie messbar. */
   neutralNeckAngleDeg: number | null;
-  /** Spannweite des Ellbogenwinkels im Haltefenster - je kleiner, desto ruhiger wurde gehalten. */
+  /**
+   * Spannweite des Ellbogenwinkels im Haltefenster (größter minus kleinster Wert) - je
+   * kleiner, desto ruhiger wurde gehalten.
+   *
+   * Bewusst weiterhin der **Extremwert**-Abstand, obwohl geprüft wird über die robuste
+   * Spannweite: Zusammen mit `elbowSpreadDeg` sagt das Paar, wie viel des Wackelns auf
+   * einzelne Ausreißer entfällt. Klaffen die beiden weit auseinander, liefert das
+   * Tracking Aussetzer; liegen sie dicht beieinander, hat sich die Person wirklich bewegt.
+   * Das ist die einzige Möglichkeit, das auf chris' Gerät zu messen (siehe CLAUDE.md:
+   * keine Diagnose über `console.log`).
+   */
   elbowJitterDeg: number;
   /** Dasselbe für die Hüfte. `null`, wenn nie messbar. */
   hipJitterDeg: number | null;
+  /** Robuste Spannweite des Ellbogenwinkels (10.-90. Perzentil) - das tatsächlich geprüfte Rauschen. */
+  elbowSpreadDeg: number;
+  /** Dasselbe für die Hüfte. `null`, wenn nie messbar. */
+  hipSpreadDeg: number | null;
+  /** Wandern des Ellbogenwinkels: Median letztes Drittel minus Median erstes Drittel. */
+  elbowDriftDeg: number;
+  /** Dasselbe für die Hüfte. `null`, wenn nie messbar. */
+  hipDriftDeg: number | null;
+  /**
+   * Wie oft das Haltefenster neu begonnen werden musste - weil die Haltung gewandert ist
+   * oder weil eine Störung länger als ihre Nachsichtsspanne gedauert hat.
+   */
+  restarts: number;
+  /** Wie viele **Frames** über eine Nachsichtsspanne hinweg überbrückt wurden. */
+  dropouts: number;
   /** Winkel Ellbogen-Schulter-Hüfte in der gehaltenen Position. `null`, wenn nie messbar. */
   neutralElbowFlareDeg: number | null;
   /**
@@ -213,26 +331,56 @@ export type StartPositionOutcome =
   /** `baseline` ist `null`, wenn über die Notbremse (`timeoutMs`) scharf geschaltet wurde. */
   | { ready: true; baseline: PostureBaseline | null };
 
-function span(values: number[]): number {
+function span(values: readonly number[]): number {
   if (values.length === 0) return 0;
   return Math.max(...values) - Math.min(...values);
 }
 
 /**
+ * Spannweite ohne die extremsten `tailPercent` an jedem Ende.
+ *
+ * Für kurze Reihen fällt sie auf die einfache Spannweite zurück: Bei vier Werten ist
+ * "das schlechteste Zehntel abschneiden" keine Aussage, sondern eine Interpolation
+ * zwischen denselben zwei Zahlen.
+ */
+function robustSpread(values: readonly number[], tailPercent: number): number {
+  if (values.length < 5) return span(values);
+  return percentile(values, 100 - tailPercent) - percentile(values, tailPercent);
+}
+
+/**
+ * Wie weit die Haltung im Lauf des Fensters gewandert ist: Median des letzten Drittels
+ * minus Median des ersten Drittels. **Mit Vorzeichen** - beim Ellbogen heißt negativ "es
+ * geht nach unten", und das ist beim Auswerten der Aufzeichnungen der interessante Teil.
+ *
+ * Warum Drittel und nicht Anfang gegen Ende: Ein einzelner Wert am Rand wäre wieder ein
+ * Extremwert. Ein Median über rund 20 Frames ist praktisch rauschfrei, und der Vergleich
+ * zweier solcher Mediane misst genau die Verschiebung, um die es geht.
+ */
+function medianDrift(values: readonly number[]): number {
+  const third = Math.floor(values.length / 3);
+  if (third < 3) return 0;
+  return percentile(values.slice(values.length - third), 50) - percentile(values.slice(0, third), 50);
+}
+
+/**
  * Verfolgt Frame für Frame, ob die Startposition eingenommen und gehalten wurde.
  *
- * Das Haltefenster ist bewusst gleitend und wird bei kleinem Wackeln nicht komplett
- * verworfen, sondern vorne gekürzt, bis die Spannweite wieder passt. Damit kostet ein
- * einzelner verrutschter Frame nicht die ganze bisherige Haltezeit - eine langsame
- * Abwärtsbewegung sammelt aber trotzdem nie die volle Zeit an, weil das Fenster mit ihr
- * mitwandert, statt zu wachsen. Genau das unterscheidet "hält still" von "geht gerade
- * durch diese Haltung hindurch".
+ * Das Haltefenster wächst, solange die Haltung *rauscht*, und wird nur dann neu begonnen,
+ * wenn sie tatsächlich *wandert* oder wenn die Messung länger als `dropoutGraceMs`
+ * aussetzt. Warum diese Trennung nötig war, steht oben am Modul.
  */
 export class StartPositionGate {
   private readonly criteria: StartPositionCriteria;
   private samples: Sample[] = [];
   private firstFrameMs: number | null = null;
   private lastStatus: StartPositionStatus = 'NO_POSE';
+  /** Zeitpunkt des ersten Frames der laufenden Aussetzer-Strecke, `null` außerhalb einer solchen. */
+  private graceStartMs: number | null = null;
+  /** Kürzeste Nachsicht, die für die laufende Störungsstrecke gilt. */
+  private graceLimitMs = Infinity;
+  private restarts = 0;
+  private dropouts = 0;
 
   constructor(criteria: Partial<StartPositionCriteria> = {}) {
     this.criteria = { ...DEFAULT_START_POSITION_CRITERIA, ...criteria };
@@ -242,6 +390,10 @@ export class StartPositionGate {
     this.samples = [];
     this.firstFrameMs = null;
     this.lastStatus = 'NO_POSE';
+    this.graceStartMs = null;
+    this.graceLimitMs = Infinity;
+    this.restarts = 0;
+    this.dropouts = 0;
   }
 
   getStatus(): StartPositionStatus {
@@ -253,47 +405,39 @@ export class StartPositionGate {
     if (this.firstFrameMs === null) this.firstFrameMs = frame.timeMs;
     const timedOut = frame.timeMs - this.firstFrameMs >= c.timeoutMs;
 
-    if (frame.elbowAngleDeg === null) {
-      return this.notReady('NO_POSE', timedOut, true);
-    }
-    if (frame.elbowAngleDeg < c.minElbowAngleDeg) {
-      return this.notReady('ARMS_BENT', timedOut, true);
-    }
-    // Die Hüfte zählt nur gegen den Start, wenn sie überhaupt gemessen werden konnte -
-    // sonst würde ein aus dem Bild ragender Unterkörper den Start dauerhaft blockieren.
-    if (frame.hipStraightnessDeg !== null && frame.hipStraightnessDeg < c.minHipStraightnessDeg) {
-      return this.notReady('NOT_A_PLANK', timedOut, true);
-    }
-    // Aufrecht stehen erfüllt beide Bedingungen oben - gestreckte Arme, gerader Körper.
-    // Erst der Arm-zu-Rumpf-Winkel trennt die beiden Haltungen. Wie bei der Hüfte nur
-    // geprüft, wenn messbar (er braucht ebenfalls die Hüfte).
-    if (frame.elbowFlareDeg !== null && frame.elbowFlareDeg < c.minTorsoArmAngleDeg) {
-      return this.notReady('STANDING', timedOut, true);
-    }
+    // Verfehlt der Frame eine der Eintrittsbedingungen, entscheidet das *Ausmaß*, ob das
+    // bisher Gehaltene verfällt. Ein Frame knapp unter der Schwelle ist dasselbe Wackeln,
+    // das im Fenster ohnehin toleriert wird - nur zufällig auf der falschen Seite der
+    // Grenze. Ein Frame weit darunter ist eine andere Haltung.
+    const miss = this.classifyMiss(frame);
+    if (miss) return this.handleMiss(miss, frame.timeMs, timedOut);
 
+    this.graceStartMs = null;
+    this.graceLimitMs = Infinity;
     this.samples.push({
       timeMs: frame.timeMs,
-      elbowAngleDeg: frame.elbowAngleDeg,
+      elbowAngleDeg: frame.elbowAngleDeg!,
       hipStraightnessDeg: frame.hipStraightnessDeg,
       neckAngleDeg: frame.neckAngleDeg,
       elbowFlareDeg: frame.elbowFlareDeg,
       torsoHorizontalRatio: frame.torsoHorizontalRatio,
     });
-
-    // Vorne kürzen, bis die Ruhe-Toleranzen wieder eingehalten sind.
-    //
-    // Bewusst KEINE zusätzliche Kürzung nach Alter: Ein Fenster, das auf `holdMs`
-    // zugeschnitten wird, erreicht `heldMs >= holdMs` nur bei exakter Gleichheit - bei
-    // Zeitstempeln aus dem Kamerapfad also praktisch nie. Es wächst auch nicht
-    // unbegrenzt, weil es genau in dem Moment fertig ist, in dem es lang genug ist.
-    while (this.samples.length > 1) {
-      const elbowSpan = span(this.samples.map((s) => s.elbowAngleDeg));
-      const hipValues = this.samples
-        .map((s) => s.hipStraightnessDeg)
-        .filter((v): v is number => v !== null);
-      const hipSpan = span(hipValues);
-      if (elbowSpan <= c.maxElbowJitterDeg && hipSpan <= c.maxHipJitterDeg) break;
+    // Sicherheitsnetz gegen ein unbegrenzt wachsendes Fenster bei extrem niedriger
+    // Bildrate. Im Normalfall greift es nie: Bei 30 Bildern/s ist nach zwei Sekunden
+    // scharf geschaltet, lange vor dem Dreifachen der Haltezeit.
+    const oldestAllowedMs = frame.timeMs - c.holdMs * 3;
+    while (this.samples.length > c.minSamples && this.samples[0]!.timeMs < oldestAllowedMs) {
       this.samples.shift();
+    }
+
+    if (!this.isStable()) {
+      // Neu begonnen statt vorne gekürzt: Mit robusten Kennzahlen heißt "instabil" nicht
+      // mehr "ein Frame ist verrutscht", sondern "die Haltung hat sich verschoben". Dann
+      // ist der aktuelle Frame der einzige, der die neue Haltung beschreibt - alles davor
+      // gehört zur alten.
+      this.restarts += 1;
+      this.samples = [this.samples[this.samples.length - 1]!];
+      return this.notReady('MOVING', timedOut);
     }
 
     const heldMs = this.heldMs();
@@ -303,15 +447,90 @@ export class StartPositionGate {
       return { ready: true, baseline };
     }
 
-    // Ein Fenster, das gerade erst wieder aufgebaut wird (weil es vorne gekürzt werden
-    // musste), heißt "es wackelt noch" - und genau das soll auf dem Bildschirm stehen,
-    // solange sich jemand noch zurechtruckelt.
-    const stillSettling = this.samples.length < 2;
-    return this.notReady(stillSettling ? 'MOVING' : 'HOLDING', timedOut, false);
+    return this.notReady(this.samples.length < 2 ? 'MOVING' : 'HOLDING', timedOut);
   }
 
-  private notReady(status: StartPositionStatus, timedOut: boolean, clearWindow: boolean): StartPositionOutcome {
-    if (clearWindow) this.samples = [];
+  /**
+   * Welche Eintrittsbedingung dieser Frame verfehlt - und wie lange das noch als Störung
+   * durchgehen darf. `null` heißt: Der Frame gehört ins Haltefenster.
+   *
+   * Die Grenze zwischen "knapp daneben" und "deutlich daneben" ist absichtlich dieselbe
+   * Zahl wie die zugehörige Rauschtoleranz: Wenn der Ellbogenwinkel im Fenster um
+   * `maxElbowJitterDeg` schwanken darf, dann ist ein Frame, der die Eintrittsschwelle um
+   * weniger als das verfehlt, kein anderer Vorgang - nur zufällig auf der falschen Seite
+   * der Grenze gelandet.
+   */
+  private classifyMiss(
+    frame: StartPositionFrame
+  ): { status: StartPositionStatus; graceMs: number } | null {
+    const c = this.criteria;
+    const near = (value: number, threshold: number, tolerance: number): number =>
+      value >= threshold - tolerance ? c.dropoutGraceMs : c.glitchGraceMs;
+
+    // Keine Pose bekommt immer die lange Nachsicht: Ob jemand aufgestanden ist oder das
+    // Tracking geblinzelt hat, unterscheidet nicht dieser Frame, sondern die Dauer.
+    if (frame.elbowAngleDeg === null) return { status: 'NO_POSE', graceMs: c.dropoutGraceMs };
+    if (frame.elbowAngleDeg < c.minElbowAngleDeg) {
+      return {
+        status: 'ARMS_BENT',
+        graceMs: near(frame.elbowAngleDeg, c.minElbowAngleDeg, c.maxElbowJitterDeg),
+      };
+    }
+    // Hüfte und Arm-zu-Rumpf-Winkel zählen nur gegen den Start, wenn sie überhaupt
+    // gemessen werden konnten - sonst würde ein aus dem Bild ragender Unterkörper den
+    // Start dauerhaft blockieren.
+    if (frame.hipStraightnessDeg !== null && frame.hipStraightnessDeg < c.minHipStraightnessDeg) {
+      return {
+        status: 'NOT_A_PLANK',
+        graceMs: near(frame.hipStraightnessDeg, c.minHipStraightnessDeg, c.maxHipJitterDeg),
+      };
+    }
+    // Aufrecht stehen erfüllt beide Bedingungen oben - gestreckte Arme, gerader Körper.
+    // Erst der Arm-zu-Rumpf-Winkel trennt die beiden Haltungen.
+    if (frame.elbowFlareDeg !== null && frame.elbowFlareDeg < c.minTorsoArmAngleDeg) {
+      return {
+        status: 'STANDING',
+        graceMs: near(frame.elbowFlareDeg, c.minTorsoArmAngleDeg, c.maxElbowJitterDeg),
+      };
+    }
+    return null;
+  }
+
+  private handleMiss(
+    miss: { status: StartPositionStatus; graceMs: number },
+    timeMs: number,
+    timedOut: boolean
+  ): StartPositionOutcome {
+    // Ist noch nichts gesammelt, gibt es nichts zu schützen - dann soll auf dem Bildschirm
+    // der echte Grund stehen ("Geh in die Liegestütz-Position"), nicht Nachsicht.
+    if (this.samples.length === 0) {
+      this.graceStartMs = null;
+      this.graceLimitMs = Infinity;
+      return this.notReady(miss.status, timedOut);
+    }
+
+    if (this.graceStartMs === null) this.graceStartMs = timeMs;
+    // Die kürzeste Nachsicht der laufenden Strecke gilt für die ganze Strecke: Wer erst
+    // aus dem Bild fällt und dann mit gebeugten Armen wieder auftaucht, hat sich bewegt -
+    // die lange Aussetzer-Nachsicht wäre dafür der falsche Maßstab.
+    this.graceLimitMs = Math.min(this.graceLimitMs, miss.graceMs);
+
+    if (timeMs - this.graceStartMs > this.graceLimitMs) {
+      this.samples = [];
+      this.graceStartMs = null;
+      this.graceLimitMs = Infinity;
+      this.restarts += 1;
+      return this.notReady(miss.status, timedOut);
+    }
+
+    this.dropouts += 1;
+    // Während der Nachsichtsspanne bleibt die Anzeige stehen, wie sie war: Das Fenster
+    // *läuft* noch, und ein für zwei Frames aufblitzendes "Ich sehe dich nicht" wäre
+    // Flackern, das nichts erklärt und zu nichts auffordert.
+    return this.notReady(this.lastStatus, timedOut);
+  }
+
+  private notReady(status: StartPositionStatus, timedOut: boolean): StartPositionOutcome {
     this.lastStatus = status;
     if (timedOut) return { ready: true, baseline: null };
     return {
@@ -320,12 +539,42 @@ export class StartPositionGate {
     };
   }
 
+  /** Rauschen und Wandern innerhalb der Toleranzen? Zu kurze Fenster gelten als in Ordnung. */
+  private isStable(): boolean {
+    const c = this.criteria;
+    if (this.samples.length < MIN_STABILITY_SAMPLES) return true;
+
+    const elbow = this.samples.map((s) => s.elbowAngleDeg);
+    if (robustSpread(elbow, c.jitterTailPercent) > c.maxElbowJitterDeg) return false;
+    if (Math.abs(medianDrift(elbow)) > c.maxElbowDriftDeg) return false;
+
+    const hip = this.samples.map((s) => s.hipStraightnessDeg).filter((v): v is number => v !== null);
+    if (hip.length >= MIN_STABILITY_SAMPLES) {
+      if (robustSpread(hip, c.jitterTailPercent) > c.maxHipJitterDeg) return false;
+      if (Math.abs(medianDrift(hip)) > c.maxHipDriftDeg) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Wie lange schon gehalten wird: Summe der Abstände zwischen den Frames im Fenster,
+   * jeder einzelne gedeckelt auf `MAX_GAP_BRIDGE_MS`.
+   *
+   * Nicht einfach "letzter minus erster Zeitstempel": Damit würde jede überbrückte Lücke
+   * als Haltezeit zählen - drei Frames im Abstand von je einer Sekunde wären zwei
+   * Sekunden "gehalten", obwohl dazwischen alles passiert sein kann. Die Deckelung macht
+   * aus jedem Aussetzer genau das, was er ist: verlorene Zeit statt geschenkter.
+   */
   private heldMs(): number {
-    if (this.samples.length < 2) return 0;
-    return this.samples[this.samples.length - 1]!.timeMs - this.samples[0]!.timeMs;
+    let total = 0;
+    for (let i = 1; i < this.samples.length; i++) {
+      total += Math.min(this.samples[i]!.timeMs - this.samples[i - 1]!.timeMs, MAX_GAP_BRIDGE_MS);
+    }
+    return total;
   }
 
   private buildBaseline(heldMs: number): PostureBaseline {
+    const c = this.criteria;
     const elbow = this.samples.map((s) => s.elbowAngleDeg);
     const hip = this.samples.map((s) => s.hipStraightnessDeg).filter((v): v is number => v !== null);
     const neck = this.samples.map((s) => s.neckAngleDeg).filter((v): v is number => v !== null);
@@ -339,6 +588,12 @@ export class StartPositionGate {
       neutralNeckAngleDeg: neck.length > 0 ? Math.round(percentile(neck, 50)) : null,
       elbowJitterDeg: Math.round(span(elbow)),
       hipJitterDeg: hip.length > 0 ? Math.round(span(hip)) : null,
+      elbowSpreadDeg: Math.round(robustSpread(elbow, c.jitterTailPercent)),
+      hipSpreadDeg: hip.length > 0 ? Math.round(robustSpread(hip, c.jitterTailPercent)) : null,
+      elbowDriftDeg: Math.round(medianDrift(elbow)),
+      hipDriftDeg: hip.length > 0 ? Math.round(medianDrift(hip)) : null,
+      restarts: this.restarts,
+      dropouts: this.dropouts,
       neutralElbowFlareDeg: flare.length > 0 ? Math.round(percentile(flare, 50)) : null,
       torsoHorizontalRatio: horizontal.length > 0 ? Math.round(percentile(horizontal, 50) * 100) / 100 : null,
       samples: this.samples.length,

@@ -93,18 +93,76 @@ describe('StartPositionGate', () => {
 
   it('verwirft die bisherige Haltezeit, wenn die Arme zwischendurch gebeugt werden', () => {
     const gate = new StartPositionGate();
-    const frames = [...hold(40), ...hold(3, { elbowAngleDeg: 120 }), ...hold(30)];
+    // 10 Frames sind ein Drittel einer Sekunde - lang genug, dass es eine Bewegung ist
+    // und kein Ausrutscher der Erkennung.
+    const frames = [...hold(40), ...hold(10, { elbowAngleDeg: 120 }), ...hold(30)];
 
     // 40 + 30 Frames wären zusammen genug - aber eben nicht am Stück.
     expect(play(gate, frames).readyAfter).toBeNull();
     expect(gate.getStatus()).toBe('HOLDING');
   });
 
-  it('verwirft die bisherige Haltezeit, wenn die Pose zwischendurch verloren geht', () => {
+  it('verwirft die bisherige Haltezeit, wenn die Pose länger verloren geht', () => {
+    const gate = new StartPositionGate();
+    // 20 Frames ohne Pose sind zwei Drittel einer Sekunde. So lange verschwindet niemand
+    // aus dem Bild, ohne sich bewegt zu haben.
+    const frames = [...hold(40), ...noPose(20), ...hold(30)];
+
+    expect(play(gate, frames).readyAfter).toBeNull();
+  });
+
+  it('überlebt einen kurzen Aussetzer der Erkennung', () => {
+    // Der Fall, an dem chris hängengeblieben ist: MediaPipe verliert die Pose für ein
+    // paar Frames, obwohl er unbewegt im Stütz liegt. Vorher hat das die komplette
+    // Haltezeit gelöscht - "man kommt nie zu den Liegestützen".
     const gate = new StartPositionGate();
     const frames = [...hold(40), ...noPose(3), ...hold(30)];
 
-    expect(play(gate, frames).readyAfter).toBeNull();
+    expect(play(gate, frames).readyAfter).not.toBeNull();
+  });
+
+  it('überlebt einzelne komplett verrutschte Frames', () => {
+    // Ein Ellbogenwinkel von 120°, wo eben noch 172° stand, ist keine Bewegung, sondern
+    // ein Tracking-Fehler - dieselben Ausreißer, die in `docs/messdaten/` einen
+    // Ellbogen-Flare von 170° melden. Alle 15 Frames einer davon darf nicht heißen, dass
+    // die Kalibrierung nie fertig wird.
+    const gate = new StartPositionGate();
+    const glitchy = Array.from({ length: 90 }, (_, i) =>
+      frame(i % 15 === 14 ? { elbowAngleDeg: 120 } : {})
+    );
+
+    expect(play(gate, glitchy).readyAfter).not.toBeNull();
+  });
+
+  it('lässt echtes Kamerarauschen die Haltezeit nicht auffressen', () => {
+    // Der Kern von chris' Rückmeldung vom 10.09.2026: "Jegliche minimale Änderung und
+    // Rauschen des Algorithmus startet die Kalibrierung neu." Rauschen von ±6° am
+    // Ellbogen und ±10° an der Hüfte ist auf dem Gerät normal - die alte Prüfung über die
+    // Extremwert-Spannweite hat daran zuverlässig scheitern lassen.
+    const gate = new StartPositionGate();
+    const noisy = Array.from({ length: 90 }, (_, i) =>
+      frame({
+        elbowAngleDeg: 172 + 6 * Math.sin(i * 1.7),
+        hipStraightnessDeg: 170 + 10 * Math.sin(i * 2.3),
+      })
+    );
+
+    expect(play(gate, noisy).readyAfter).not.toBeNull();
+  });
+
+  it('schenkt überbrückte Aussetzer nicht als Haltezeit', () => {
+    // Ein überbrückter Ausfall darf die Haltezeit nicht *verlängern* - sonst wäre "eine
+    // Sekunde nicht erkannt" eine Sekunde geschenkt.
+    const gate = new StartPositionGate();
+    let last = gate.push({ ...frame(), timeMs: 0 });
+    for (let i = 1; i <= 10; i++) last = gate.push({ ...frame(), timeMs: i * FRAME_MS });
+    // 330 ms sind gehalten. Jetzt ein Sprung von 400 ms mit nur einem Frame am Ende.
+    last = gate.push({ ...frame(), timeMs: 10 * FRAME_MS + 400 });
+
+    expect(last.ready).toBe(false);
+    if (last.ready) throw new Error('unerreichbar');
+    // 330 ms + höchstens 150 ms überbrückt, nicht 730 ms.
+    expect(last.progress.heldMs).toBeLessThanOrEqual(10 * FRAME_MS + 150);
   });
 
   it('nennt den Grund, warum die Startposition nicht angenommen wird', () => {

@@ -21,8 +21,15 @@ Erkennung oder der Optik geraten statt begründet.
    Zähler nach dem Bestätigungston auf 0?
 2. **Firebase einrichten** (`docs/firebase-einrichten.md`), Regeln deployen, im
    Regelsimulator gegenprüfen.
-3. **Drei Dinge zurückmelden:** Kalibrierungsdaten teilen (enthält jetzt `baseline`),
-   die Effekt-Zeile aus der Werkstatt, und ob die Werkstatt mit sieben Effekten ruckelt.
+3. **Drei Dinge zurückmelden:** Kalibrierungsdaten teilen (enthält jetzt `baseline`, seit
+   dem 10.09.2026 abends auch die gemessene Ruhe beim Halten — Rauschen, Wandern,
+   Neustarts), die Effekt-Zeile aus der Werkstatt, und ob die Werkstatt mit sieben
+   Effekten ruckelt.
+
+   **Wichtig für Punkt 1:** Die Aufzeichnung vom 10.09.2026 vormittags/mittags enthält
+   noch *keinen* `baseline`-Eintrag, stammt also aus der Zeit vor der Startpositions-Sperre.
+   Ob der Weg in die Position noch mitgezählt wird, lässt sich daran nicht ablesen — dafür
+   braucht es eine frische Aufzeichnung nach diesem Build.
 
 ### Phase 1 — sobald die Daten da sind
 
@@ -42,7 +49,8 @@ Erkennung oder der Optik geraten statt begründet.
 
 ### Phase 3 — Erkennung weiter verbessern
 
-10. `goodDepthElbowDeg`: Produktentscheidung — Punkt 1.2.
+10. **Tiefenmaß ohne Unterarm** (Schulterhöhe statt Ellbogenwinkel) — Punkt 1.2. Die
+    Schwelle selbst ist am 10.09.2026 auf 105° korrigiert; offen ist die Kennzahl.
 11. Sichtbarkeit durch die native Bridge (Patch) — Punkt 1.3. Braucht Prebuild.
 12. Sitzungskontext erfassen — Punkt 1.4.
 13. Frame-Zeitreihen statt nur Kennzahlen — Punkt 1.5.
@@ -136,10 +144,18 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
    erreichbar ist. Messung und Schwelle im selben Schritt zu ändern würde das Ergebnis
    unlesbar machen.
 
-2. **Produktentscheidung `goodDepthElbowDeg` (95°).** Kein Messfehler — die gemessene
-   Tiefe liegt im Median bei 101°, also wirklich knapp oberhalb des rechten Winkels. Die
-   Frage ist, ob die App bei 95 % der Wiederholungen „tiefer gehen" sagen soll oder ob
-   eine mildere Stufe (z. B. Hinweis erst ab 110°) motivierender ist.
+2. ~~**Produktentscheidung `goodDepthElbowDeg` (95°).**~~ **Erledigt am 10.09.2026 —
+   und die Einschätzung darin war falsch.** Es *ist* ein Messfehler: Innerhalb einer
+   einzigen Sitzung (09.09.2026, 20:12 Uhr) streuen 24 Wiederholungen am Stück zwischen
+   91° und 139°. Niemand ändert seine Tiefe im selben Satz um 48°. Am Tiefpunkt zeigt der
+   Unterarm fast auf die Kamera zu, und dort ist MediaPipes Tiefenschätzung am
+   schlechtesten. Schwelle auf 105° (85 % → 17 % Meldungen in den jüngsten Sitzungen),
+   Begründung im README.
+
+   **Offen bleibt der eigentliche Punkt:** ein Tiefenmaß, das nicht am Unterarm hängt —
+   etwa die Schulterhöhe im Verhältnis zur Armlänge (Schulter–Ellbogen), die von der
+   Unterarm-Verkürzung unabhängig ist. Erst damit ist „tiefer gehen" wieder eine Aussage
+   über die Ausführung statt über die Kameraperspektive. Braucht Zeitreihen (Punkt 5).
 
 3. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
    Konfidenzwerte im nativen Bridge-Code (`ConvertHelpers.kt`); `visibility` ist bei uns

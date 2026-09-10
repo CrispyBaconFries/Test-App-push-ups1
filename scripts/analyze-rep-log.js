@@ -35,7 +35,7 @@ const file = process.argv[2] || DEFAULT_FILE;
 // Hüftspalte aus Aufzeichnungen davor ist mit neueren deshalb nicht vergleichbar - die
 // alten Werte sind durch den auf den Zehen stehenden Fuß systematisch zu klein.
 const THRESHOLDS = {
-  goodDepthElbowDeg: 95,
+  goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
   maxElbowFlareDeg: 80,
   minNeckAngleDeg: 115,
@@ -149,6 +149,32 @@ if (baselines.length > 0) {
     console.log(
       `  -> Persönliche Hüft-Schwelle wäre ${Math.min(...hips) - 20}-${Math.max(...hips) - 20}° ` +
         '(Grundhaltung minus 20°, gedeckelt auf höchstens den allgemeinen Wert von 145°).'
+    );
+  }
+
+  // Wie ruhig sich die Startposition auf dem Gerät überhaupt halten LÄSST. Das ist der
+  // einzige Weg, die Ruhe-Toleranzen aus startPosition.ts an echten Zahlen zu prüfen
+  // statt zu schätzen - auf chris' Gerät gibt es kein Log (siehe CLAUDE.md).
+  const withNoise = baselines.filter((b) => typeof b.elbowSpreadDeg === 'number');
+  if (withNoise.length > 0) {
+    console.log('\n  Ruhe beim Halten (Toleranzen: Rauschen 14°/22°, Wandern 5°/8°):');
+    console.log('  Zeit                 Ellbogen         Hüfte            Neustarts  Aussetzer');
+    for (const b of withNoise) {
+      const time = (b.recordedAtIso ?? '').slice(0, 19).replace('T', ' ');
+      const pair = (spread, drift, jitter) =>
+        typeof spread === 'number'
+          ? `${String(spread).padStart(2)}° (roh ${String(jitter).padStart(3)}°) ${drift >= 0 ? '+' : ''}${drift}°`.padEnd(16)
+          : '-'.padEnd(16);
+      console.log(
+        `  ${time}  ${pair(b.elbowSpreadDeg, b.elbowDriftDeg, b.elbowJitterDeg)} ` +
+          `${pair(b.hipSpreadDeg, b.hipDriftDeg, b.hipJitterDeg)} ` +
+          `${String(b.restarts).padStart(9)}  ${String(b.dropouts).padStart(9)}`
+      );
+    }
+    console.log(
+      '  -> "roh" ist der Abstand der beiden extremsten Frames, davor die robuste Spannweite\n' +
+        '     (10.-90. Perzentil). Klaffen sie weit auseinander, ist das Tracking unruhig, nicht\n' +
+        '     die Person. Viele Neustarts bei kleinem Rauschen = die Toleranzen sind zu eng.'
     );
   }
 } else {

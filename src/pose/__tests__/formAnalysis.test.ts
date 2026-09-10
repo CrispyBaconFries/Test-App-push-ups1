@@ -122,7 +122,9 @@ describe('PushUpAnalyzer', () => {
     // Frames dort am dichtesten liegen - genau das ist der Grund, warum die Tiefe nicht
     // über ein Perzentil des ganzen Bewegungsbogens bestimmt wird.
     expect(reps[0].minElbowAngleDeg).toBe(120);
-    expect(reps[0].formScore).toBe(62);
+    // 120° sind 15° über der Tiefenschwelle (105°, siehe `goodDepthElbowDeg`), also
+    // 15 × 1,5 = 22,5 Punkte Abzug, abgerundet auf 77.
+    expect(reps[0].formScore).toBe(77);
   });
 
   it('discards a small dip near lockout as a false start instead of counting it', () => {
@@ -459,6 +461,21 @@ describe('PushUpAnalyzer', () => {
     expect(reps[0].formScore).toBeLessThan(80);
   });
 
+  it('lässt die Bewertungs-Tiefenschwelle nicht mitentscheiden, was gezählt wird', () => {
+    // `goodDepthElbowDeg` (Punkte) und `notAPlankDepthDeg` (Zählung) waren bis zum
+    // 10.09.2026 dieselbe Zahl. Diese Bewegung liegt genau im Band zwischen beiden: Bei
+    // 100° und abgekippter Hüfte ist sie nach der Verwurfsregel (95°) ein Positionswechsel
+    // und muss verschwinden - so war es vor der Lockerung, und so muss es danach bleiben.
+    // Wäre die Bewertungsschwelle (jetzt 105°) weiterhin dieselbe Zahl, würde sie ab
+    // sofort gezählt: eine Änderung am *Zählen*, ausgelöst von einer Entscheidung über
+    // *Punkte*, ohne dass irgendwo "Zählung" draufsteht.
+    const analyzer = new PushUpAnalyzer();
+    const { reps, discards } = runFrames(analyzer, repFrames(100, { hipOffsetY: 0.8 }));
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['NOT_A_PLANK']);
+  });
+
   it('gives the benefit of the doubt when the hip was never measurable', () => {
     // Füße und Hüfte außerhalb des Bildes: Die Stütz-Prüfung darf dann nicht greifen,
     // sonst verschwinden Wiederholungen wegen einer Kamera-Position statt wegen der Form.
@@ -516,6 +533,12 @@ describe('PushUpAnalyzer: Startposition und Kalibrierung', () => {
       neutralNeckAngleDeg: 175,
       elbowJitterDeg: 1,
       hipJitterDeg: 2,
+      elbowSpreadDeg: 1,
+      hipSpreadDeg: 2,
+      elbowDriftDeg: 0,
+      hipDriftDeg: 0,
+      restarts: 0,
+      dropouts: 0,
       neutralElbowFlareDeg: 75,
       torsoHorizontalRatio: 0.9,
       samples: 60,

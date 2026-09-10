@@ -172,6 +172,22 @@ export interface PushUpThresholds {
    */
   minPlankHipStraightnessDeg: number;
   /**
+   * Ellbogenwinkel, ab dem eine Bewegung "ging nicht in die Tiefe" heißt - zweite Hälfte
+   * der Und-Bedingung, mit der der Positionswechsel als `NOT_A_PLANK` verworfen wird.
+   *
+   * Warum das eine eigene Zahl ist und nicht `goodDepthElbowDeg`: Bis zum 10.09.2026 war
+   * es dieselbe, und das ist eine Falle. `goodDepthElbowDeg` entscheidet über *Punkte*,
+   * diese Zahl darüber, ob überhaupt **gezählt** wird. Als die Tiefenschwelle für die
+   * Bewertung von 95° auf 105° gelockert wurde, hätte das lautlos auch das Zählen
+   * geändert - Wiederholungen mit abgekippter Hüfte und mittlerer Tiefe wären ab da
+   * verschwunden, ohne dass irgendwo "Zählung" draufgestanden hätte. Zwei Fragen, zwei
+   * Zahlen.
+   *
+   * Bleibt deshalb bei den 95°, mit denen die Verwurfsregel aufgestellt und an den
+   * Aufzeichnungen geprüft wurde.
+   */
+  notAPlankDepthDeg: number;
+  /**
    * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
    * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
    * erreicht wurde.
@@ -191,7 +207,35 @@ export interface PushUpThresholds {
    * glatt), aber unter jeder echten Abwärtsbewegung.
    */
   repReversalToleranceDeg: number;
-  /** Elbow angle (deg) a rep must reach at minimum to count as full depth. */
+  /**
+   * Ellbogenwinkel (Grad), bis zu dem eine Wiederholung heruntergehen muss, damit sie als
+   * tief genug gilt. Größer = nachsichtiger. Entscheidet **nur die Bewertung**, nicht ob
+   * gezählt wird (dafür sind `elbowUpDeg` und `elbowAttemptDeg` zuständig).
+   *
+   * # Warum 105 und nicht die 95 aus der Lehrbuch-Geometrie (Stand 10.09.2026)
+   *
+   * Auf dem Papier ist die untere Position eines Liegestützes ein rechter Winkel oder
+   * enger. Gemessen wird auf dem Gerät aber etwas anderes: In allen 176 aufgezeichneten
+   * Wiederholungen (`docs/messdaten/`) liegt der tiefste Punkt im Median bei 101°, und in
+   * den Sitzungen vom 09.09.2026 abends häufen sich die Werte auffällig eng zwischen 96°
+   * und 104°. Bei 95° hätte das 85 % aller Wiederholungen als "nicht tief genug" gemeldet,
+   * bei 105° sind es 17 %.
+   *
+   * Dass das Messung und nicht Ausführung ist, zeigt die Streuung *innerhalb* einer
+   * Sitzung: Am 09.09.2026 um 20:12 Uhr liegen 24 Wiederholungen am Stück zwischen 91°
+   * und 139°. Niemand ändert seine Tiefe im selben Satz um 48°. Der Grund ist die
+   * Perspektive: Am Tiefpunkt zeigt der Unterarm fast auf die Kamera zu, und genau dann
+   * ist MediaPipes Tiefenschätzung am schlechtesten - der Winkel fällt zu groß aus.
+   *
+   * Eine Meldung, die bei fast jeder Wiederholung erscheint, ist keine Rückmeldung
+   * mehr, sondern Rauschen: Man gewöhnt sich an sie und übersieht sie auch dann, wenn sie
+   * einmal stimmt. 105° meldet die Wiederholungen, die wirklich aus der Reihe fallen.
+   *
+   * Das ist ein **empirischer Wert für diese Kameraperspektive**, keine Aussage über
+   * richtige Ausführung. Der saubere Weg wäre ein Tiefenmaß, das nicht am Unterarm hängt
+   * (etwa die Schulterhöhe im Verhältnis zur Armlänge) - siehe `docs/backlog.md`,
+   * "Erkennung weiter verbessern".
+   */
   goodDepthElbowDeg: number;
   /**
    * shoulder-hip-KNEE angle (deg); below this the torso counts as not straight (sag or pike).
@@ -293,8 +337,9 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   elbowUpDeg: 160,
   elbowAttemptDeg: 140,
   minPlankHipStraightnessDeg: 110,
+  notAPlankDepthDeg: 95,
   repReversalToleranceDeg: 15,
-  goodDepthElbowDeg: 95,
+  goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
   maxElbowFlareDeg: 80,
   minNeckAngleDeg: 115,
@@ -890,7 +935,7 @@ export class PushUpAnalyzer {
     // heraus, kein Liegestütz. Bewusst erst hier, nach der Kennzahlberechnung - vorher
     // stehen die Werte noch nicht fest. `NaN < x` ist false, eine nie gemessene Hüfte
     // führt also nie zum Verwerfen (Zweifel für den Sportler).
-    if (hipStraightnessDeg < t.minPlankHipStraightnessDeg && elbowDepthDeg > t.goodDepthElbowDeg) {
+    if (hipStraightnessDeg < t.minPlankHipStraightnessDeg && elbowDepthDeg > t.notAPlankDepthDeg) {
       return { rep: null, discarded: this.discardRep('NOT_A_PLANK', timestampMs) };
     }
 

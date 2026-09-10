@@ -29,7 +29,7 @@ const HINTS: Record<StartPositionStatus, string> = {
   ARMS_BENT: 'Arme durchstrecken – die obere Position eines Liegestützes.',
   NOT_A_PLANK: 'Körper strecken: Schultern, Hüfte und Knie auf einer Linie.',
   STANDING: 'Du stehst noch – Hände auf den Boden, Schultern über die Hände.',
-  MOVING: 'Noch etwas unruhig – kurz nicht bewegen.',
+  MOVING: 'Fast – halt die Position kurz, wo sie ist.',
   HOLDING: 'Position wird vermessen …',
 };
 

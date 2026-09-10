@@ -402,10 +402,43 @@ Aus 144 aufgezeichneten Wiederholungen:
 weiterhin die echten Ausreißer — im Datensatz kommen Werte bis herunter zu 59° vor, immer
 zusammen mit anderen groben Fehlern.
 
-**Nicht angefasst: `goodDepthElbowDeg` (95°).** Diese Prüfung schlägt zwar ebenfalls oft
-an, aber zu Recht: Die gemessene Tiefe liegt im Median bei 101°, also knapp oberhalb eines
-rechten Winkels. Das ist eine echte Trainingsrückmeldung und kein Messfehler. Ob die App
-*so oft* „tiefer gehen" sagen soll, ist eine Produktentscheidung, keine Kalibrierfrage.
+#### `goodDepthElbowDeg`: 95° → 105° (10.09.2026)
+
+Hier stand vorher: „Nicht angefasst. Diese Prüfung schlägt zwar ebenfalls oft an, aber zu
+Recht — das ist eine echte Trainingsrückmeldung und kein Messfehler." **Das war falsch,**
+und die Daten sagen auch, woran ich es hätte sehen können.
+
+Über alle 176 aufgezeichneten Wiederholungen liegt der tiefste Punkt im Median bei 101°;
+in den Sitzungen vom 09.09.2026 abends häufen sich die Werte auffällig eng zwischen 96°
+und 104°. Bei 95° meldet die App damit **85 % aller Wiederholungen** als „nicht tief
+genug", bei 105° sind es 17 %.
+
+Dass das die Messung ist und nicht die Ausführung, zeigt die Streuung **innerhalb** einer
+Sitzung: Am 09.09.2026 um 20:12 Uhr liegen 24 Wiederholungen am Stück zwischen 91° und
+139°. Niemand ändert seine Tiefe im selben Satz um 48°. Der Grund ist die Perspektive: Am
+Tiefpunkt zeigt der Unterarm fast auf die Kamera zu, und genau dann ist MediaPipes
+Tiefenschätzung am schlechtesten — der Winkel fällt zu groß aus. Das ist derselbe
+Fehlschluss wie beim Nackenwinkel eine Ebene höher, nur habe ich ihn dort erkannt und hier
+nicht.
+
+| Schwelle | markiert (alle 176) | markiert (ab 09.09. abends, 52 Reps) |
+|---|---|---|
+| 95° (alt) | 73 % | 85 % |
+| 100° | 52 % | 40 % |
+| **105° (neu)** | **39 %** | **17 %** |
+| 110° | 31 % | 13 % |
+
+Eine Meldung, die bei fast jeder Wiederholung erscheint, ist keine Rückmeldung mehr,
+sondern Rauschen — man gewöhnt sich an sie und übersieht sie auch dann, wenn sie einmal
+stimmt.
+
+**Was 105° nicht ist: eine Aussage über richtige Ausführung.** Es ist ein empirischer Wert
+für *diese* Kameraperspektive. Der saubere Weg wäre ein Tiefenmaß, das nicht am Unterarm
+hängt — etwa die Schulterhöhe im Verhältnis zur Armlänge, die von der Unterarm-Verkürzung
+unabhängig ist. Das steht als Punkt 1.2 im Backlog. Naheliegend wäre gewesen, die Schwelle
+stattdessen aus der Kalibrierung abzuleiten (wie bei Hüfte und Nacken), aber das trägt
+nicht: Der Messfehler am Tiefpunkt hat mit dem am Umkehrpunkt oben nichts zu tun, die
+Grundhaltung sagt über ihn also nichts.
 
 ### Warum Wiederholungen verschluckt wurden (10.09.2026)
 
@@ -469,7 +502,12 @@ Alle **21 echten** Wiederholungen derselben Sitzung liegen bei 158–169° Hüft
 `PushUpAnalyzer` verwirft solche Bewegungen jetzt als `NOT_A_PLANK` — aber nur, wenn
 **beide** Bedingungen zutreffen: Der Körper war nicht in Stützposition
 (`minPlankHipStraightnessDeg`, 110°) **und** die Bewegung ging nicht in die Tiefe
-(`goodDepthElbowDeg`).
+(`notAPlankDepthDeg`, 95°).
+
+Diese Tiefenschwelle ist seit dem 10.09.2026 bewusst **eine eigene Zahl** und nicht mehr
+`goodDepthElbowDeg`. Als die Bewertungsschwelle auf 105° gelockert wurde, hätte die
+gemeinsame Konstante lautlos auch das *Zählen* geändert. Eine Zahl, die über Punkte
+entscheidet, darf nicht nebenbei entscheiden, ob eine Wiederholung überhaupt existiert.
 
 Die Hüfte allein reicht als Kriterium nicht. In der Aufzeichnung davor steht eine echte
 Wiederholung mit deutlich abgekippter Hüfte (97°) — das ist ein *schlechter* Liegestütz,
@@ -526,10 +564,61 @@ auf — dass die Person dabei halb außerhalb des Bildes war, konnte er gar nich
 diese Information nirgends erfasst wurde. „0 verlorene Frames" hieß nur „`allVisible()` hat
 nie Nein gesagt", und Nein sagen konnte es auf diesem Gerät nie.
 
-Kleines Zittern kostet nicht die ganze Haltezeit: Das Fenster wird vorne gekürzt, bis die
-Spannweite wieder passt (8° Ellbogen, 12° Hüfte), statt komplett verworfen zu werden.
-Verworfen wird es nur, wenn die Position wirklich verlassen wird - Arme gebeugt, Körper
-abgeknickt, aufrecht, oder Pose weg.
+#### „Ruhig halten" heißt nicht „unbewegt" (Nachbesserung, 10.09.2026)
+
+Die erste Fassung war auf dem Gerät unbrauchbar. chris' Rückmeldung nach dem ersten Build:
+
+> „Jegliche minimale Änderung und Rauschen des Algorithmus startet die Kalibrierung neu,
+> das darf nicht sein. Sobald sich eine Linie minimal bewegt, obwohl man selbst still hält,
+> läuft der Timer von vorne los und man kommt nie zu den Liegestützen."
+
+Der Fehler steckte in der Kennzahl. Geprüft wurde die **Spannweite** (größter minus
+kleinster Wert) über das ganze Haltefenster — bei 30 Bildern/s nach zwei Sekunden also der
+Abstand der **beiden extremsten von rund 60 Frames**. Ein einziger verrutschter Frame
+sprengt damit jede Toleranz, und genau die liefert MediaPipe mehrmals pro Sekunde. Das
+Fenster wurde daraufhin vorne gekürzt — der Ausreißer fraß die gesammelte Haltezeit auf,
+Frame für Frame.
+
+Ein Extremwert ist die falsche Kennzahl für Rauschen. Dieselbe Erkenntnis wie bei der
+Formbewertung (siehe `src/pose/stats.ts`), nur an einer Stelle, an der sie beim ersten Mal
+niemand angewendet hat. Jetzt werden **zwei Dinge getrennt** geprüft, die vorher in einer
+Zahl vermischt waren:
+
+| | wie gemessen | Toleranz | wogegen |
+|---|---|---|---|
+| **Rauschen** | robuste Spannweite (10.–90. Perzentil) | 14° Ellbogen, 22° Hüfte | zittriges Tracking |
+| **Wandern** | Median letztes Drittel minus Median erstes Drittel | 5° Ellbogen, 8° Hüfte | der langsame Weg nach unten |
+
+Der Trick ist die zweite Zeile: Ein Median über rund 20 Frames ist gegen Rauschen praktisch
+unempfindlich (der Zufallsfehler sinkt mit der Wurzel der Anzahl), reagiert aber sofort auf
+eine echte Verschiebung. Deshalb darf die Rauschtoleranz großzügig sein, **ohne** dass der
+Weg in die Position durchrutscht: Es darf rauschen, wie es will, solange es nicht wandert.
+
+Dazu kommen zwei Nachsichtsspannen, damit ein Aussetzer nicht mehr alles kostet:
+
+- **400 ms** für „keine Pose" und für Frames knapp unter einer Eintrittsschwelle. Ein
+  Wackeln, das im Fenster ohnehin toleriert würde, darf nicht deshalb alles verwerfen, weil
+  es zufällig auf der falschen Seite der Grenze gelandet ist.
+- **120 ms** für Frames, die *deutlich* danebenliegen — 130°, wo eben noch 172° stand. Dass
+  solche Sprünge Tracking-Fehler und keine Bewegung sind, steht in den Messdaten: Frames
+  mit kurzem Aussetzer melden einen Ellbogen-Flare von im Median 138°, ein Winkel, bei dem
+  der Arm hinter dem Rücken stünde. Über hundert Millisekunden kommt aber niemand in eine
+  andere Haltung und wieder zurück — vier Frames sind ein Glitch, fünfzehn eine Bewegung.
+
+Überbrückte Lücken zählen dabei **nicht** als Haltezeit (höchstens 150 ms je Lücke), sonst
+wäre „eine Sekunde nicht erkannt" eine Sekunde geschenkt.
+
+Verworfen wird das Fenster weiterhin, wenn die Position wirklich verlassen wird — Arme
+gebeugt, Körper abgeknickt, aufrecht, oder Pose länger als die Nachsichtsspanne weg.
+
+**Was daran noch geraten ist:** die Zahlen selbst. Wie unruhig das Tracking auf chris'
+Gerät wirklich ist, weiß ich nicht — auf dem Handy gibt es kein Log (siehe CLAUDE.md).
+Deshalb hält der `baseline`-Eintrag im Kalibrier-Log jetzt beides fest: die robuste
+Spannweite *und* die rohe (`elbowSpreadDeg` / `elbowJitterDeg`), dazu das Wandern, die Zahl
+der Neustarts und der überbrückten Aussetzer. `npm run analyze:reps` stellt sie
+gegenüber. Klaffen robuste und rohe Spannweite weit auseinander, ist das Tracking unruhig
+und nicht die Person; viele Neustarts bei kleinem Rauschen heißen, die Toleranzen sind
+immer noch zu eng.
 
 **Der Bildschirm sagt, woran es hakt.** „Ich sehe dich nicht" / „Arme durchstrecken" /
 „Körper strecken" / „Du stehst noch" / „Ruhig halten", dazu ein Balken, der sich füllt, und
