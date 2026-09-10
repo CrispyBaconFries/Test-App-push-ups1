@@ -13,6 +13,7 @@ function rep(formScore = 90, hasIssue = false): RepResult {
     maxElbowFlareDeg: 30,
     minNeckAngleDeg: 175,
     durationMs: 900,
+    elbowRangeDeg: 60,
   };
 }
 

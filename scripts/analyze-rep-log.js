@@ -35,6 +35,7 @@ const file = process.argv[2] || DEFAULT_FILE;
 // Hüftspalte aus Aufzeichnungen davor ist mit neueren deshalb nicht vergleichbar - die
 // alten Werte sind durch den auf den Zehen stehenden Fuß systematisch zu klein.
 const THRESHOLDS = {
+  minRepRangeDeg: 45,
   goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
   maxElbowFlareDeg: 80,
@@ -179,6 +180,31 @@ if (baselines.length > 0) {
   }
 } else {
   console.log('Grundhaltung: nicht aufgezeichnet (Aufzeichnung vor dem 10.09.2026?)');
+}
+
+// Der Bewegungsumfang ist seit dem 10.09.2026 die Zahl, an der haengt, ob ueberhaupt
+// gezaehlt wird (siehe minRepRangeDeg). Er ist damit auch die einzige Moeglichkeit zu
+// pruefen, ob die 45 Grad auf einem anderen Geraet oder bei einer anderen Person noch
+// richtig liegen - eine reine Kopfbewegung erreicht 19-40 Grad, ein echter Liegestuetz
+// 51-67 Grad.
+const withRange = reps.filter((r) => typeof r.elbowRangeDeg === 'number');
+if (withRange.length > 0) {
+  console.log('\n--- Bewegungsumfang (zaehlt es ueberhaupt?) ---------------------------------');
+  const ranges = withRange.map((r) => r.elbowRangeDeg);
+  const sorted = [...ranges].sort((a, b) => a - b);
+  const q = (f) => sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * f))];
+  console.log(
+    `  Schwelle ${THRESHOLDS.minRepRangeDeg}°  min ${sorted[0]}  p10 ${q(0.1)}  Median ${q(0.5)}  max ${sorted[sorted.length - 1]}` +
+      `   (${ranges.length} von ${reps.length} Wiederholungen aufgezeichnet)`
+  );
+  const tight = ranges.filter((v) => v < THRESHOLDS.minRepRangeDeg + 10).length;
+  console.log(
+    tight > 0
+      ? `  -> ${tight} Wiederholung(en) unter ${THRESHOLDS.minRepRangeDeg + 10}° - dicht an der Grenze. Haeufen sie sich, ist die Schwelle zu hoch.`
+      : '  -> Alle Wiederholungen deutlich ueber der Schwelle. Kein Hinweis darauf, dass sie zu hoch liegt.'
+  );
+} else {
+  console.log('\nBewegungsumfang: nicht aufgezeichnet (Aufzeichnung vor dem 10.09.2026?)');
 }
 
 console.log('\n--- Sitzungen ---------------------------------------------------------------');

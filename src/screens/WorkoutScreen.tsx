@@ -17,6 +17,8 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RepHud } from '../components/RepHud';
+import { discardNoticeDe } from '../pose/feedbackText';
+import { useTransientNotice } from '../pose/useTransientNotice';
 import { StartPositionOverlay } from '../components/StartPositionOverlay';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
@@ -40,6 +42,12 @@ export function WorkoutScreen({ navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const auth = useAuth();
   const analyzer = usePushUpAnalyzer();
+  // Ein Verwurf war bisher stumm - der Zähler blieb einfach stehen, ohne zu sagen warum.
+  const { notice: discardNotice, show: showDiscardNotice } = useTransientNotice();
+  // Über eine Ref, weil `onResults` bewusst ein `useCallback` mit leerer Liste ist: Bei
+  // 30 Bildern/s darf der Rückruf nicht bei jedem Renderdurchlauf neu entstehen.
+  const showDiscardNoticeRef = useRef(showDiscardNotice);
+  showDiscardNoticeRef.current = showDiscardNotice;
   const startedAtRef = useRef(new Date().toISOString());
   const repsRef = useRef<RepResult[]>([]);
 
@@ -156,6 +164,7 @@ export function WorkoutScreen({ navigation }: Props) {
     // Bild, Bildrate eingebrochen). Ohne diese Zeile wäre von außen nicht zu sehen, ob
     // gerade niemand trainiert oder ob die Erkennung Wiederholungen wegwirft.
     if (discardedRep) {
+      showDiscardNoticeRef.current(discardNoticeDe(discardedRep.reason));
       if (__DEV__) console.log('[DIAG] Wiederholung verworfen', discardedRep);
       // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
       recordCalibrationDiscard(discardedRep, 'training').catch(() => {});
@@ -284,7 +293,7 @@ export function WorkoutScreen({ navigation }: Props) {
         activeIssue={activeIssue}
       />
 
-      <RepHud repCount={repCount} live={live} lastRep={lastRep} trackingOk={live?.trackingOk ?? true} />
+      <RepHud repCount={repCount} live={live} lastRep={lastRep} trackingOk={live?.trackingOk ?? true} notice={discardNotice} />
 
       {live?.startPosition && <StartPositionOverlay progress={live.startPosition} />}
 

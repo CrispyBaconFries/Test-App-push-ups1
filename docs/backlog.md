@@ -51,9 +51,10 @@ Erkennung oder der Optik geraten statt begründet.
 
 10. **Tiefenmaß ohne Unterarm** (Schulterhöhe statt Ellbogenwinkel) — Punkt 1.2. Die
     Schwelle selbst ist am 10.09.2026 auf 105° korrigiert; offen ist die Kennzahl.
-11. Sichtbarkeit durch die native Bridge (Patch) — Punkt 1.3. Braucht Prebuild.
-12. Sitzungskontext erfassen — Punkt 1.4.
-13. Frame-Zeitreihen statt nur Kennzahlen — Punkt 1.5.
+11. Sichtbarkeit durch die native Bridge (Patch) — Punkt 1.4. Braucht Prebuild.
+12. Sitzungskontext erfassen — Punkt 1.5.
+13. Frame-Zeitreihen statt nur Kennzahlen — Punkt 1.6.
+    Dazu: Grenzfälle des Bewegungsumfangs beobachten — Punkt 1.3.
 
 ### Phase 4 — vor einer Veröffentlichung
 
@@ -157,17 +158,24 @@ ein Mensch in dieser Kameraperspektive überhaupt erreichen kann.
    Unterarm-Verkürzung unabhängig ist. Erst damit ist „tiefer gehen" wieder eine Aussage
    über die Ausführung statt über die Kameraperspektive. Braucht Zeitreihen (Punkt 5).
 
-3. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
+3. **Grenzfälle des Bewegungsumfangs beobachten.** `minRepRangeDeg` (45°) sperrt seit dem
+   10.09.2026 reine Kopfbewegungen aus (nachgewiesen an 21 nachgestellten Wiederholungen).
+   Zwei der 34 echten Wiederholungen desselben Abends fielen mit 39°/40° ebenfalls durch.
+   Ob das bei anderen Personen oder Kamerawinkeln häufiger passiert, sagt der neue Wert
+   `elbowRangeDeg` in jeder aufgezeichneten Wiederholung — `npm run analyze:reps` stellt
+   ihn der Schwelle gegenüber. Häufen sich Werte knapp darüber, ist 45° zu hoch.
+
+4. **Sichtbarkeit durchreichen.** `react-native-mediapipe` verwirft MediaPipes
    Konfidenzwerte im nativen Bridge-Code (`ConvertHelpers.kt`); `visibility` ist bei uns
    auf jedem Frame `undefined`. Solange das so bleibt, können schlechte Landmarken gar
    nicht aussortiert werden — `minTrackedFrameRatio` greift derzeit nur, wenn ein Landmark
    ganz fehlt. Für dieses Paket gibt es bereits einen Patch, in den das mit hineinkann.
 
-4. **Sitzungskontext erfassen** — Person, Abstand, Handyhöhe, frontal oder seitlich, und
+5. **Sitzungskontext erfassen** — Person, Abstand, Handyhöhe, frontal oder seitlich, und
    eine Selbsteinschätzung nach dem Satz. Ohne das mischen sich mehrere Personen aus
    unbekannten Perspektiven in einem Datensatz.
 
-5. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen nicht,
+6. **Zeitreihen statt nur Zusammenfassungen** — vier Zahlen pro Wiederholung reichen nicht,
    um „kurzer Erkennungsaussetzer" von „echtes Durchhängen" zu unterscheiden.
 
 ## 2. Kalibrierung in der Startposition — ERLEDIGT (10.09.2026)

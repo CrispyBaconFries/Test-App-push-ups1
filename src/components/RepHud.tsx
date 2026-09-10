@@ -11,6 +11,12 @@ export interface RepHudProps {
   live: LiveFeedback | null;
   lastRep: RepResult | null;
   trackingOk: boolean;
+  /**
+   * Kurzlebiger Hinweis, warum eine Bewegung *nicht* gezählt wurde (siehe
+   * `useTransientNotice`). Hat Vorrang vor dem Formhinweis: "es wurde nicht gezählt" ist
+   * die dringendere Nachricht als "die Hüfte hängt".
+   */
+  notice?: string | null;
 }
 
 const CUE_COLORS: Record<string, string> = {
@@ -18,7 +24,7 @@ const CUE_COLORS: Record<string, string> = {
   DEFAULT: colors.danger,
 };
 
-export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
+export function RepHud({ repCount, live, lastRep, trackingOk, notice = null }: RepHudProps) {
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
   const framingLabel = live ? framingLabelDe(live.framing) : '';
   const cueColor = live?.cue === 'GOOD_FORM' ? CUE_COLORS.GOOD_FORM : CUE_COLORS.DEFAULT;
@@ -63,6 +69,10 @@ export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
       ) : !trackingOk ? (
         <View style={styles.cueBar}>
           <Text style={[styles.cueText, { color: colors.warning }]}>Pose nicht erkannt – kurz still halten</Text>
+        </View>
+      ) : notice !== null ? (
+        <View style={styles.cueBar}>
+          <Text style={[styles.cueText, { color: colors.warning }]}>{notice}</Text>
         </View>
       ) : cueLabel !== '' ? (
         <View style={styles.cueBar}>

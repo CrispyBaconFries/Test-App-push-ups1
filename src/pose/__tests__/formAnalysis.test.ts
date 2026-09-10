@@ -69,9 +69,9 @@ const ARMING_FRAMES = 80; // 80 * 33 ms = 2640 ms, deutlich über den geforderte
  */
 const PLANK_FLARE_DEG = 75;
 
-function armAnalyzer(analyzer: PushUpAnalyzer, startMs: number): number {
+function armAnalyzer(analyzer: PushUpAnalyzer, startMs: number, topDeg = 172): number {
   for (let i = 0; i < ARMING_FRAMES; i++) {
-    analyzer.processFrame(buildFrame({ elbowAngleDeg: 172, flareDeg: PLANK_FLARE_DEG }), startMs + i * FRAME_MS);
+    analyzer.processFrame(buildFrame({ elbowAngleDeg: topDeg, flareDeg: PLANK_FLARE_DEG }), startMs + i * FRAME_MS);
   }
   return startMs + ARMING_FRAMES * FRAME_MS;
 }
@@ -243,7 +243,13 @@ describe('PushUpAnalyzer', () => {
     expect(analyzer.getDiscardCounts().TOO_SHORT).toBe(1);
 
     analyzer.reset();
-    expect(analyzer.getDiscardCounts()).toEqual({ TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0 });
+    expect(analyzer.getDiscardCounts()).toEqual({
+      TOO_SHORT: 0,
+      TOO_LONG: 0,
+      TRACKING_LOST: 0,
+      NOT_A_PLANK: 0,
+      TOO_SHALLOW: 0,
+    });
   });
 
   it('still counts a rep when the pose has no visibility data at all (matches real device data)', () => {
@@ -474,6 +480,60 @@ describe('PushUpAnalyzer', () => {
 
     expect(reps).toEqual([]);
     expect(discards.map((d) => d.reason)).toEqual(['NOT_A_PLANK']);
+  });
+
+  it('zählt keine reine Kopfbewegung, auch wenn der Ellbogenwinkel dabei wackelt', () => {
+    // Nachgestellt aus der Aufzeichnung vom 10.09.2026, 18:32 Uhr: chris lag im Stütz und
+    // hat nur den Kopf auf und ab bewegt - 21 Wiederholungen am Stück wurden gezählt. Der
+    // Ellbogenwinkel *bewegt* sich dabei wirklich (161° -> 121-142°), weil MediaPipe die
+    // ganze Pose gemeinsam schätzt und die Kopfbewegung in die geschätzte Schulterposition
+    // durchschlägt. Nur eben viel zu wenig für eine Wiederholung.
+    const analyzer = new PushUpAnalyzer();
+    const startMs = armAnalyzer(analyzer, 0, 161);
+    const { reps, discards } = runFrames(
+      analyzer,
+      partialSweep(161, 128, 45).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg, flareDeg: PLANK_FLARE_DEG })),
+      startMs
+    );
+
+    expect(reps).toEqual([]);
+    expect(discards.map((d) => d.reason)).toEqual(['TOO_SHALLOW']);
+  });
+
+  it('zählt dieselbe Person weiter, sobald sich der Arm wirklich beugt', () => {
+    // Die Gegenprobe, und der Grund, warum die Schwelle am *Bewegungsumfang* hängt und
+    // nicht an einem festen Tiefpunkt: Dieselbe kalibrierte Streckung (161°), dieselbe
+    // Kamera - nur geht der Arm jetzt wirklich herunter. In den echten Sitzungen desselben
+    // Abends lag der Umfang bei 51-67°, bei der Kopfbewegung bei 19-40°.
+    const analyzer = new PushUpAnalyzer();
+    const startMs = armAnalyzer(analyzer, 0, 161);
+    const { reps, discards } = runFrames(
+      analyzer,
+      partialSweep(161, 100, 45).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg, flareDeg: PLANK_FLARE_DEG })),
+      startMs
+    );
+
+    expect(discards).toEqual([]);
+    expect(reps).toHaveLength(1);
+    expect(reps[0].elbowRangeDeg).toBeGreaterThanOrEqual(45);
+  });
+
+  it('misst den Bewegungsumfang gegen die eigene Streckung, nicht gegen 180°', () => {
+    // Wessen gestreckter Arm auf diesem Gerät als 161° ankommt, dessen Tiefpunkt kommt
+    // ebenfalls zu hoch an. Ein fester Tiefen-Winkel würde genau diese Person aussperren -
+    // die Differenz bleibt vom Messfehler dagegen unberührt.
+    const analyzer = new PushUpAnalyzer();
+    const startMs = armAnalyzer(analyzer, 0, 161);
+    const { reps } = runFrames(
+      analyzer,
+      partialSweep(161, 105, 45).map((elbowAngleDeg) => buildFrame({ elbowAngleDeg, flareDeg: PLANK_FLARE_DEG })),
+      startMs
+    );
+
+    expect(reps).toHaveLength(1);
+    // 161 - 105 = 56, nicht 180 - 105 = 75.
+    expect(reps[0].elbowRangeDeg).toBeGreaterThanOrEqual(50);
+    expect(reps[0].elbowRangeDeg).toBeLessThanOrEqual(60);
   });
 
   it('gives the benefit of the doubt when the hip was never measurable', () => {

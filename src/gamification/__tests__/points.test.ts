@@ -11,6 +11,7 @@ function rep(formScore: number): RepResult {
     maxElbowFlareDeg: 30,
     minNeckAngleDeg: 175,
     durationMs: 900,
+    elbowRangeDeg: 60,
   };
 }
 

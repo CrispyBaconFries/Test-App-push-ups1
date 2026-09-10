@@ -12,6 +12,7 @@ function rep(formScore = 90, issues: RepResult['issues'] = []): RepResult {
     maxElbowFlareDeg: 30,
     minNeckAngleDeg: 175,
     durationMs: 900,
+    elbowRangeDeg: 60,
   };
 }
 

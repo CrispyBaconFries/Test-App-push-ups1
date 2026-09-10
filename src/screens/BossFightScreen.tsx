@@ -18,6 +18,8 @@ import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formA
 import { liveCueLabelDe } from '../pose/feedbackText';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { StartPositionOverlay } from '../components/StartPositionOverlay';
+import { discardNoticeDe } from '../pose/feedbackText';
+import { useTransientNotice } from '../pose/useTransientNotice';
 import { ProgressBar } from '../components/ProgressBar';
 import { useRepSounds } from '../audio/repSounds';
 import { buildSession, computeStats, loadSessions, saveSession } from '../storage/workoutStorage';
@@ -58,6 +60,12 @@ export function BossFightScreen({ navigation }: Props) {
   const auth = useAuth();
   const { hasPermission, requestPermission } = useCameraPermission();
   const analyzer = usePushUpAnalyzer();
+  // Ein Verwurf war bisher stumm - der Zähler blieb einfach stehen, ohne zu sagen warum.
+  const { notice: discardNotice, show: showDiscardNotice } = useTransientNotice();
+  // Über eine Ref, weil `onResults` bewusst ein `useCallback` mit leerer Liste ist: Bei
+  // 30 Bildern/s darf der Rückruf nicht bei jedem Renderdurchlauf neu entstehen.
+  const showDiscardNoticeRef = useRef(showDiscardNotice);
+  showDiscardNoticeRef.current = showDiscardNotice;
   // Ob die Startposition schon eingenommen wurde (Ref statt State - siehe WorkoutScreen).
   const armedRef = useRef(false);
   const startedAtRef = useRef(new Date().toISOString());
@@ -144,6 +152,7 @@ export function BossFightScreen({ navigation }: Props) {
     // Bild, Bildrate eingebrochen). Ohne diese Zeile wäre von außen nicht zu sehen, ob
     // gerade niemand trainiert oder ob die Erkennung Wiederholungen wegwirft.
     if (discardedRep) {
+      showDiscardNoticeRef.current(discardNoticeDe(discardedRep.reason));
       if (__DEV__) console.log('[DIAG] Wiederholung verworfen', discardedRep);
       // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen.
       recordCalibrationDiscard(discardedRep, 'boss').catch(() => {});
@@ -291,9 +300,11 @@ export function BossFightScreen({ navigation }: Props) {
         </View>
       )}
 
-      {!defeatedBanner && cueLabel !== '' && (
+      {/* "Wurde nicht gezählt" hat Vorrang vor dem Formhinweis: Wer glaubt, eine
+          Wiederholung gemacht zu haben, muss zuerst erfahren, dass sie nicht zählte. */}
+      {!defeatedBanner && (discardNotice !== null || cueLabel !== '') && (
         <View style={styles.cueBar} pointerEvents="none">
-          <Text style={styles.cueText}>{cueLabel}</Text>
+          <Text style={styles.cueText}>{discardNotice ?? cueLabel}</Text>
         </View>
       )}
 

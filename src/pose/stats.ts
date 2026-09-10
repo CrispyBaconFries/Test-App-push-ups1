@@ -64,3 +64,20 @@ export function nthSmallest(values: readonly number[], n: number): number {
   const maxIndex = Math.floor((sorted.length - 1) / 2);
   return sorted[Math.min(Math.max(0, Math.trunc(n)), maxIndex)];
 }
+
+/**
+ * Der `n`-größte Wert (0-basiert) - das Gegenstück zu `nthSmallest`.
+ *
+ * Gebraucht für den **oberen** Umkehrpunkt einer Wiederholung. Dieselbe Überlegung wie
+ * unten: Der Arm ist nur in wenigen Frames ganz oben, ein Perzentil über den ganzen Bogen
+ * würde die Streckung deshalb systematisch unterschätzen. Und genau wie unten darf ein
+ * einzelner verrutschter Frame nicht entscheiden - hier wiegt das sogar schwerer, weil
+ * ein zu hoher oberer Umkehrpunkt den gemessenen Bewegungsumfang künstlich vergrößert,
+ * und der entscheidet seit dem 10.09.2026 darüber, ob überhaupt gezählt wird.
+ */
+export function nthLargest(values: readonly number[], n: number): number {
+  if (values.length === 0) return NaN;
+  const sorted = [...values].sort((a, b) => b - a);
+  const maxIndex = Math.floor((sorted.length - 1) / 2);
+  return sorted[Math.min(Math.max(0, Math.trunc(n)), maxIndex)];
+}

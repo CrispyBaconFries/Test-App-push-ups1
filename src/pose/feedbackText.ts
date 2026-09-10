@@ -1,4 +1,4 @@
-import type { FormIssue, FramingIssue, LiveFeedback } from './formAnalysis';
+import type { FormIssue, FramingIssue, LiveFeedback, RepDiscardReason } from './formAnalysis';
 
 export const ISSUE_LABELS_DE: Record<FormIssue, string> = {
   INSUFFICIENT_DEPTH: 'Tiefer gehen',
@@ -37,4 +37,32 @@ export const FRAMING_LABELS_DE: Record<FramingIssue, string> = {
 
 export function framingLabelDe(framing: FramingIssue | null): string {
   return framing === null ? '' : FRAMING_LABELS_DE[framing];
+}
+
+/**
+ * Was auf dem Bildschirm steht, wenn eine Bewegung **nicht** gezählt wurde.
+ *
+ * # Warum es das gibt (10.09.2026)
+ *
+ * Ein Verwurf war bisher stumm: Der Zähler blieb einfach stehen. Für jemanden, der eine
+ * Wiederholung gemacht zu haben glaubt, ist das die schlechteste aller Rückmeldungen -
+ * dieselbe Sackgasse wie beim Ruhighalten ("man kommt nie zu den Liegestützen"), nur eine
+ * Ebene später. Wer nicht erfährt, *warum* nichts passiert, kann es auch nicht besser
+ * machen.
+ *
+ * # Warum nicht für jeden Grund
+ *
+ * Hier stehen nur die Gründe, gegen die jemand etwas tun kann. `TRACKING_LOST` deckt der
+ * HUD bereits mit "Pose nicht erkannt" ab, und `TOO_LONG` heißt "der Zähler hing" - das
+ * ist unser Problem, nicht seins. Ein Hinweis, der keine Handlung nahelegt, ist Rauschen
+ * und trainiert einen nur darauf, die Zeile zu übersehen.
+ */
+export const DISCARD_NOTICE_DE: Partial<Record<RepDiscardReason, string>> = {
+  TOO_SHALLOW: 'Nicht gezählt – der Arm muss sich deutlich beugen',
+  TOO_SHORT: 'Nicht gezählt – zu schnell für eine Wiederholung',
+  NOT_A_PLANK: 'Nicht gezählt – Körper strecken und tiefer gehen',
+};
+
+export function discardNoticeDe(reason: RepDiscardReason): string | null {
+  return DISCARD_NOTICE_DE[reason] ?? null;
 }

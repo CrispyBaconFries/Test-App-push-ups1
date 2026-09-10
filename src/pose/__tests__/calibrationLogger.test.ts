@@ -48,6 +48,7 @@ function rep(index: number): RepResult {
     maxElbowFlareDeg: 55,
     minNeckAngleDeg: 130,
     durationMs: 1500,
+    elbowRangeDeg: 60,
   };
 }
 

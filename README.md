@@ -440,6 +440,68 @@ stattdessen aus der Kalibrierung abzuleiten (wie bei Hüfte und Nacken), aber da
 nicht: Der Messfehler am Tiefpunkt hat mit dem am Umkehrpunkt oben nichts zu tun, die
 Grundhaltung sagt über ihn also nichts.
 
+### Kopfwippen ist kein Liegestütz (10.09.2026)
+
+chris hat den Zähler ausgetrickst: im Stütz liegen bleiben und **nur den Kopf** auf und ab
+bewegen. 21 Wiederholungen am Stück, ohne die Arme zu benutzen.
+
+**Das war kein zu lascher Schwellwert, sondern MediaPipe.** Das Modell schätzt die ganze
+Pose gemeinsam — eine Kopfbewegung zieht die geschätzte Schulterposition mit, und der
+Ellbogenwinkel *wackelt* dabei messbar, ohne dass sich der Arm bewegt. Gemessen wurde ein
+Ausschlag bis herunter auf 121°, also klar unter der Versuchsschwelle von 140°.
+
+**Ein absoluter Tiefpunkt hilft dagegen nicht.** Die Kopf-Sitzung erreichte 121–142°, echte
+flache Wiederholungen desselben Abends 121–124°. Die beiden Mengen überschneiden sich; jede
+Schwelle, die das Wippen aussperrt, sperrt auch echte Wiederholungen aus.
+
+**Der Bewegungsumfang trennt sie sauber** — gemessen gegen die eigene, in der Startposition
+kalibrierte Streckung (161–163°):
+
+| Sitzung | Wiederholungen | Bewegungsumfang |
+|---|---|---|
+| 10.09. 17:43 (echt) | 15 | 51–67° |
+| 10.09. 18:18 (echt) | 19 | 39–65° |
+| 10.09. 18:32 (**nur Kopf**) | 21 | **19–40°** |
+
+`minRepRangeDeg` steht deshalb bei **45°**: keine einzige der 21 Kopfbewegungen zählt noch,
+32 der 34 echten Wiederholungen bleiben. Die beiden verlorenen waren die flachsten der
+Sitzung (39° und 40°) und lagen damit mitten im Kopf-Bereich — an dieser Messung sind sie
+von einer Kopfbewegung nicht zu unterscheiden. Verworfen wird als `TOO_SHALLOW`.
+
+**Warum gegen die eigene Streckung und nicht gegen einen festen Winkel.** Weil beide Enden
+mit demselben Fehler gemessen werden. Wessen gestreckter Arm auf diesem Gerät als 161°
+ankommt statt als 180°, dessen Tiefpunkt kommt ebenfalls zu hoch an; die *Differenz* bleibt
+davon unberührt. Ein fester Tiefen-Winkel würde genau diese Person aussperren — derselbe
+Fehler, der bei `goodDepthElbowDeg` schon einmal gemacht wurde.
+
+**Nicht zu verwechseln mit `goodDepthElbowDeg` (105°).** Die eine Zahl sagt, wie tief ein
+Liegestütz sein *soll*, und kostet nur Punkte. Diese hier sagt: unter so wenig Bewegung war
+es gar keine Wiederholung. 45° liegt deshalb bewusst deutlich unter dem, was ein sauberer
+Liegestütz hat (rund 60°) — sie soll Betrug aussortieren, nicht Technik bewerten.
+
+**Was das nicht ist: ein Anti-Cheat.** Wer das System austricksen will, findet einen Weg —
+mit einer echten, sehr flachen Armbewegung etwa. Die Schwelle verlangt aber, dass sich der
+Arm wirklich bewegt, und das ist der Unterschied zwischen „daneben liegen und den Kopf
+nicken" und „Liegestütze machen, nur schlecht". Die ehrlichen Grenzen stehen weiter unten
+unter „Faire Zählung / Anti-Cheat".
+
+#### Ein Verwurf ist nicht mehr stumm
+
+Bisher blieb der Zähler bei einem Verwurf einfach stehen. Für jemanden, der eine
+Wiederholung gemacht zu haben glaubt, ist das die schlechteste aller Rückmeldungen —
+dieselbe Sackgasse wie beim Ruhighalten, nur eine Ebene später. Jetzt steht für zweieinhalb
+Sekunden in der Hinweiszeile, was los war:
+
+- `TOO_SHALLOW` → „Nicht gezählt – der Arm muss sich deutlich beugen"
+- `TOO_SHORT` → „Nicht gezählt – zu schnell für eine Wiederholung"
+- `NOT_A_PLANK` → „Nicht gezählt – Körper strecken und tiefer gehen"
+
+`TOO_LONG` und `TRACKING_LOST` bleiben bewusst stumm: Das erste heißt „der Zähler hing" und
+ist unser Problem, nicht seins; das zweite steht als „Pose nicht erkannt" schon an
+derselben Stelle. Ein Hinweis, der keine Handlung nahelegt, trainiert einen nur darauf, die
+Zeile zu übersehen. Der Bildausschnitt behält Vorrang vor allem: Solange der Arm aus dem
+Bild ragt, zählt ohnehin nichts, und dann ist „zurücktreten" der Rat, der wirklich hilft.
+
 ### Warum Wiederholungen verschluckt wurden (10.09.2026)
 
 chris machte 14 Liegestütze, gezählt wurden 8. Dazu kamen zwei verworfene Abschnitte von
@@ -1581,6 +1643,21 @@ implementiert):
 Kurz gesagt: Die Zählung ist genauso fair/genau wie im Solo-Modus (gleiche Logik), aber
 *nicht* hieb- und stichfest gegen einen absichtlich manipulierten Client — das ist eine
 bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen.
+
+**Was der Client selbst inzwischen aussortiert** (kein Anti-Cheat, aber die drei Tricks,
+die ohne Werkzeug funktionierten):
+
+1. **Vor der Kamera stehen und hinlegen** zählt nicht mehr — die Startposition muss
+   eingenommen und ruhig gehalten werden, bevor die Zustandsmaschine überhaupt läuft.
+2. **Im Stütz liegen und nur den Kopf wippen** zählt nicht mehr — der Bewegungsumfang des
+   Ellbogens muss mindestens 45° betragen (`minRepRangeDeg`, siehe „Kopfwippen ist kein
+   Liegestütz").
+3. **Zucken statt Wiederholungen** zählt nicht mehr — `minRepDurationMs` (600 ms) und die
+   Umkehrpunkt-Erkennung.
+
+Alle drei verlangen jetzt eine echte Armbewegung. Wer trotzdem tricksen will, muss dafür
+sehr flache, aber echte Liegestütze machen — dann ist es Technik-Diskussion, nicht
+Manipulation.
 
 ### Sicherheit: was die Regeln erzwingen (10.09.2026)
 

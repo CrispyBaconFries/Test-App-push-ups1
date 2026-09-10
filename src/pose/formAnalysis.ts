@@ -9,7 +9,7 @@ import {
   type BodySide,
   type Pose,
 } from './landmarks';
-import { nthSmallest, percentile } from './stats';
+import { nthLargest, nthSmallest, percentile } from './stats';
 import {
   StartPositionGate,
   type PostureBaseline,
@@ -40,7 +40,13 @@ export type FormIssue =
  *                  auch nicht in die Tiefe. Das ist der Gang zur Position hin und wieder
  *                  weg, kein Liegestütz.
  */
-export type RepDiscardReason = 'TOO_SHORT' | 'TOO_LONG' | 'TRACKING_LOST' | 'NOT_A_PLANK';
+export type RepDiscardReason =
+  | 'TOO_SHORT'
+  | 'TOO_LONG'
+  | 'TRACKING_LOST'
+  | 'NOT_A_PLANK'
+  /** Der Arm hat sich kaum gebeugt - siehe `PushUpThresholds.minRepRangeDeg`. */
+  | 'TOO_SHALLOW';
 
 /**
  * Eine verworfene Wiederholung. Wird nicht gezählt und nicht bewertet, aber gemeldet -
@@ -105,6 +111,19 @@ export interface RepResult {
   maxElbowFlareDeg: number | null;
   minNeckAngleDeg: number | null;
   durationMs: number;
+  /**
+   * Wie weit sich der Ellbogen in dieser Wiederholung tatsächlich gebeugt hat (oberer
+   * minus unterer Umkehrpunkt).
+   *
+   * Aufgezeichnet, weil `minRepRangeDeg` seit dem 10.09.2026 an dieser Zahl entscheidet,
+   * **ob** gezählt wird - und weil sich sonst nicht prüfen lässt, ob die 45° auf einem
+   * anderen Gerät oder bei einer anderen Person noch richtig liegen. Auf dem Handy gibt
+   * es kein Log (siehe CLAUDE.md); was hier nicht drinsteht, ist später nicht zu erfahren.
+   *
+   * In gespeicherten Wiederholungen von **vor** dem 10.09.2026 fehlt das Feld - beim
+   * Auswerten alter Verläufe also nicht als garantiert vorhanden behandeln.
+   */
+  elbowRangeDeg: number;
 }
 
 /**
@@ -187,6 +206,50 @@ export interface PushUpThresholds {
    * Aufzeichnungen geprüft wurde.
    */
   notAPlankDepthDeg: number;
+  /**
+   * Um wie viel Grad sich der Ellbogen zwischen oberem und unterem Umkehrpunkt mindestens
+   * gebeugt haben muss, damit die Bewegung überhaupt gezählt wird.
+   *
+   * # Wogegen das ist (10.09.2026)
+   *
+   * chris hat vorgeführt, dass es reicht, im Stütz zu liegen und nur den **Kopf** auf und
+   * ab zu bewegen: 21 Wiederholungen am Stück, ohne die Arme zu benutzen. Der Grund ist
+   * nicht Nachlässigkeit der Schwellwerte, sondern MediaPipe selbst - das Modell schätzt
+   * die ganze Pose gemeinsam, und eine Kopfbewegung zieht die geschätzte Schulterposition
+   * mit. Der Ellbogenwinkel *wackelt* dabei messbar, ohne dass sich der Arm bewegt.
+   *
+   * Ein absoluter Tiefpunkt taugt gegen diesen Trick nicht: Die Kopf-Sitzung erreichte
+   * 121-142°, echte flache Wiederholungen derselben Person 121-124°. Die beiden Mengen
+   * überschneiden sich. Der **Bewegungsumfang** trennt sie dagegen sauber, gemessen gegen
+   * die eigene, in der Startposition kalibrierte Streckung (161-163°):
+   *
+   * | Sitzung | Wiederholungen | Bewegungsumfang |
+   * |---|---|---|
+   * | 10.09. 17:43 (echt) | 15 | 51-67° |
+   * | 10.09. 18:18 (echt) | 19 | 39-65° |
+   * | 10.09. 18:32 (**nur Kopf**) | 21 | 19-40° |
+   *
+   * Bei 45° zählt keine einzige der 21 Kopfbewegungen mehr, und 32 der 34 echten
+   * Wiederholungen bleiben. Die beiden verlorenen waren die flachsten der Sitzung (39°
+   * und 40°) und lagen damit mitten im Kopf-Bereich - sie sind an dieser Messung von
+   * einer Kopfbewegung nicht zu unterscheiden.
+   *
+   * # Warum das nicht dasselbe ist wie `goodDepthElbowDeg`
+   *
+   * Diese Zahl sagt **nicht**, wie tief ein Liegestütz sein soll - das tut
+   * `goodDepthElbowDeg`, und sie kostet nur Punkte. Diese hier sagt: "unter so wenig
+   * Bewegung war es gar keine Wiederholung". 45° ist deshalb bewusst weit unterhalb
+   * dessen, was ein sauberer Liegestütz hat (rund 60°): Sie soll Betrug aussortieren,
+   * nicht Technik bewerten.
+   *
+   * # Warum gegen die eigene Streckung und nicht gegen einen festen Winkel
+   *
+   * Weil beide Enden mit demselben Fehler gemessen werden. Wessen gestreckter Arm auf
+   * diesem Gerät als 161° ankommt statt als 180°, dessen Tiefpunkt kommt ebenfalls zu
+   * hoch an; die *Differenz* bleibt davon unberührt. Ein fester Tiefen-Winkel würde
+   * genau diese Person aussperren.
+   */
+  minRepRangeDeg: number;
   /**
    * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
    * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
@@ -338,6 +401,7 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   elbowAttemptDeg: 140,
   minPlankHipStraightnessDeg: 110,
   notAPlankDepthDeg: 95,
+  minRepRangeDeg: 45,
   repReversalToleranceDeg: 15,
   goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
@@ -539,6 +603,7 @@ export class PushUpAnalyzer {
     TOO_LONG: 0,
     TRACKING_LOST: 0,
     NOT_A_PLANK: 0,
+    TOO_SHALLOW: 0,
   };
 
   constructor(thresholds: Partial<PushUpThresholds> = {}, startPosition: Partial<StartPositionCriteria> = {}) {
@@ -561,7 +626,7 @@ export class PushUpAnalyzer {
     this.repIndex = 0;
     this.acc = null;
     this.lockedSide = null;
-    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0 };
+    this.discardCounts = { TOO_SHORT: 0, TOO_LONG: 0, TRACKING_LOST: 0, NOT_A_PLANK: 0, TOO_SHALLOW: 0 };
     this.thresholds = this.baseThresholds;
     this.baseline = null;
     this.gate = new StartPositionGate(this.gateCriteria);
@@ -927,9 +992,28 @@ export class PushUpAnalyzer {
     const lowP = t.formPercentile;
     const highP = 100 - t.formPercentile;
     const elbowDepthDeg = nthSmallest(acc.elbowAngles, t.depthOutlierFrames);
+    // Der obere Umkehrpunkt: die eigene kalibrierte Streckung, mindestens aber das, was in
+    // dieser Wiederholung wirklich erreicht wurde. Das `Math.max` schützt den Fall, dass
+    // beim Kalibrieren flacher gemessen wurde als beim Trainieren - sonst käme der
+    // Bewegungsumfang zu klein heraus und eine echte Wiederholung fiele durch.
+    const calibratedTopDeg = this.baseline?.topElbowAngleDeg ?? t.elbowUpDeg;
+    const topDeg = Math.max(calibratedTopDeg, nthLargest(acc.elbowAngles, t.depthOutlierFrames));
+    const elbowRangeDeg = topDeg - elbowDepthDeg;
     const hipStraightnessDeg = percentile(acc.hipStraightness, lowP);
     const elbowFlareDeg = percentile(acc.elbowFlare, highP);
     const neckAngleDeg = percentile(acc.neckAngles, lowP);
+
+    // Der Arm hat sich kaum gebeugt: Das war keine Wiederholung, sondern - im
+    // nachgestellten Fall vom 10.09.2026 - eine Kopfbewegung, die MediaPipe in die
+    // geschätzte Schulterposition durchschlagen lässt. Warum der Bewegungsumfang und nicht
+    // der Tiefpunkt darüber entscheidet, steht bei `minRepRangeDeg`.
+    //
+    // Bewusst nach `TOO_SHORT`/`TRACKING_LOST`, aber vor der Bewertung: Wer sich nicht
+    // bewegt hat, soll nicht wegen "zu wenig Tiefe" und "Hüfte durchgehängt" Punkte
+    // verlieren, sondern gar nicht erst gezählt werden.
+    if (elbowRangeDeg < t.minRepRangeDeg) {
+      return { rep: null, discarded: this.discardRep('TOO_SHALLOW', timestampMs) };
+    }
 
     // Weder Stützposition noch Tiefe: Das war der Weg in die Position hinein oder wieder
     // heraus, kein Liegestütz. Bewusst erst hier, nach der Kennzahlberechnung - vorher
@@ -975,6 +1059,7 @@ export class PushUpAnalyzer {
       maxElbowFlareDeg: roundOrNull(elbowFlareDeg),
       minNeckAngleDeg: roundOrNull(neckAngleDeg),
       durationMs,
+      elbowRangeDeg: Math.round(elbowRangeDeg),
     };
 
     this.acc = null;

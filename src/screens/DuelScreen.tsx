@@ -16,6 +16,8 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { type FormIssue } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { StartPositionOverlay } from '../components/StartPositionOverlay';
+import { discardNoticeDe } from '../pose/feedbackText';
+import { useTransientNotice } from '../pose/useTransientNotice';
 import type { StartPositionProgress } from '../pose/startPosition';
 import { RankFrame } from '../components/RankFrame';
 import { useRepSounds } from '../audio/repSounds';
@@ -60,6 +62,11 @@ export function DuelScreen({ route, navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
 
   const analyzer = usePushUpAnalyzer();
+  // Im Duell wiegt ein stummer Verwurf am schwersten: Man zählt selbst mit, sieht den
+  // Gegner davonziehen und weiß nicht, dass die eigene Bewegung nicht gewertet wurde.
+  const { notice: discardNotice, show: showDiscardNotice } = useTransientNotice();
+  const showDiscardNoticeRef = useRef(showDiscardNotice);
+  showDiscardNoticeRef.current = showDiscardNotice;
   const repsRef = useRef(0);
   const finishedRef = useRef(false);
   const readySentRef = useRef(false);
@@ -248,9 +255,12 @@ export function DuelScreen({ route, navigation }: Props) {
 
       // Im Duell zählt eine verworfene Bewegung nicht - das ist beabsichtigt und für
       // beide Seiten fair, denn die Alternative wäre, 300-ms-Zuckungen als Punkte zu
-      // werten. Hier nur protokolliert, damit sich Beschwerden über "der hat nicht
-      // gezählt" später nachvollziehen lassen.
-      if (__DEV__ && discardedRep) console.log('[DIAG] Wiederholung verworfen', discardedRep);
+      // werten. Gesagt werden muss es trotzdem, sonst zählt man selbst mit und versteht
+      // den Rückstand nicht.
+      if (discardedRep) {
+        showDiscardNoticeRef.current(discardNoticeDe(discardedRep.reason));
+        if (__DEV__) console.log('[DIAG] Wiederholung verworfen', discardedRep);
+      }
 
       const frameDims = vc.getFrameDims(result);
       const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));
@@ -322,6 +332,9 @@ export function DuelScreen({ route, navigation }: Props) {
           <Text style={styles.countdownText}>{countdownSeconds}</Text>
         )}
         {phase === 'running' && <Text style={styles.timerText}>{remainingSeconds}s</Text>}
+        {phase === 'running' && discardNotice !== null && (
+          <Text style={styles.discardNoticeText}>{discardNotice}</Text>
+        )}
       </View>
     </View>
   );
@@ -433,6 +446,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extraBold,
     fontSize: font(96),
     color: '#FFFFFF',
+  },
+  discardNoticeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: font(14),
+    color: colors.warning,
+    textAlign: 'center',
+    marginTop: space(8),
   },
   timerText: {
     position: 'absolute',
