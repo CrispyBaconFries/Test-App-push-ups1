@@ -202,6 +202,18 @@ export function computeStats(sessions: WorkoutSession[], frozenDayKeys: Readonly
   const workoutDays = new Set(repsPerDay.keys());
   let currentStreakDays = 0;
   const cursor = new Date();
+  // Schonfrist für den laufenden Tag: Wer gestern trainiert hat und heute noch nicht, hat
+  // seine Streak nicht verloren - der Tag ist einfach noch nicht vorbei. Ohne das stünde
+  // nach einer 10-Tage-Streak um 00:01 Uhr "0 Tage Streak" auf dem Startbildschirm, und
+  // das ausgerechnet, bevor jemand überhaupt die Gelegenheit zum Trainieren hatte.
+  //
+  // Genau diese Annahme setzt `reconcileStreakFreezes` (streakFreezeStore.ts) bereits
+  // voraus - es friert "heute" nie ein, mit Verweis auf diese Funktion hier. Bis zu
+  // dieser Änderung stimmte das nicht: Die beiden Module widersprachen sich.
+  const todayKey = localDayKey(cursor);
+  if (!workoutDays.has(todayKey) && !frozenDayKeys.has(todayKey)) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
   for (;;) {
     const key = localDayKey(cursor);
     if (!workoutDays.has(key) && !frozenDayKeys.has(key)) break;

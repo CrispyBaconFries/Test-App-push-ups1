@@ -718,7 +718,8 @@ benutzt.
 ## Tests & Typecheck
 
 ```bash
-npm test          # Jest — Unit-Tests für Rep-Zählung, Form-Scoring, Punkte/Level, Streak
+npm test          # Jest — Unit-Tests für Rep-Zählung, Form-Scoring, Punkte/Level, Streak,
+                  #        Länderspiel-Zeitplan und die Wächter-Tests fürs Regelwerk
 npm run typecheck # tsc --noEmit
 ```
 
@@ -1084,6 +1085,51 @@ Kurz gesagt: Die Zählung ist genauso fair/genau wie im Solo-Modus (gleiche Logi
 *nicht* hieb- und stichfest gegen einen absichtlich manipulierten Client — das ist eine
 bewusste, transparent kommunizierte Grenze für ein Hobby-Projekt, kein Versehen.
 
+### Sicherheit: was die Regeln erzwingen (10.09.2026)
+
+Durchsicht aus Angreifersicht — nicht „wie baue ich einen Server", sondern „was kann
+jemand mit einem manipulierten Client, einem geklauten Duellcode oder einem zweiten
+Handy anrichten, und was davon lässt sich ohne Cloud Functions abstellen". Gefunden und
+behoben wurden sechs Punkte:
+
+| | Was war offen | Was jetzt gilt |
+|---|---|---|
+| **H1** | Die RTDB-Regeln prüften `playerIds`, `duelSession.ts` schreibt aber `players` — der Zugriff war damit für **alle** gesperrt, Duelle konnten gar nicht funktionieren. Zusätzlich fehlte ein Fall zum Beitreten in ein fremdes Duell. | `database.rules.json` prüft `players`; Anlegen, Beitreten (nur solange < 2 Spieler) und Schreiben als eingetragener Teilnehmer sind die drei erlaubten Fälle. |
+| **H2** | Das `.write`-Recht am ganzen Duell-Knoten machte die feingranularen Regeln darunter wirkungslos (`.write` vererbt sich in der RTDB nach unten und lässt sich tiefer **nicht** entziehen). Ein Teilnehmer konnte den Zählerstand seines Gegners setzen — und damit Sieg, Niederlage und LP bestimmen. | Der Schutz steht komplett in `.validate` (das gilt auf **jeder** Ebene und lässt sich von oben nicht aushebeln): `reps`, `ready`, `finished`, `finishedReps` darf nur der Spieler selbst ändern; jeder andere darf sie ausschließlich unverändert durchreichen — genau das, was die Transaktionen brauchen, und mehr nicht. `lp`, `displayName`, `tier` sind nach dem Eintragen für **alle** unveränderlich. |
+| **H3** | `rankedQueue`: `allow update: if request.auth != null` — jeder eingeloggte Nutzer durfte jedes Feld jedes fremden Warteschlangen-Eintrags überschreiben, auch das `lp`, mit dem die Gegnersuche arbeitet. | Für **Fremde** ist nur noch genau der Übergang erlaubt, den `tryClaimCandidate` braucht: `status` von `waiting` auf `matched` plus `matchedDuelCode`, sonst kein Feld. Der Besitzer darf seinen eigenen Eintrag weiterhin komplett neu setzen — `joinQueue` schreibt mit `setDoc` ohne Merge, und auf einem übrig gebliebenen Eintrag (App mitten in der Suche beendet) ist das ein Update, kein Create. |
+| **H4** | `players/{uid}`: `allow write: if request.auth.uid == uid` — der eigene Datensatz war völlig frei beschreibbar (LP auf 99999, Rekorde erfinden, Freundescode wechseln). | Zähler und Rekorde wachsen nur (`totalReps`, `totalPoints`, `wins`, `losses`, `bestDayReps`, `bestSessionReps`, `longestStreakDays`), und zwar in Schritten, die eine echte Trainingseinheit bzw. ein echtes Duell hergibt (≤ 5000 Liegestütze je Sync, Punkte höchstens 15 je neu dazugekommenem Liegestütz, LP höchstens ±40, Siege/Niederlagen höchstens +1). `uid` und `friendCode` sind unveränderlich, Löschen ist gesperrt (sonst ließe sich jede „wächst nur"-Regel über löschen + neu anlegen umgehen). |
+| **M1** | Beim Länderspiel konnte jeder jederzeit ein `result` eintragen — also vor Eventende einen Wunschsieger veröffentlichen. | Ein Ergebnis darf frühestens nach `endsAtMs` entstehen, der Zeitraum lässt sich nach dem Anlegen nicht mehr verschieben, und `startsAtMs` muss zur Dokument-ID (dem Starttag) passen. Ein veröffentlichtes Ergebnis ist endgültig. Teilnehmer-`reps` wachsen nur und nur in realistischen Schritten. |
+| **M2** | Duell- und Freundescodes kommen aus `Math.random()`. | Bewusst so belassen: Ein erratener Code bringt jemandem nur, in ein fremdes Duell zu geraten oder als Freund aufzutauchen — kein Datenzugriff, kein LP-Gewinn. Ein kryptografisch sicherer Generator wäre hier Aufwand ohne Schutzgewinn. |
+
+Sauber war dagegen: keine Zugangsdaten im Repository (`google-services.json`, Keystore
+und `*.jks` sind gitignored, der Keystore liegt außerhalb des Projekts), und die
+Diagnose-Ausgaben hängen alle an `__DEV__`, landen also nicht im Release-Build.
+
+**Was die Regeln bewusst NICHT leisten:** Dieses Projekt hat keine Cloud Functions —
+es gibt also niemanden außer den Clients selbst, der schreibt. Die Regeln können damit
+nicht garantieren, dass ein Wert *stimmt*; sie erzwingen nur, dass er sich ausschließlich
+so verändern kann, wie die App ihn verändert. Wer sich die Mühe macht, über viele kleine
+Schreibzugriffe unehrliche Werte aufzubauen, wird davon nicht aufgehalten. Der nächste
+belastbare Schritt dagegen wäre **Firebase App Check** (Play Integrity): Damit lehnt
+Firebase Anfragen ab, die nicht aus der echten, unveränderten App kommen. Das ist reine
+Konsolen-Einrichtung plus ein Abhängigkeits-Paket und braucht keinen Server — aber es
+gehört in einen eigenen Schritt, weil es ohne korrekte Einrichtung **alle** Anfragen
+blockiert.
+
+**Prüfen lassen sich die Regeln hier nicht.** Dafür bräuchte es die Firebase-Emulator-Suite
+(`@firebase/rules-unit-testing`), also einen laufenden Emulator. `npx jest src/security`
+prüft stattdessen, dass die bewusst gesetzten Einschränkungen im Regelwerk **stehen** —
+das fängt ein versehentliches Zurückfallen ab, ersetzt aber keine echte Auswertung. Nach
+dem Deployen einmal im **Rules Playground** der Firebase-Konsole gegenprüfen
+(Firestore → Regeln → „Regelsimulator"), mindestens diese vier Fälle:
+
+1. `players/fremde-uid` als anderer Nutzer schreiben → muss **verweigert** werden.
+2. `players/eigene-uid` mit `totalReps` kleiner als bisher → muss **verweigert** werden.
+3. `rankedQueue/fremde-uid` mit `{status: 'matched', matchedDuelCode: 'ABC123'}` auf
+   einem Eintrag mit `status: 'waiting'` → muss **erlaubt** werden (sonst funktioniert
+   das Ranked-Matchmaking nicht mehr).
+4. `nationsEvents/<Starttag>` mit `result` **vor** `endsAtMs` → muss **verweigert** werden.
+
 ### Firebase-Projekt einrichten
 
 1. https://console.firebase.google.com/ → neues Projekt anlegen.
@@ -1376,6 +1422,24 @@ Home-Screen, Karte „Missionen".
   Fortschritt um 18 Uhr selbst. Für echte Live-Aktualität bräuchte es einen
   Background-Task (z.B. `expo-task-manager` + Background Fetch), der hier bewusst noch
   nicht eingebaut wurde (siehe Ideen unten).
+
+### Streak: Schonfrist für den laufenden Tag (10.09.2026)
+
+Die Trainings-Streak braucht keinen täglichen Job — `computeStats()` läuft bei jedem
+Öffnen über die lokalen Sessions und zählt vom heutigen Tag rückwärts, solange ein Tag
+entweder ein Training oder einen eingesetzten Freeze hat. Sie ist damit immer aktuell,
+ganz ohne Hintergrundaufgabe.
+
+Eine Sache stimmte dabei aber nicht: Ohne Training am heutigen Tag brach die Zählung
+sofort ab. Nach zehn Trainingstagen in Folge stand um 00:01 Uhr „0 Tage Streak" auf dem
+Startbildschirm — bevor überhaupt jemand die Gelegenheit zum Trainieren hatte. Der
+laufende Tag ist keine Lücke, er ist nur noch nicht vorbei. `computeStats()` beginnt
+deshalb bei *gestern*, wenn heute noch nichts eingetragen ist.
+
+`streakFreezeStore.ts` setzte genau das schon voraus (es friert „heute" nie ein, mit
+Verweis auf `computeStats`) — bis zu dieser Änderung widersprachen sich die beiden
+Module. Abgedeckt von vier Tests in `src/storage/__tests__/workoutStorage.test.ts`
+(„computeStats Streak: Schonfrist für den laufenden Tag").
 
 ### Login-Streak-Bonus (bereits implementiert)
 

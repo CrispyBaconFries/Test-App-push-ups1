@@ -1,18 +1,57 @@
 {
-  "//": "Starter-Regeln für die Realtime Database (Live-Duell-Status: laufende Wiederholungszähler + synchronisierter Startzeitpunkt). Deployen mit `firebase deploy --only database` - siehe README 'Ranking-System einrichten'.",
+  "//": "Regeln für die Realtime Database (Live-Duell-Status: laufende Wiederholungszähler + synchronisierter Startzeitpunkt). Deployen mit `firebase deploy --only database` - siehe README 'Ranking-System einrichten' und dort besonders 'Sicherheit'.",
+
+  "// WICHTIG - Vererbung": "In der Realtime Database vererbt sich ein erteiltes .write nach UNTEN und lässt sich tiefer nicht wieder entziehen. Eine Regel wie players/$uid/reps/.write ist deshalb wirkungslos, sobald am Duell-Knoten darüber geschrieben werden darf - genau das war bis zum 10.09.2026 der Fall, und damit konnte ein Teilnehmer den Zählerstand seines Gegners setzen. .validate verhält sich umgekehrt: Es muss auf JEDER Ebene der geschriebenen Daten zutreffen und kann von oben nicht ausgehebelt werden. Die Absicherung gegen Manipulation am Gegner steht deshalb komplett in .validate-Regeln.",
+
+  "// WICHTIG - Warum .write am ganzen Knoten bleibt": "Beitreten und Bereitmelden laufen als RTDB-Transaktion über den gesamten Duell-Knoten (siehe duelSession.ts: nur so ist garantiert, dass genau eine der beiden Seiten den gemeinsamen Startzeitpunkt setzt). Eine Transaktion braucht Schreibrecht auf dem Knoten, den sie liest. Feingranulare .write-Regeln pro Feld würden das Duell also funktionsunfähig machen.",
+
   "rules": {
     "duels": {
       "$duelId": {
-        ".read": "auth != null && data.child('playerIds').child(auth.uid).exists()",
-        ".write": "auth != null && (!data.exists() || data.child('playerIds').child(auth.uid).exists())",
+        ".read": "auth != null && data.child('players').child(auth.uid).exists()",
+
+        "// .write": "Drei erlaubte Fälle: neu anlegen, als bereits eingetragener Teilnehmer schreiben, oder einem Duell mit noch freiem Platz beitreten (und sich dabei selbst eintragen). Ohne den dritten Fall könnte niemand einem fremden Duell beitreten.",
+        ".write": "auth != null && (!data.exists() || data.child('players').child(auth.uid).exists() || (data.child('players').numChildren() < 2 && newData.child('players').child(auth.uid).exists()))",
+
+        "// .validate": "Wer ein Duell anlegt, muss selbst darin stehen - sonst ließen sich fremde Duellcodes im Voraus belegen. Mehr als zwei Spieler gibt es nie.",
+        ".validate": "newData.hasChildren(['status', 'players']) && newData.child('players').numChildren() <= 2 && (data.exists() || newData.child('players').child(auth.uid).exists())",
+
+        "status": { ".validate": "newData.isString() && newData.val().matches(/^(waiting|joined|starting|running|finished)$/)" },
+        "startsAtServerTime": { ".validate": "newData.isNumber()" },
+
         "players": {
-          "$uid": {
-            "reps": {
-              ".write": "auth != null && auth.uid === $uid"
-            }
+          "$playerUid": {
+            ".validate": "newData.hasChildren(['uid', 'displayName', 'lp', 'reps'])",
+
+            "uid": { ".validate": "newData.val() === $playerUid" },
+
+            "// Identitätsfelder": "Nach dem Eintragen unveränderlich - auch für den Spieler selbst. Sonst könnte jemand sein LP kurz vor Duellende hochsetzen und damit die LP-Berechnung der Gegenseite verzerren.",
+            "displayName": { ".validate": "newData.isString() && newData.val().length <= 60 && (!data.exists() || newData.val() === data.val())" },
+            "tier": { ".validate": "newData.isString() && (!data.exists() || newData.val() === data.val())" },
+            "lp": { ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.exists() || newData.val() === data.val())" },
+
+            "avatar": {
+              "type": { ".validate": "newData.isString()" },
+              "iconId": { ".validate": "newData.isString()" },
+              "photoUrl": { ".validate": "newData.isString()" },
+              "$other": { ".validate": false }
+            },
+
+            "// Fortschrittsfelder": "Der Spieler selbst darf sie frei setzen. Jeder ANDERE darf sie nur unverändert durchreichen - genau das brauchen die Transaktionen, die den ganzen Knoten neu schreiben, und mehr nicht. Damit ist der Zählerstand des Gegners von außen unantastbar.",
+            "ready": { ".validate": "newData.isBoolean() && (auth.uid === $playerUid || !data.exists() || newData.val() === data.val())" },
+            "reps": { ".validate": "newData.isNumber() && newData.val() >= 0 && (auth.uid === $playerUid || !data.exists() || newData.val() === data.val())" },
+            "finished": { ".validate": "newData.isBoolean() && (auth.uid === $playerUid || !data.exists() || newData.val() === data.val())" },
+            "finishedReps": { ".validate": "newData.isNumber() && newData.val() >= 0 && (auth.uid === $playerUid || !data.exists() || newData.val() === data.val())" },
+
+            "$other": { ".validate": false }
           }
-        }
+        },
+
+        "$other": { ".validate": false }
       }
-    }
+    },
+
+    "// Alles andere": "Ausdrücklich gesperrt. Ohne diesen Block gilt zwar ohnehin 'verboten', aber ein späteres Feature soll bewusst Regeln bekommen und nicht versehentlich unter einer offenen Wurzel landen.",
+    "$other": { ".read": false, ".write": false }
   }
 }

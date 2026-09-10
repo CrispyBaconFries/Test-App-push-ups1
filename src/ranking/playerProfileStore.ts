@@ -1,4 +1,4 @@
-import { doc, getDoc, getFirestore, increment, runTransaction, setDoc, updateDoc } from '@react-native-firebase/firestore';
+import { doc, getDoc, getFirestore, runTransaction, setDoc, updateDoc } from '@react-native-firebase/firestore';
 import { createDefaultPlayerProfile, type RankedPlayerProfile } from './playerProfile';
 import { applyLpChange, computeMatchLpChange } from './lp';
 import { weekKey } from '../gamification/missions';
@@ -7,7 +7,16 @@ function playerDoc(uid: string) {
   return doc(getFirestore(), 'players', uid);
 }
 
-/** Lädt das Spielerprofil, legt beim ersten Mal eins mit Start-LP an (siehe `firestore.rules`: nur der Owner darf seinen eigenen Datensatz schreiben). */
+/**
+ * Lädt das Spielerprofil, legt beim ersten Mal eins mit Start-LP an.
+ *
+ * Die Schreibzugriffe in dieser Datei bewegen sich in den Bahnen, die
+ * `firestore.rules` erzwingt (Abschnitt "Sicherheit" im README): Jeder schreibt nur
+ * sein eigenes Dokument, Zähler und Rekorde wachsen nur, und je Schreibzugriff sind
+ * höchstens 5000 Liegestütze, 15 Punkte je neuem Liegestütz, ±40 LP sowie +1 Sieg bzw.
+ * +1 Niederlage erlaubt. Wer hier größere Sprünge einbaut, muss die Regeln mitziehen -
+ * sonst lehnt Firestore den Schreibzugriff ab.
+ */
 export async function loadOrCreatePlayerProfile(
   uid: string,
   displayName: string,
@@ -42,11 +51,24 @@ export async function applyDuelResult(params: {
   const lpChange = params.didIWin ? winnerLpChange : loserLpChange;
   const lpAfter = applyLpChange(params.myLpBefore, lpChange);
 
-  await updateDoc(playerDoc(params.myUid), {
-    lp: lpAfter,
-    wins: increment(params.didIWin ? 1 : 0),
-    losses: increment(params.didIWin ? 0 : 1),
-    updatedAt: Date.now(),
+  // Bewusst als Transaktion mit ausgerechneten Werten statt mit `increment()`:
+  // `firestore.rules` lässt Siege/Niederlagen nur um höchstens 1 je Schreibzugriff
+  // wachsen und vergleicht dafür den ankommenden Wert mit dem gespeicherten. Ob
+  // Firestore die Regel auf das *Ergebnis* eines increment()-Transforms anwendet oder
+  // auf den Transform selbst, ist eine Feinheit der Auswertungsreihenfolge, von der die
+  // Wertung eines Duells nicht abhängen soll - mit einem gelesenen Ausgangswert und einer
+  // ausgerechneten Summe stellt sich die Frage gar nicht erst.
+  await runTransaction(getFirestore(), async (tx) => {
+    const ref = playerDoc(params.myUid);
+    const snapshot = await tx.get(ref);
+    if (!snapshot.exists()) return; // Profil legt loadOrCreatePlayerProfile vorher an.
+    const data = snapshot.data() as RankedPlayerProfile;
+    tx.update(ref, {
+      lp: lpAfter,
+      wins: (data.wins ?? 0) + (params.didIWin ? 1 : 0),
+      losses: (data.losses ?? 0) + (params.didIWin ? 0 : 1),
+      updatedAt: Date.now(),
+    });
   });
 
   return { lpChange, lpAfter };

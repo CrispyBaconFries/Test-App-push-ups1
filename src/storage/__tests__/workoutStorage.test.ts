@@ -239,3 +239,47 @@ describe('computeStats Durchschnittswerte', () => {
     expect(stats.bestAverageFormScore).toBe(100);
   });
 });
+
+describe('computeStats Streak: Schonfrist für den laufenden Tag', () => {
+  it('behält die Streak, solange der heutige Tag noch läuft', () => {
+    // Der Kern: Um 00:01 Uhr hat noch niemand die Gelegenheit gehabt zu trainieren. Eine
+    // Streak, die in dem Moment auf 0 fällt, ist schlicht falsch.
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T00:01:00+01:00'));
+
+    const sessions = [
+      sessionAt('2024-03-09T18:00:00+01:00'),
+      sessionAt('2024-03-08T18:00:00+01:00'),
+      sessionAt('2024-03-07T18:00:00+01:00'),
+    ];
+    expect(computeStats(sessions).currentStreakDays).toBe(3);
+  });
+
+  it('zählt den heutigen Tag mit, sobald darin trainiert wurde', () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T20:00:00+01:00'));
+
+    const sessions = [
+      sessionAt('2024-03-10T18:00:00+01:00'),
+      sessionAt('2024-03-09T18:00:00+01:00'),
+      sessionAt('2024-03-08T18:00:00+01:00'),
+    ];
+    expect(computeStats(sessions).currentStreakDays).toBe(3);
+  });
+
+  it('ist 0, wenn auch gestern nichts war - die Schonfrist gilt nur für einen Tag', () => {
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T12:00:00+01:00'));
+
+    const sessions = [sessionAt('2024-03-08T18:00:00+01:00')];
+    expect(computeStats(sessions).currentStreakDays).toBe(0);
+  });
+
+  it('harmoniert mit der gekauften Streak-Rettung', () => {
+    // reconcileStreakFreezes friert "heute" bewusst nie ein und verlässt sich darauf,
+    // dass computeStats den laufenden Tag als "noch nicht vorbei" behandelt. Gestern
+    // wurde nicht trainiert, ist aber eingefroren - die Streak lebt also weiter.
+    jest.useFakeTimers({ advanceTimers: false }).setSystemTime(new Date('2024-03-10T09:00:00+01:00'));
+
+    const sessions = [sessionAt('2024-03-08T18:00:00+01:00'), sessionAt('2024-03-07T18:00:00+01:00')];
+    const frozen = new Set(['2024-03-09']);
+    expect(computeStats(sessions, frozen).currentStreakDays).toBe(3);
+  });
+});

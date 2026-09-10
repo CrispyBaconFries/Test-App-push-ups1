@@ -136,3 +136,21 @@ morgen abzustimmen:
 Empfehlung: erst (a) + (b), das deckt den Großteil der Oberfläche mit dem geringsten
 Aufwand ab. (c) nur für WorkoutScreen, BossFightScreen und DuelScreen — dort geht es um
 Overlays über dem Kamerabild, die eine Web-Vorschau prinzipbedingt nicht zeigen kann.
+
+## 4. Firebase App Check (Play Integrity)
+
+Aus der Sicherheitsdurchsicht vom 10.09.2026 (siehe README, „Sicherheit: was die Regeln
+erzwingen"). Die Security Rules erzwingen jetzt, dass Werte sich nur so verändern, wie die
+App sie verändert — aber sie können nicht prüfen, **wer** schreibt. Ein manipulierter
+Client, der sich an die erlaubten Schrittweiten hält, kommt weiterhin durch.
+
+App Check schließt genau diese Lücke: Firebase lehnt Anfragen ab, die nicht aus der
+echten, unveränderten App aus dem Play Store kommen (Play Integrity als Anbieter). Kein
+Server, keine Cloud Function nötig — Konsolen-Einrichtung plus ein Abhängigkeits-Paket
+(`@react-native-firebase/app-check`).
+
+Bewusst als eigener Schritt und nicht nebenbei erledigt: Eine unvollständige Einrichtung
+blockiert **alle** Firebase-Anfragen der App. Der Weg wäre: erst im Erzwingungs-Modus
+„nur überwachen" laufen lassen, in der Konsole nachsehen, dass die echten Anfragen als
+gültig ankommen, und erst dann erzwingen. Dazu braucht es einen Play-Store-Eintrag (auch
+interner Test reicht) — also frühestens sinnvoll, wenn die App dort landet.

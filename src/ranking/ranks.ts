@@ -24,6 +24,12 @@ export const RANK_TIERS: readonly RankTierDefinition[] = [
   { tier: 'CHALLENGER', label: 'Challenger', minLp: 2000, maxLp: null, color: '#FF5A5F' },
 ];
 
+/**
+ * Achtung bei Änderungen: `firestore.rules` erzwingt, dass ein frisch angelegtes
+ * Spielerprofil mit 0 LP startet (sonst ließe sich die "LP ändert sich höchstens um 40
+ * je Schreibzugriff"-Regel umgehen, indem man das Profil gleich mit Wunsch-LP anlegt).
+ * Ein anderer Startwert hier muss dort mitgezogen werden.
+ */
 export const STARTING_LP = 0;
 
 export function tierForLp(lp: number): RankTierDefinition {
