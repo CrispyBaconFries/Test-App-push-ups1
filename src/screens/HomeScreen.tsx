@@ -273,6 +273,18 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.devCalibrationHint}>lang drücken zum Löschen</Text>
         </Pressable>
 
+        {/* Werkzeug, kein Spielinhalt: Rahmen-Effekte vergleichen und die Auswahl als
+            eine Zeile weitergeben (siehe EffectWorkshopScreen). Wie der Knopf darüber
+            bewusst NICHT hinter `__DEV__` - chris hat nur den Release-Build, dort gäbe es
+            ihn sonst gar nicht (siehe CLAUDE.md). */}
+        <Pressable
+          style={({ pressed }) => [styles.devCalibrationButton, pressed && styles.pressed]}
+          onPress={() => navigation.navigate('EffectWorkshop')}
+        >
+          <Text style={styles.devCalibrationButtonText}>🎨 Effekt-Werkstatt (DEV)</Text>
+          <Text style={styles.devCalibrationHint}>Rahmen-Effekte vergleichen und einstellen</Text>
+        </Pressable>
+
         <View style={styles.accountCard}>
           {auth.status === 'signedIn' && auth.profile ? (
             <View style={styles.accountRow}>

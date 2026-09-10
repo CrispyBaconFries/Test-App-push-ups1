@@ -5,8 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { PlayerAvatar } from '../ranking/avatar';
 import { DEFAULT_AVATAR_ICON_ID } from '../ranking/avatar';
 import type { RankTier } from '../ranking/ranks';
-import { frameStyleForTier } from '../ranking/rankFrameStyle';
-import { frameThemeById, type FrameThemeId } from '../ranking/frameThemes';
+import { frameStyleForTier, resolveFrameGradient } from '../ranking/rankFrameStyle';
+import type { FrameThemeId } from '../ranking/frameThemes';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -29,8 +29,7 @@ interface Props {
  */
 export function RankFrame({ avatar, tier, lp, size = 56, frameThemeId = 'default' }: Props) {
   const tierStyle = frameStyleForTier(tier);
-  const themeOverride = frameThemeById(frameThemeId).gradientColors;
-  const style = themeOverride ? { ...tierStyle, gradientColors: themeOverride } : tierStyle;
+  const style = { ...tierStyle, gradientColors: resolveFrameGradient(tier, frameThemeId) };
   const outerSize = size + style.borderWidth * 2;
 
   const pulse = useRef(new Animated.Value(0)).current;

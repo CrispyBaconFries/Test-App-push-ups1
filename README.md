@@ -844,6 +844,69 @@ pro Sekunde — genau in dem Pfad, der ohnehin am meisten zu tun hat. Dafür gib
 `usePushUpAnalyzer()` (`src/pose/usePushUpAnalyzer.ts`), von allen drei Bildschirmen
 benutzt.
 
+## Effekt-Werkstatt (Werkzeug, kein Spielinhalt)
+
+Erreichbar über den Startbildschirm: **🎨 Effekt-Werkstatt (DEV)**.
+
+**Wofür.** Bis hierher lief jede optische Änderung so: Ich baue etwas, chris baut die App
+neu, schaut es an, beschreibt in Worten was ihm nicht passt, ich rate was gemeint ist. Eine
+Runde kostet einen Build und einen Abend.
+
+Dieser Bildschirm dreht das um. Alle Rahmen-Effekte laufen **gleichzeitig auf dem Handy**,
+mit Reglern für Stärke, Tempo und Größe sowie Umschaltern für Rang und Rahmen-Theme. Unten
+steht die Auswahl als eine Zeile:
+
+```
+Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Rang Challenger
+```
+
+Die schickt chris per „Auswahl teilen" — und ich setze genau das ein, statt zu raten.
+
+**Sieben Effekte** (`src/ranking/frameEffects.ts`): Ohne (Vergleichsmaßstab), Leuchten,
+Lichtlauf, Funken, Flammen, Blitze, Aura.
+
+**Warum das keine Bilddateien sind.** Ausführlich in `docs/grafik-plan.md`, kurz: keine
+neue native Abhängigkeit (`react-native-svg`, `expo-linear-gradient` und die Animationen von
+React Native waren längst da — also kein `npm install`, kein Prebuild, kein neues
+Gradle-Risiko), die Rangfarbe kommt automatisch mit, es bleibt bei 36 px genauso scharf wie
+bei 140 px, und „etwas weniger grell" ist ein Zahlenwert statt einer neuen Runde beim
+Bildgenerator.
+
+**Wie animiert wird.** Ausschließlich `transform` und `opacity` über den **Native-Treiber**
+(`useNativeDriver: true`); die Formen selbst (Flammenzunge, Blitz, Aura-Verlauf) sind
+statisches SVG. Der naheliegendere Weg — die SVG-Pfade selbst animieren (Reanimated +
+`useAnimatedProps`) — läuft auf dem JS-Thread, und zwar ausgerechnet dort, wo bei dieser App
+schon die Posenerkennung rechnet. Was das kostet: Eine Flamme kann ihre *Form* nicht
+verändern, nur Größe, Lage und Deckkraft. Für mehrere Zungen mit versetzten Phasen reicht
+das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
+
+**Zwei Fallen, die beim Bauen zugeschlagen haben** (beide stehen als Kommentar im Code):
+
+- Ein Teilchen mit `translateY` nach außen schieben und *dann* drehen dreht um den
+  Mittelpunkt des **Teilchens**, nicht um den des Avatars. Richtig ist ein quadratischer
+  Kasten, der sich dreht, mit dem Teilchen oben mittig — der Radius ist dann die halbe
+  Kastenbreite.
+- `Animated.delay` **innerhalb** von `Animated.loop` wartet bei *jedem* Durchlauf erneut;
+  aus gleichmäßigem Kreisen wird Stottern. Gewollt ist eine einmalige Phasenverschiebung,
+  also ein `setTimeout` vor dem Start der Schleife.
+
+**Der Schieberegler ist selbst gebaut** (`src/components/Slider.tsx`). React Native bringt
+seit Jahren keinen mit, und `@react-native-community/slider` wäre eine **native**
+Abhängigkeit — für einen Regler in einem Werkzeug-Bildschirm der falsche Preis, und es
+widerspräche genau der Begründung, mit der die Effekte ohne neue Abhängigkeit auskommen.
+
+**Nicht hinter `__DEV__`**, aus demselben Grund wie der Kalibrier-Knopf: chris hat nur eine
+Installation, und das ist der Release-Build (siehe CLAUDE.md). Ein Werkzeug, das genau die
+Person nicht erreicht, für die es gebaut wurde, wäre sinnlos.
+
+**Getestet** wird, was sich ohne Gerät testen lässt: die Rechnung hinter den Reglern
+(`src/ranking/__tests__/frameEffects.test.ts`) und dass jeder Effekt und der ganze
+Bildschirm sich überhaupt rendern lassen, auch an beiden Reglergrenzen
+(`src/components/__tests__/FrameEffectLayer.test.tsx`,
+`src/screens/__tests__/EffectWorkshopScreen.test.tsx`). Das sind genau die Fehler, die `tsc`
+klaglos durchlässt und die sonst erst auf dem Gerät auffliegen — nach einem kompletten
+Release-Build. Ob es *gut aussieht*, kann kein Test sagen; dafür ist der Bildschirm da.
+
 ## Tests & Typecheck
 
 ```bash

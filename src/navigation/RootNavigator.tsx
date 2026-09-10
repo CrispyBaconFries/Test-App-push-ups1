@@ -20,6 +20,7 @@ import { LeaderboardScreen } from '../screens/LeaderboardScreen';
 import { ShopScreen } from '../screens/ShopScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NationsCupScreen } from '../screens/NationsCupScreen';
+import { EffectWorkshopScreen } from '../screens/EffectWorkshopScreen';
 
 // `WorkoutScreen` (MediaPipe pose detection) needs native modules that only exist in a
 // custom-built app (a local Android Studio / Xcode build, or an EAS dev client) - it
@@ -53,6 +54,8 @@ export type RootStackParamList = {
   Shop: undefined;
   /** Kein uid = eigenes Profil; sonst das (schreibgeschützte) Profil eines anderen Spielers (z. B. aus einem Rangliste-Tap). */
   Profile: { uid?: string } | undefined;
+  /** Werkzeug, kein Spielinhalt: Rahmen-Effekte nebeneinander vergleichen (siehe EffectWorkshopScreen). */
+  EffectWorkshop: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -76,6 +79,7 @@ export function RootNavigator() {
         <Stack.Screen name="NationsCup" component={NationsCupScreen} />
         <Stack.Screen name="Shop" component={ShopScreen} />
         <Stack.Screen name="Profile" component={ProfileScreen} />
+        <Stack.Screen name="EffectWorkshop" component={EffectWorkshopScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

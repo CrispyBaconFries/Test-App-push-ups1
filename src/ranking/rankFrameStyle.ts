@@ -1,4 +1,5 @@
 import type { RankTier } from './ranks';
+import { frameThemeById, type FrameThemeId } from './frameThemes';
 
 /**
  * Beschreibt, wie der Rang-Rahmen um einen Spieler-Avatar aussieht - pure
@@ -61,4 +62,19 @@ const FRAME_STYLES: Record<RankTier, RankFrameStyle> = {
 
 export function frameStyleForTier(tier: RankTier): RankFrameStyle {
   return FRAME_STYLES[tier];
+}
+
+/**
+ * Die Farben, die ein Rahmen tatsächlich bekommt: die des Rangs, oder die des gekauften
+ * Themes, wenn eins ausgerüstet ist.
+ *
+ * Hier und nicht in `RankFrame.tsx`, weil inzwischen ein zweiter Ort dieselbe Auflösung
+ * braucht - die Effektebene (`FrameEffectLayer`) nimmt die Rahmenfarbe mit, und sie
+ * darf sich nicht anders entscheiden als der Ring, um den sie liegt.
+ */
+export function resolveFrameGradient(
+  tier: RankTier,
+  frameThemeId: FrameThemeId = 'default'
+): readonly [string, string, ...string[]] {
+  return frameThemeById(frameThemeId).gradientColors ?? frameStyleForTier(tier).gradientColors;
 }

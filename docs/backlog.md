@@ -168,10 +168,13 @@ interner Test reicht) — also frühestens sinnvoll, wenn die App dort landet.
 
 Eigenes Dokument: [`docs/grafik-plan.md`](grafik-plan.md). Kurz:
 
-1. **Effekt-Werkstatt** als DEV-Bildschirm — alle Rahmen-Varianten nebeneinander, mit
-   Schiebern für Stärke, Tempo und Farbe, damit chris am Handy entscheidet statt auf
-   Screenshots. Effekte als SVG + Reanimated, beides schon im Projekt, also **keine neue
-   native Abhängigkeit**.
+1. ~~**Effekt-Werkstatt** als DEV-Bildschirm~~ — **erledigt am 10.09.2026**. Sieben Effekte
+   nebeneinander, Regler für Stärke/Tempo/Größe, Umschalter für Rang und Theme, Auswahl als
+   eine Zeile zum Weitergeben. Siehe README, „Effekt-Werkstatt". Keine neue native
+   Abhängigkeit — auch der Schieberegler ist selbst gebaut.
+   **Offen:** chris muss die Effekte auf dem Gerät ansehen und entscheiden, welcher wohin
+   kommt (Rangliste, Profil, Duell) und mit welchen Werten. Bis dahin ist die Werkstatt ein
+   Werkzeug und ändert am Aussehen der App nichts.
 2. **Zentrale `src/theme/layout.ts`** — Größen, Abstände und Radien an einer Stelle statt
    in 14 StyleSheets (das ist auch Punkt 3 dieses Backlogs).
 3. **Erst danach Bilddateien**: acht Avatar-Motive per Bild-KI (fertiger Prompt steht im
