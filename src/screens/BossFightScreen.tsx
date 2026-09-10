@@ -30,7 +30,7 @@ import { loadDuelLog } from '../duel/duelLog';
 import { syncLeaderboardProgress } from '../ranking/leaderboardSync';
 import { syncNationsProgress } from '../nations/nationsSync';
 import { useAuth } from '../auth/AuthContext';
-import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
+import { bossLook, bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossmode/bossDefinitions';
 import { loadBossProgress, saveBossProgress, type BossProgress } from '../bossmode/bossProgressStorage';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
@@ -55,9 +55,9 @@ import { fonts } from '../theme/typography';
 const BOSS_ARTWORK_OPACITY = 0.55;
 const BOSS_DEFEATED_BANNER_MS = 1800;
 
-// Nur ein Platzhalter-Look, solange die echten Boss-Artworks noch nicht existieren
-// (siehe README) - Farbe wechselt zumindest pro Boss, damit es nicht komplett gleich aussieht.
-const BOSS_TINTS = [colors.danger, colors.accent, '#B23AFF', '#5AC8E8'];
+/** Größe des Platzhalter-Symbols. Groß genug, um den Boss zu zeigen, klein genug, um
+ *  nicht über der Person zu stehen - es sitzt bewusst im oberen Bilddrittel. */
+const BOSS_ARTWORK_SIZE = 200;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BossFight'>;
 
@@ -249,7 +249,8 @@ export function BossFightScreen({ navigation }: Props) {
 
   const activeIssue: FormIssue | null = live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null;
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
-  const bossTint = boss ? BOSS_TINTS[(boss.bossNumber - 1) % BOSS_TINTS.length] : colors.danger;
+  const look = boss ? bossLook(boss.bossNumber) : null;
+  const bossTint = look?.tint ?? colors.danger;
   const bossMax = boss ? bossMaxHp(boss.bossNumber) : 1;
 
   return (
@@ -272,7 +273,7 @@ export function BossFightScreen({ navigation }: Props) {
 
       {boss && (
         <View style={styles.bossArtwork} pointerEvents="none">
-          <Ionicons name="skull" size={220} color={bossTint} />
+          <Ionicons name={look!.icon as never} size={BOSS_ARTWORK_SIZE} color={bossTint} />
         </View>
       )}
 
@@ -385,8 +386,10 @@ const styles = StyleSheet.create({
     bottom: 0,
     opacity: BOSS_ARTWORK_OPACITY,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: space(120),
+    // Oben statt mittig: Wer im Stütz liegt, ist in der unteren Bildhälfte - ein Symbol
+    // in der Mitte lag genau auf ihm und hat das Kamerabild verdeckt, um das es geht.
+    justifyContent: 'flex-start',
+    paddingTop: space(90),
   },
   bossHud: {
     position: 'absolute',

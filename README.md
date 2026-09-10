@@ -1938,6 +1938,21 @@ Firebase, kein Google-Login nötig, funktioniert also für jeden sofort. Home-Sc
   `WorkoutScreen`, landet ebenfalls im `SummaryScreen`).
 - **Boss besiegt** → kurzes Banner, danach automatisch weiter zum nächsten (stärkeren)
   Boss bei voller Lebensanzeige - kein Bruch im Trainingsfluss.
+- **Zehn Platzhalter-Bosse** (`BOSS_LOOKS` in `bossDefinitions.ts`): eigener Name, eigenes
+  Symbol, eigene Farbe. Vorher war es *ein* Totenkopf für alle - man besiegt Boss 3 und
+  steht vor demselben Bild wie bei Boss 1, der Fortschritt war also nicht zu sehen. Die
+  Reihe läuft von unbelebt über Tier und Mensch zu Naturgewalt und schließlich kosmisch
+  (Sandsack → Ratte → Wächter → Stahlfaust → Schildträger → Frostgeist → Sturmrufer →
+  Flammenherz → Koloss → Sternenfresser), die Farben passend von grau/kühl nach heiß.
+  Jenseits von Boss 10 wiederholt sich die Reihe, während die HP weiter steigen.
+
+  Ausdrücklich **Platzhalter**: Sobald die echten Motive da sind (Bild-KI, Prompt in
+  `docs/grafik-plan.md`), wird in `BOSS_LOOKS` nur `icon` gegen eine Bilddatei getauscht -
+  Namen, Farben, Reihenfolge und HP-Kurve bleiben. Ein Test prüft, dass alle zehn Symbole
+  im Icon-Paket wirklich existieren; ein Tippfehler ergäbe sonst ein leeres Kästchen, und
+  zwar erst auf dem Gerät.
+- **Das Boss-Symbol sitzt im oberen Bilddrittel**, nicht mittig. Mittig lag es genau auf
+  der Person und verdeckte das Kamerabild - im Stütz ist man in der unteren Bildhälfte.
 
 ### Personen-Freistellung - versucht, auf echtem Gerät gescheitert, wieder vereinfacht
 

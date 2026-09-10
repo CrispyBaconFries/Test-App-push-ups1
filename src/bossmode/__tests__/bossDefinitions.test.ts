@@ -1,4 +1,4 @@
-import { bossMaxHp, bossName, REP_DAMAGE_HP } from '../bossDefinitions';
+import { bossMaxHp, bossName, REP_DAMAGE_HP, BOSS_LOOKS, bossLook } from '../bossDefinitions';
 
 describe('bossMaxHp', () => {
   it('matches the exact specified HP for bosses 1-4', () => {
@@ -37,9 +37,40 @@ describe('bossMaxHp', () => {
   });
 });
 
-describe('bossName', () => {
-  it('labels bosses by number', () => {
-    expect(bossName(1)).toBe('Boss 1');
-    expect(bossName(12)).toBe('Boss 12');
+describe('bossName / bossLook', () => {
+  it('gibt jedem Boss einen eigenen Namen, mit Nummer davor', () => {
+    // Die Nummer bleibt, weil sie den Fortschritt auch jenseits von Boss 10 zeigt.
+    expect(bossName(1)).toBe('1. Der Sandsack');
+    expect(bossName(10)).toBe('10. Sternenfresser');
+  });
+
+  it('läuft über Boss 10 hinaus von vorn durch, statt abzubrechen', () => {
+    // Die HP steigen weiter, der Kampf wird also trotzdem härter - nur das Gesicht
+    // wiederholt sich, bis es mehr Motive gibt.
+    expect(bossLook(11)).toEqual(bossLook(1));
+    expect(bossName(12)).toBe('12. Die Ratte');
+  });
+
+  it('hat zehn unterschiedliche Platzhalter', () => {
+    // Ein Totenkopf für alle war das Problem: Man besiegt Boss 3 und steht vor demselben
+    // Bild wie bei Boss 1 - der Fortschritt war nicht zu sehen.
+    expect(BOSS_LOOKS).toHaveLength(10);
+    expect(new Set(BOSS_LOOKS.map((b) => b.icon)).size).toBe(10);
+    expect(new Set(BOSS_LOOKS.map((b) => b.name)).size).toBe(10);
+    expect(new Set(BOSS_LOOKS.map((b) => b.tint)).size).toBe(10);
+  });
+
+  it('benutzt nur Symbole, die es im Icon-Paket wirklich gibt', () => {
+    // Ein Tippfehler ergäbe ein leeres Kästchen - und zwar erst auf dem Gerät, wo es
+    // niemand mehr einem Namen zuordnen kann.
+    const glyphs = require('@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json');
+    for (const boss of BOSS_LOOKS) {
+      expect(Object.prototype.hasOwnProperty.call(glyphs, boss.icon)).toBe(true);
+    }
+  });
+
+  it('weist ungültige Boss-Nummern zurück', () => {
+    expect(() => bossLook(0)).toThrow();
+    expect(() => bossLook(1.5)).toThrow();
   });
 });
