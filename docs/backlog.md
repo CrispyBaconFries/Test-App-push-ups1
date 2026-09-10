@@ -7,6 +7,55 @@ untersucht wurde.
 
 ---
 
+## Reihenfolge (Stand 10.09.2026, abends)
+
+Die Punkte unten sind nach Thema sortiert, nicht nach Reihenfolge. Was zuerst dran ist,
+steht hier — geordnet danach, **was was blockiert**:
+
+### Phase 0 — an chris' PC, heute Abend
+
+Alles Weitere hängt daran. Ohne diese drei Rückmeldungen wäre jede weitere Arbeit an der
+Erkennung oder der Optik geraten statt begründet.
+
+1. **App bauen und die Zählung prüfen.** Zählt der Weg in die Position noch mit? Steht der
+   Zähler nach dem Bestätigungston auf 0?
+2. **Firebase einrichten** (`docs/firebase-einrichten.md`), Regeln deployen, im
+   Regelsimulator gegenprüfen.
+3. **Drei Dinge zurückmelden:** Kalibrierungsdaten teilen (enthält jetzt `baseline`),
+   die Effekt-Zeile aus der Werkstatt, und ob die Werkstatt mit sieben Effekten ruckelt.
+
+### Phase 1 — sobald die Daten da sind
+
+4. **Schwellwerte gegen die neue Aufzeichnung prüfen** — Punkt 1.1 unten, plus die
+   Gegenprobe zu den 20°/25° aus Punkt 2. Braucht Aufzeichnungen mit `kind: 'baseline'`.
+5. **Den gewählten Effekt einbauen**, wo er hingehört (Rangliste, Profil, Duell) — Punkt 5.
+6. **Zu zweit testen:** Freundschaftsspiel, Ranked, Länderspiel-Wertung. Braucht Firebase
+   und eine zweite Person.
+
+### Phase 2 — Design-Runde
+
+7. **Faktoren festlegen** (`SPACING_SCALE`, `RADIUS_SCALE`, `FONT_SCALE`) — im Browser
+   vergleichen, nicht im Kopf entscheiden.
+8. **Werte vereinheitlichen**, falls gewünscht (Kartenrundungen 14/16/18/20 auf einen Wert,
+   strengere Abstandsstufung) — Punkt 3.
+9. **Avatar-Motive** per Bild-KI, Prompt steht in `docs/grafik-plan.md` — Punkt 5.3.
+
+### Phase 3 — Erkennung weiter verbessern
+
+10. `goodDepthElbowDeg`: Produktentscheidung — Punkt 1.2.
+11. Sichtbarkeit durch die native Bridge (Patch) — Punkt 1.3. Braucht Prebuild.
+12. Sitzungskontext erfassen — Punkt 1.4.
+13. Frame-Zeitreihen statt nur Kennzahlen — Punkt 1.5.
+
+### Phase 4 — vor einer Veröffentlichung
+
+14. **Firebase App Check** — Punkt 4. Braucht einen Play-Store-Eintrag.
+15. **Eigener Release-Keystore** und dessen SHA-1 in Firebase (siehe README,
+    „Play-Store-Veröffentlichung" und `docs/firebase-einrichten.md`, Schritt 4).
+16. **Danksagungen-Bildschirm**, falls Grafiken unter CC BY verwendet werden.
+
+---
+
 ## 1. Fehlalarme bei Hüfte und Kopf
 
 **Beobachtung von chris (07.–09.09.2026):** Ganzkörper vollständig im Bild, gerader
@@ -191,10 +240,10 @@ Eigenes Dokument: [`docs/grafik-plan.md`](grafik-plan.md). Kurz:
    **Offen:** chris muss die Effekte auf dem Gerät ansehen und entscheiden, welcher wohin
    kommt (Rangliste, Profil, Duell) und mit welchen Werten. Bis dahin ist die Werkstatt ein
    Werkzeug und ändert am Aussehen der App nichts.
-2. **Zentrale `src/theme/layout.ts`** — Größen, Abstände und Radien an einer Stelle statt
-   in 14 StyleSheets (das ist auch Punkt 3 dieses Backlogs). **Der nächste Schritt**: Seit
-   die Web-Vorschau steht (`npm run web`), ist das keine Aufräumaktion mehr, sondern ein
-   Werkzeug — die Wirkung einer geänderten Zahl ist sofort im Browser sichtbar.
+2. ~~**Zentrale `src/theme/layout.ts`**~~ — **erledigt am 10.09.2026**. 626 Werte laufen
+   durch `space()`/`radius()`/`font()`, drei Faktoren steuern die ganze App; pixelgenau
+   gegen den Stand davor geprüft. Siehe README, „Ein Ort für Abstände".
+   **Offen:** Welche Faktoren gelten sollen — das ist die Design-Runde, und die gehört chris.
 3. **Erst danach Bilddateien**: acht Avatar-Motive per Bild-KI (fertiger Prompt steht im
    Dokument), Abzeichen und Boss-Motive aus CC0-Sätzen (kenney.nl) oder game-icons.net —
    Letzteres nur zusammen mit einem Danksagungen-Bildschirm, CC BY verlangt Namensnennung.
