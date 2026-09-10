@@ -21,6 +21,7 @@ import { RankFrame } from '../components/RankFrame';
 import { useRepSounds } from '../audio/repSounds';
 import {
   DUEL_DURATION_MS,
+  MATCH_PREPARATION_MS,
   duelStartInLocalTime,
   estimateServerOffsetMs,
   listenToDuel,
@@ -29,6 +30,7 @@ import {
   submitLiveRepCount,
   type DuelPlayerState,
 } from '../duel/duelSession';
+import { prepareSecondsLeft, shouldReportReady } from '../duel/matchStart';
 import { colors } from '../theme/colors';
 import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
@@ -39,12 +41,19 @@ const OVERLAY_FRAME_SKIP = 2;
  * Wie lange höchstens auf die eigene Startposition gewartet wird, bevor trotzdem "bereit"
  * gemeldet wird. Etwas mehr als die Zeitgrenze der Startpositions-Prüfung selbst (30 s),
  * damit im Normalfall diese greift und nicht die Notbremse hier.
+ *
+ * Gerechnet ab dem Beginn des Vorbereitungsfensters, nicht ab dem Betreten des
+ * Bildschirms: Im Freundschaftsspiel kann zwischen beidem eine beliebig lange Wartezeit
+ * auf den Gegner liegen, und die darf die Notbremse nicht aufbrauchen.
  */
 const DUEL_READY_FALLBACK_MS = 35000;
 
+/** Wie oft der Vorbereitungs-Countdown neu berechnet wird. */
+const PREPARE_TICK_MS = 200;
+
 type Props = NativeStackScreenProps<RootStackParamList, 'Duel'>;
 
-type Phase = 'waitingOpponent' | 'countdown' | 'running' | 'finished';
+type Phase = 'waitingOpponent' | 'preparing' | 'countdown' | 'running' | 'finished';
 
 export function DuelScreen({ route, navigation }: Props) {
   const { duelCode, me, isRanked } = route.params;
@@ -57,6 +66,13 @@ export function DuelScreen({ route, navigation }: Props) {
 
   const [phase, setPhase] = useState<Phase>('waitingOpponent');
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
+  /** Sekunden bis zum Ende des Vorbereitungsfensters, `null` solange es nicht läuft. */
+  const [prepareSeconds, setPrepareSeconds] = useState<number | null>(null);
+  /** Wann das Vorbereitungsfenster endet (Gerätezeit), `null` bevor der Gegner da ist. */
+  const prepareUntilRef = useRef<number | null>(null);
+  /** Ob die eigene Startposition bereits erkannt wurde. */
+  const positionOkRef = useRef(false);
+  const [positionOk, setPositionOk] = useState(false);
   const [remainingMs, setRemainingMs] = useState(DUEL_DURATION_MS);
   const [myReps, setMyReps] = useState(0);
   const [opponent, setOpponent] = useState<DuelPlayerState | null>(null);
@@ -79,6 +95,30 @@ export function DuelScreen({ route, navigation }: Props) {
   }, [duelCode, me.uid]);
 
   /**
+   * Meldet "bereit", sobald **beides** stimmt: Die eigene Startposition steht, und das
+   * Vorbereitungsfenster ist abgelaufen.
+   *
+   * Warum nicht sofort beim Erkennen der Position: Wer schon im Stütz liegt, wenn der
+   * Gegner gefunden wird, wäre nach zwei Sekunden bereit - der andere steht dann noch auf
+   * halbem Weg zum Boden, und für ihn beginnt das Match mitten in der Bewegung. Mit dem
+   * Fenster hat jeder denselben Vorlauf.
+   *
+   * Wird sowohl aus dem Kamerapfad (bei jedem Frame) als auch aus dem Vorbereitungstakt
+   * aufgerufen. Beide Wege sind nötig: Wer früh in Position ist, braucht den Takt, weil
+   * seine Frames nichts Neues mehr melden; wer spät kommt, braucht den Frame, weil der
+   * Takt nicht weiß, wann die Position steht.
+   */
+  const sendReadyWhenPrepared = useCallback(() => {
+    if (readySentRef.current) return;
+    const ready = shouldReportReady({
+      positionRecognised: positionOkRef.current,
+      prepareUntilMs: prepareUntilRef.current,
+      nowMs: Date.now(),
+    });
+    if (ready) sendReady();
+  }, [sendReady]);
+
+  /**
    * Notbremse für den Fall, dass gar keine Kamerabilder ankommen.
    *
    * "Bereit" hängt seit der Startpositions-Prüfung daran, dass der eigene Stütz erkannt
@@ -88,10 +128,26 @@ export function DuelScreen({ route, navigation }: Props) {
    * Gegner sähe das aus wie ein Spieler, der ewig nicht bereit wird.
    */
   useEffect(() => {
-    if (!hasPermission) return;
+    if (!hasPermission || phase !== 'preparing') return;
     const timer = setTimeout(sendReady, DUEL_READY_FALLBACK_MS);
     return () => clearTimeout(timer);
-  }, [hasPermission, sendReady]);
+  }, [hasPermission, phase, sendReady]);
+
+  /**
+   * Der Takt des Vorbereitungsfensters: zählt die Sekunden für die Anzeige herunter und
+   * prüft bei jedem Schritt, ob inzwischen beides erfüllt ist (Position steht, Fenster
+   * abgelaufen).
+   */
+  useEffect(() => {
+    if (phase !== 'preparing') return;
+    const tick = () => {
+      setPrepareSeconds(prepareSecondsLeft(prepareUntilRef.current, Date.now()));
+      sendReadyWhenPrepared();
+    };
+    tick();
+    const intervalId = setInterval(tick, PREPARE_TICK_MS);
+    return () => clearInterval(intervalId);
+  }, [phase, sendReadyWhenPrepared]);
 
   // Zentrale Zustandsmaschine: hört auf das Duell-Dokument und leitet Countdown/Ende
   // aus dem *gemeinsamen* `startsAtServerTime` ab (nicht aus einem eigenen Timer-Start),
@@ -103,6 +159,14 @@ export function DuelScreen({ route, navigation }: Props) {
       if (!state) return;
       const opponentEntry = Object.entries(state.players).find(([uid]) => uid !== me.uid);
       if (opponentEntry) setOpponent(opponentEntry[1]);
+
+      // "Gegner da" ist der Moment, ab dem sich beide in Position bringen - im Ranked das
+      // gefundene Matchup, im Freundschaftsspiel der Beitritt. Erst ab hier läuft das
+      // Vorbereitungsfenster, sonst würde die Wartezeit auf den Gegner mit hineinzählen.
+      if (opponentEntry && prepareUntilRef.current === null) {
+        prepareUntilRef.current = Date.now() + MATCH_PREPARATION_MS;
+        setPhase((current) => (current === 'waitingOpponent' ? 'preparing' : current));
+      }
 
       if (state.status === 'starting' && state.startsAtServerTime != null && !intervalId) {
         const localStart = duelStartInLocalTime(state.startsAtServerTime, estimateServerOffsetMs());
@@ -166,10 +230,14 @@ export function DuelScreen({ route, navigation }: Props) {
       // Erst bereit melden, wenn die eigene Startposition wirklich steht. Vorher hing das
       // an der Kameraberechtigung - der Countdown konnte damit anlaufen, während man noch
       // zwei Schritte vom Handy entfernt stand, und die 60 Sekunden liefen bereits.
-      if (live.startPosition === null) {
-        if (!readySentRef.current) playRepSoundRef.current(true);
-        sendReady();
+      if (live.startPosition === null && !positionOkRef.current) {
+        positionOkRef.current = true;
+        setPositionOk(true);
+        // Der Ton ist die eigentliche Rückmeldung: Wer im Stütz liegt, sieht den
+        // Bildschirm nicht mehr.
+        playRepSoundRef.current(true);
       }
+      if (live.startPosition === null) sendReadyWhenPrepared();
 
       if (completedRep) {
         repsRef.current += 1;
@@ -188,7 +256,7 @@ export function DuelScreen({ route, navigation }: Props) {
       const points = imageLandmarks.map((lm) => vc.convertPoint(frameDims, { x: lm.x, y: lm.y }));
       setSkeletonPoints(points);
     },
-    [duelCode, me.uid, sendReady]
+    [duelCode, me.uid, sendReadyWhenPrepared]
   );
 
   const onError = useCallback((error: DetectionError) => {
@@ -217,7 +285,12 @@ export function DuelScreen({ route, navigation }: Props) {
         activeIssue={activeIssue}
       />
 
-      {startPosition && <StartPositionOverlay progress={startPosition} />}
+      {startPosition && (
+        <StartPositionOverlay
+          progress={startPosition}
+          prepareSeconds={phase === 'preparing' ? prepareSeconds : null}
+        />
+      )}
 
       <View style={styles.hudRow} pointerEvents="none">
         <PlayerBadge label={me.displayName} avatar={me.avatar} tier={me.tier} lp={me.lp} reps={myReps} align="left" />
@@ -235,6 +308,16 @@ export function DuelScreen({ route, navigation }: Props) {
 
       <View style={styles.centerOverlay} pointerEvents="none">
         {phase === 'waitingOpponent' && <Text style={styles.centerText}>Warte auf Gegner…</Text>}
+        {/* Erst ab der erkannten eigenen Position - vorher liegt die Startpositions-
+            Anzeige darüber, die die Sekunden selbst mitbringt. Ohne diese Bedingung
+            stünde "Bereit" schon da, bevor überhaupt ein Kamerabild angekommen ist. */}
+        {phase === 'preparing' && positionOk && (
+          <Text style={styles.centerText}>
+            {prepareSeconds != null && prepareSeconds > 0
+              ? `Bereit – Start in ${prepareSeconds} s`
+              : 'Bereit – warte auf Gegner…'}
+          </Text>
+        )}
         {phase === 'countdown' && countdownSeconds != null && (
           <Text style={styles.countdownText}>{countdownSeconds}</Text>
         )}

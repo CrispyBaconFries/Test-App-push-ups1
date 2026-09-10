@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { StartPositionProgress, StartPositionStatus } from '../pose/startPosition';
 import { colors } from '../theme/colors';
-import { font, radius, space } from '../theme/layout';
+import { font, PILL_RADIUS, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 /**
@@ -35,9 +35,17 @@ const HINTS: Record<StartPositionStatus, string> = {
 
 export interface StartPositionOverlayProps {
   progress: StartPositionProgress;
+  /**
+   * Sekunden bis zum frühestmöglichen Matchstart, oder `null` außerhalb eines Duells.
+   *
+   * Nur im Duell/Ranked gesetzt: Dort läuft nach dem Finden des Gegners ein
+   * Vorbereitungsfenster, und ohne diese Zahl wüsste man nicht, ob man noch Zeit hat oder
+   * ob es gleich losgeht - man liegt zwei Meter entfernt und kann nicht nachsehen.
+   */
+  prepareSeconds?: number | null;
 }
 
-export function StartPositionOverlay({ progress }: StartPositionOverlayProps) {
+export function StartPositionOverlay({ progress, prepareSeconds = null }: StartPositionOverlayProps) {
   const ratio = Math.min(1, progress.heldMs / Math.max(1, progress.requiredMs));
   // Nur 'HOLDING' ist grün: Der Balken soll ehrlich sagen, ob die Haltezeit gerade
   // *anerkannt* wird. 'MOVING' heißt "in Position, aber noch zu unruhig" - das ist ein
@@ -55,6 +63,13 @@ export function StartPositionOverlay({ progress }: StartPositionOverlayProps) {
   return (
     <View style={styles.container} pointerEvents="none">
       <View style={styles.panel}>
+        {prepareSeconds !== null && (
+          <View style={styles.prepareChip}>
+            <Text style={styles.prepareText}>
+              {prepareSeconds > 0 ? `Match startet frühestens in ${prepareSeconds} s` : 'Match startet, sobald ihr beide liegt'}
+            </Text>
+          </View>
+        )}
         <Text style={styles.title}>{TITLES[progress.status]}</Text>
         <Text style={styles.hint}>{HINTS[progress.status]}</Text>
 
@@ -99,6 +114,18 @@ const styles = StyleSheet.create({
     paddingVertical: space(24),
     paddingHorizontal: space(20),
     alignItems: 'center',
+  },
+  prepareChip: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: PILL_RADIUS,
+    paddingVertical: space(5),
+    paddingHorizontal: space(12),
+    marginBottom: space(12),
+  },
+  prepareText: {
+    fontFamily: fonts.semiBold,
+    fontSize: font(12),
+    color: colors.textSecondary,
   },
   title: {
     fontFamily: fonts.extraBold,

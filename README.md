@@ -1316,6 +1316,44 @@ Icons/Fotos gibt, ändert sich nur `AvatarContent` in `RankFrame.tsx`, der Rahme
   synchronisierter Countdown und 60-Sekunden-Timer.
 - **`DuelResultScreen`**: wartet, bis beide Spieler fertig sind, zeigt den Vergleich;
   bei einem Ranked-Duell zusätzlich die LP-Änderung.
+
+#### Wie ein Match startet (10.09.2026)
+
+Dieselbe Folge im Ranked wie im Freundschaftsspiel — es ist derselbe Bildschirm:
+
+1. **Gegner gefunden.** Im Ranked das Matchup, im Freundschaftsspiel der Beitritt. Ab
+   diesem Moment läuft das **Vorbereitungsfenster von 10 Sekunden**
+   (`MATCH_PREPARATION_MS`).
+2. **In Position gehen.** Die Startpositions-Prüfung läuft dabei wie im Training
+   (siehe „Startposition" oben): Arme gestreckt, Körper gestreckt, Arme unter den
+   Schultern, zwei Sekunden ruhig gehalten. Die Anzeige nennt die verbleibenden Sekunden
+   des Fensters, damit man im Stütz weiß, ob noch Zeit ist.
+3. **Bereit melden.** Erst wenn **beides** gilt — eigene Position erkannt *und* Fenster
+   abgelaufen — geht „bereit" an die Datenbank (`shouldReportReady` in
+   `src/duel/matchStart.ts`, rein getestet).
+4. **3-2-1.** Sobald beide bereit sind, setzt eine der beiden Transaktionen einen
+   gemeinsamen Startzeitpunkt mit `START_LEAD_MS` = **3 Sekunden** Vorlauf. Beide Geräte
+   rechnen ihn über `clockSync.ts` in ihre eigene Uhr um und zeigen denselben Countdown.
+5. **60 Sekunden.** `DUEL_DURATION_MS`, für beide dasselbe Fenster in realer Zeit.
+
+**Warum das Fenster eine Mindestzeit ist und keine Frist.** Zwei Regeln, und keine ersetzt
+die andere:
+
+- *Ohne erkannte Position kein Start*, auch wenn die 10 Sekunden längst um sind. Ein
+  Match, das beginnt, während einer noch steht, kostet ihn in der Rangliste echte LP.
+  Gegen ein Hängenbleiben schützt stattdessen die Notbremse `DUEL_READY_FALLBACK_MS`
+  (35 s ab Fensterbeginn) — sie greift für den Fall, dass gar keine Kamerabilder ankommen
+  und die Prüfung deshalb nie ablaufen kann.
+- *Ohne abgelaufenes Fenster kein Start*, auch wenn die Position längst steht. Sonst
+  entscheidet der Zufall, wer gerade schon lag: Der eine wäre nach zwei Sekunden bereit,
+  für den anderen begänne das Match mitten in der Abwärtsbewegung.
+
+**Die Startposition gilt überall, wo gezählt wird.** Training, Boss-Modus und Duell sind
+die einzigen drei Stellen, an denen `PushUpAnalyzer.processFrame` läuft — und die Sperre
+sitzt im Analyzer, nicht im Bildschirm. Rangliste und Länderspiel haben keinen eigenen
+Zählpfad: Ranked-Duelle benutzen denselben `DuelScreen`, und die Länderspiel-Punkte kommen
+über `syncNationsProgress` aus Training und Boss-Modus. Damit kann keine Spielart den Weg
+in die Position mitzählen, ohne dass man sie einzeln nachrüsten müsste.
 - **Google-Anmeldung ↔ Firebase-Anmeldung verknüpft**: `AuthContext` meldet nach dem
   Google-Login jetzt zusätzlich bei Firebase Auth an (`firebaseAuthBridge.ts`,
   `signInWithCredential` mit dem Google-ID-Token) - nötig, damit die
@@ -1347,7 +1385,8 @@ Function nötig, bleibt im kostenlosen Firebase-Tarif.
   Position und tritt dem erzeugten Duell bei.
 - **`RankedMatchmakingScreen`**: „Gegner suchen" → wartet (mit Abbrechen-Möglichkeit) →
   navigiert automatisch zum `DuelScreen`, sobald ein Gegner gefunden wurde (durch
-  eigenes Claimen oder weil man selbst geclaimt wurde).
+  eigenes Claimen oder weil man selbst geclaimt wurde). Dort beginnt die Startfolge
+  10 s → Position → 3 s → 60 s (siehe „Wie ein Match startet").
 
 ### Rangliste (bereits implementiert)
 
