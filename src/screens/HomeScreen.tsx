@@ -25,7 +25,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - entfernen, sobald
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
-import { shareCalibrationLog } from '../pose/calibrationLogger';
+import { clearCalibrationLog, countCalibrationEntries, shareCalibrationLog } from '../pose/calibrationLogger';
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
 import { colors } from '../theme/colors';
@@ -236,10 +236,41 @@ export function HomeScreen({ navigation }: Props) {
         <Pressable
           style={({ pressed }) => [styles.devCalibrationButton, pressed && styles.pressed]}
           onPress={() =>
-            shareCalibrationLog().catch((e: Error) => Alert.alert('Kalibrierungsdaten', e.message))
+            shareCalibrationLog()
+              .then((count) =>
+                Alert.alert('Kalibrierungsdaten', `${count} Einträge geteilt.`)
+              )
+              .catch((e: Error) => Alert.alert('Kalibrierungsdaten', e.message))
           }
+          // Langes Drücken zum Löschen: Nach dem Übertragen wächst der Log sonst endlos
+          // weiter, und jede weitere Übertragung enthält alles noch einmal mit. Bewusst
+          // NICHT als zweiter Knopf - danebentippen würde Daten vernichten, die sich nur
+          // durch ein weiteres Training wiederbeschaffen ließen.
+          onLongPress={async () => {
+            const count = await countCalibrationEntries().catch(() => 0);
+            if (count === 0) {
+              Alert.alert('Kalibrierungsdaten', 'Es ist nichts gespeichert.');
+              return;
+            }
+            Alert.alert(
+              'Kalibrierungsdaten löschen?',
+              `${count} Einträge werden gelöscht. Vorher teilen, sonst sind sie weg.`,
+              [
+                { text: 'Abbrechen', style: 'cancel' },
+                {
+                  text: 'Löschen',
+                  style: 'destructive',
+                  onPress: () =>
+                    clearCalibrationLog()
+                      .then(() => Alert.alert('Kalibrierungsdaten', 'Gelöscht.'))
+                      .catch((e: Error) => Alert.alert('Kalibrierungsdaten', e.message)),
+                },
+              ]
+            );
+          }}
         >
           <Text style={styles.devCalibrationButtonText}>🧪 Kalibrierungsdaten teilen (DEV)</Text>
+          <Text style={styles.devCalibrationHint}>lang drücken zum Löschen</Text>
         </Pressable>
 
         <View style={styles.accountCard}>
@@ -501,6 +532,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     marginBottom: 16,
+  },
+  devCalibrationHint: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   devCalibrationButtonText: {
     fontFamily: fonts.semiBold,

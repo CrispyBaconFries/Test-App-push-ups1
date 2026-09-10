@@ -10,9 +10,10 @@ import {
   type DetectionError,
 } from 'react-native-mediapipe';
 import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
+import { usePushUpAnalyzer } from '../pose/usePushUpAnalyzer';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { PushUpAnalyzer, type FormIssue } from '../pose/formAnalysis';
+import { type FormIssue } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RankFrame } from '../components/RankFrame';
 import { useRepSounds } from '../audio/repSounds';
@@ -39,7 +40,7 @@ export function DuelScreen({ route, navigation }: Props) {
   const { duelCode, me, isRanked } = route.params;
   const { hasPermission, requestPermission } = useCameraPermission();
 
-  const analyzerRef = useRef(new PushUpAnalyzer());
+  const analyzer = usePushUpAnalyzer();
   const repsRef = useRef(0);
   const finishedRef = useRef(false);
   const readySentRef = useRef(false);
@@ -128,7 +129,7 @@ export function DuelScreen({ route, navigation }: Props) {
 
       if (finishedRef.current) return; // Zählung stoppt hart mit dem Duell-Ende.
 
-      const { live, completedRep, discardedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
+      const { live, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
       setActiveIssue(live && live.cue && live.cue !== 'GOOD_FORM' ? live.cue : null);
 
       if (completedRep) {

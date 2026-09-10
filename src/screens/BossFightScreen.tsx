@@ -11,9 +11,10 @@ import {
   type DetectionError,
 } from 'react-native-mediapipe';
 import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
+import { usePushUpAnalyzer } from '../pose/usePushUpAnalyzer';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
+import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { liveCueLabelDe } from '../pose/feedbackText';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { ProgressBar } from '../components/ProgressBar';
@@ -54,7 +55,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BossFight'>;
 export function BossFightScreen({ navigation }: Props) {
   const auth = useAuth();
   const { hasPermission, requestPermission } = useCameraPermission();
-  const analyzerRef = useRef(new PushUpAnalyzer());
+  const analyzer = usePushUpAnalyzer();
   const startedAtRef = useRef(new Date().toISOString());
   const repsRef = useRef<RepResult[]>([]);
   const bossRef = useRef<BossProgress | null>(null);
@@ -94,7 +95,7 @@ export function BossFightScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep, discardedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
+    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
 
     if (completedRep && bossRef.current) {

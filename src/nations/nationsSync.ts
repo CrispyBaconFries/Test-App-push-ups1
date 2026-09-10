@@ -57,7 +57,26 @@ export async function syncNationsProgress(
  * Eintrag einzeln gegen ein vermutlich generelles Netzwerkproblem anrennen zu lassen)
  * und hebt den Rest für den nächsten Versuch auf - genauso wie bei der Rangliste.
  */
-export async function flushPendingNationsSync(profile: AuthProfile | null): Promise<void> {
+/**
+ * Verhindert, dass zwei Nachhol-Läufe gleichzeitig laufen.
+ *
+ * Ohne das würden beide dieselbe Warteschlange laden und beide dieselben Einträge
+ * gutschreiben - die Liegestütze zählten doppelt. Auslösen lässt sich das ganz normal:
+ * Der Aufruf nach einem beendeten Training läuft bewusst ohne `await` weiter, und wer
+ * währenddessen zum Startbildschirm zurückkehrt, stößt dort den nächsten an. Ein
+ * laufender Durchlauf wird deshalb einfach mitbenutzt statt ein zweiter gestartet.
+ */
+let nationsFlushInFlight: Promise<void> | null = null;
+
+export function flushPendingNationsSync(profile: AuthProfile | null): Promise<void> {
+  if (nationsFlushInFlight) return nationsFlushInFlight;
+  nationsFlushInFlight = runNationsFlush(profile).finally(() => {
+    nationsFlushInFlight = null;
+  });
+  return nationsFlushInFlight;
+}
+
+async function runNationsFlush(profile: AuthProfile | null): Promise<void> {
   if (!profile || !isFirebaseConfigured()) return;
   const queue = await loadPendingNationsQueue();
   if (queue.length === 0) return;

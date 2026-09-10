@@ -668,6 +668,16 @@ einen Button „🧪 Kalibrierungsdaten teilen (DEV)", der die gesammelten Daten
 das Betriebssystem-Teilen-Menü verschickt (z. B. per Mail an sich selbst, dann am PC
 auswerten).
 
+**Nach dem Übertragen löschen:** Langes Drücken auf denselben Knopf fragt nach und leert
+den Log. Ohne das wächst er endlos weiter, und jede weitere Übertragung enthält alles noch
+einmal mit. Bewusst kein zweiter Knopf daneben — Danebentippen würde Daten vernichten, die
+sich nur durch ein weiteres Training wiederbeschaffen ließen.
+
+Geteilt wird kompaktes JSON ohne Einrückung: Der Text geht als Intent-Extra an die
+Ziel-App, und Android deckelt die Größe einer solchen Übergabe. Eingerückt wäre die Datei
+rund ein Drittel größer, ohne dass ein Mensch sie deshalb liest — ausgewertet wird sie am
+PC mit `npm run analyze:reps`.
+
 **Wieder entfernen, sobald die Kalibrierung abgeschlossen ist:**
 1. `src/pose/calibrationLogger.ts` löschen.
 2. Die mit `DEV CALIBRATION` kommentierten Zeilen in `WorkoutScreen.tsx` und
@@ -676,6 +686,34 @@ auswerten).
    `HomeScreen.tsx` entfernen.
 
 Kein anderer Teil der App hängt von diesem Modul ab - die drei Schritte oben reichen.
+
+### Drei Fallen im „ohne await"-Muster (10.09.2026)
+
+An mehreren Stellen wird bewusst ohne `await` aufgerufen, damit ein Netzwerk- oder
+Speicherproblem das Beenden eines Workouts nicht aufhält. Das ist richtig so — hat aber
+drei Fallen, in die dieses Projekt teils schon getappt war:
+
+**1. Lese-Ändern-Schreib-Rennen.** `calibrationLogger.append` lud den ganzen Log, hängte
+einen Eintrag an und schrieb alles zurück. Zwei dicht aufeinanderfolgende Aufrufe — eine
+verworfene Bewegung und die nächste gezählte Wiederholung liegen nur Frames auseinander —
+lasen denselben Stand, und der zuerst geschriebene Eintrag ging verloren. Alle
+Schreibvorgänge laufen jetzt nacheinander durch eine Promise-Kette. Der Test dazu benutzt
+einen künstlich verzögerten Speicher; ohne die Verzögerung liefe jeder Aufruf durch, bevor
+der nächste beginnt, und der Test bestünde auch mit kaputtem Code.
+
+**2. Doppelt gutgeschriebene Liegestütze.** `flushPendingLeaderboardSync` und
+`flushPendingNationsSync` laden die Warteschlange, schreiben jeden Eintrag gut und speichern
+den Rest. Zwei gleichzeitige Läufe hätten dieselben Einträge doppelt gezählt — und das
+lässt sich ganz normal auslösen: Der Aufruf nach einem beendeten Training läuft ohne
+`await` weiter, und wer währenddessen zum Startbildschirm zurückkehrt, stößt dort den
+nächsten an. Ein laufender Durchlauf wird jetzt mitbenutzt, statt ein zweiter gestartet.
+
+**3. `useRef(new X())` im Kamera-Pfad.** Das Argument von `useRef` wird bei **jedem** Render
+ausgewertet, auch wenn nur das erste Ergebnis behalten wird. Die Kamera-Bildschirme rendern
+pro Kamerabild neu, es entstand also gut ein Dutzend sofort weggeworfener `PushUpAnalyzer`
+pro Sekunde — genau in dem Pfad, der ohnehin am meisten zu tun hat. Dafür gibt es jetzt
+`usePushUpAnalyzer()` (`src/pose/usePushUpAnalyzer.ts`), von allen drei Bildschirmen
+benutzt.
 
 ## Tests & Typecheck
 

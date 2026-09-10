@@ -60,10 +60,28 @@ async function loadLog(): Promise<CalibrationEntry[]> {
   }
 }
 
+/**
+ * Alle Schreibvorgänge laufen nacheinander durch diese Kette.
+ *
+ * Ohne das wäre `append` ein klassisches Lese-Ändern-Schreib-Rennen: Die Aufrufer
+ * (WorkoutScreen, BossFightScreen) starten es bewusst ohne `await` mitten im
+ * Kamera-Pfad. Kämen zwei Einträge dicht genug hintereinander - eine verworfene Bewegung
+ * und die nächste gezählte Wiederholung liegen nur Frames auseinander -, läsen beide
+ * denselben Stand und der zuerst geschriebene Eintrag ginge verloren. Bei Daten, die sich
+ * nur durch ein weiteres Training wiederbeschaffen lassen, ist das die paar Zeilen wert.
+ */
+let pendingWrite: Promise<unknown> = Promise.resolve();
+
 async function append(entry: CalibrationEntry): Promise<void> {
-  const log = await loadLog();
-  log.push(entry);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(log));
+  const run = pendingWrite.then(async () => {
+    const log = await loadLog();
+    log.push(entry);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(log));
+  });
+  // Ein gescheiterter Schreibvorgang darf die Kette nicht abreißen lassen - sonst würde
+  // ab da nichts mehr aufgezeichnet.
+  pendingWrite = run.catch(() => undefined);
+  return run;
 }
 
 export async function recordCalibrationRep(rep: RepResult, source: CalibrationEntry['source']): Promise<void> {
@@ -81,14 +99,27 @@ export async function clearCalibrationLog(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
 
+/** Wie viele Einträge gerade gesammelt sind - für die Rückfrage vor dem Löschen. */
+export async function countCalibrationEntries(): Promise<number> {
+  return (await loadLog()).length;
+}
+
 /**
  * Öffnet das Betriebssystem-Teilen-Menü mit den gesammelten Daten als JSON-Text -
  * schick es dir selbst (Mail, Messenger, ...) und wertet es am PC aus.
+ *
+ * Bewusst kompaktes JSON ohne Einrückung: Der Text geht als Intent-Extra an die
+ * Ziel-App, und Android deckelt die Größe einer solchen Übergabe. Eingerückt ist die
+ * Datei rund ein Drittel größer, ohne dass ein Mensch sie deshalb liest - ausgewertet
+ * wird sie am PC mit `npm run analyze:reps`.
+ *
+ * Gibt die Anzahl der geteilten Einträge zurück, damit der Aufrufer sie anzeigen kann.
  */
-export async function shareCalibrationLog(): Promise<void> {
+export async function shareCalibrationLog(): Promise<number> {
   const log = await loadLog();
   if (log.length === 0) {
     throw new Error('Noch keine Kalibrierungsdaten gesammelt - erst ein paar Liegestütze trainieren.');
   }
-  await Share.share({ message: JSON.stringify(log, null, 2) });
+  await Share.share({ message: JSON.stringify(log) });
+  return log.length;
 }

@@ -64,7 +64,26 @@ export async function syncLeaderboardProgress(
  * dieses Durchlaufs ab (statt jeden einzelnen Eintrag erneut gegen ein vermutlich
  * generelles Netzwerkproblem anzurennen) und hebt den Rest für den nächsten Versuch auf.
  */
-export async function flushPendingLeaderboardSync(profile: AuthProfile | null): Promise<void> {
+/**
+ * Verhindert, dass zwei Nachhol-Läufe gleichzeitig laufen.
+ *
+ * Ohne das würden beide dieselbe Warteschlange laden und beide dieselben Einträge
+ * gutschreiben - die Liegestütze zählten doppelt. Auslösen lässt sich das ganz normal:
+ * Der Aufruf nach einem beendeten Training läuft bewusst ohne `await` weiter, und wer
+ * währenddessen zum Startbildschirm zurückkehrt, stößt dort den nächsten an. Ein
+ * laufender Durchlauf wird deshalb einfach mitbenutzt statt ein zweiter gestartet.
+ */
+let leaderboardFlushInFlight: Promise<void> | null = null;
+
+export function flushPendingLeaderboardSync(profile: AuthProfile | null): Promise<void> {
+  if (leaderboardFlushInFlight) return leaderboardFlushInFlight;
+  leaderboardFlushInFlight = runLeaderboardFlush(profile).finally(() => {
+    leaderboardFlushInFlight = null;
+  });
+  return leaderboardFlushInFlight;
+}
+
+async function runLeaderboardFlush(profile: AuthProfile | null): Promise<void> {
   if (!profile || !isFirebaseConfigured()) return;
   const queue = await loadPendingSyncQueue();
   if (queue.length === 0) return;

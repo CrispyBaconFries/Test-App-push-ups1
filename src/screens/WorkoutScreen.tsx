@@ -11,9 +11,10 @@ import {
   type DetectionError,
 } from 'react-native-mediapipe';
 import { POSE_DETECTION_OPTIONS, POSE_MODEL } from '../pose/poseDetectionOptions';
+import { usePushUpAnalyzer } from '../pose/usePushUpAnalyzer';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { PushUpAnalyzer, type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
+import { type FormIssue, type LiveFeedback, type RepResult } from '../pose/formAnalysis';
 import { SkeletonOverlay, type ViewPoint } from '../components/SkeletonOverlay';
 import { RepHud } from '../components/RepHud';
 import { useRepSounds } from '../audio/repSounds';
@@ -36,7 +37,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Workout'>;
 export function WorkoutScreen({ navigation }: Props) {
   const { hasPermission, requestPermission } = useCameraPermission();
   const auth = useAuth();
-  const analyzerRef = useRef(new PushUpAnalyzer());
+  const analyzer = usePushUpAnalyzer();
   const startedAtRef = useRef(new Date().toISOString());
   const repsRef = useRef<RepResult[]>([]);
 
@@ -86,7 +87,7 @@ export function WorkoutScreen({ navigation }: Props) {
       return;
     }
 
-    const { live: liveResult, completedRep, discardedRep } = analyzerRef.current.processFrame(worldLandmarks, Date.now());
+    const { live: liveResult, completedRep, discardedRep } = analyzer.processFrame(worldLandmarks, Date.now());
     setLive(liveResult);
 
     // DEV DIAGNOSTIC (temporär) - entfernen, sobald die Zählung nachweislich funktioniert.
