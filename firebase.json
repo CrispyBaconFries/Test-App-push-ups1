@@ -1,0 +1,10 @@
+{
+  "//": "Sagt der Firebase-CLI, welche Datei welche Regeln enthält. Damit reicht `firebase deploy --only firestore:rules,firestore:indexes,database` - ohne `firebase init`, das sonst nachfragt und dabei diese Dateien überschreiben würde. Siehe docs/firebase-einrichten.md.",
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  }
+}

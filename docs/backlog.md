@@ -163,3 +163,21 @@ blockiert **alle** Firebase-Anfragen der App. Der Weg wäre: erst im Erzwingungs
 „nur überwachen" laufen lassen, in der Konsole nachsehen, dass die echten Anfragen als
 gültig ankommen, und erst dann erzwingen. Dazu braucht es einen Play-Store-Eintrag (auch
 interner Test reicht) — also frühestens sinnvoll, wenn die App dort landet.
+
+## 5. Grafik: Icons, Rahmen, Effekte
+
+Eigenes Dokument: [`docs/grafik-plan.md`](grafik-plan.md). Kurz:
+
+1. **Effekt-Werkstatt** als DEV-Bildschirm — alle Rahmen-Varianten nebeneinander, mit
+   Schiebern für Stärke, Tempo und Farbe, damit chris am Handy entscheidet statt auf
+   Screenshots. Effekte als SVG + Reanimated, beides schon im Projekt, also **keine neue
+   native Abhängigkeit**.
+2. **Zentrale `src/theme/layout.ts`** — Größen, Abstände und Radien an einer Stelle statt
+   in 14 StyleSheets (das ist auch Punkt 3 dieses Backlogs).
+3. **Erst danach Bilddateien**: acht Avatar-Motive per Bild-KI (fertiger Prompt steht im
+   Dokument), Abzeichen und Boss-Motive aus CC0-Sätzen (kenney.nl) oder game-icons.net —
+   Letzteres nur zusammen mit einem Danksagungen-Bildschirm, CC BY verlangt Namensnennung.
+
+Lottie (`lottie-react-native`) bleibt bewusst Reserve für die zwei, drei Effekte, bei denen
+der Code-Weg sichtbar schlechter aussieht — es ist eine neue native Abhängigkeit und damit
+ein neuer Prebuild samt Gradle-Risiko.

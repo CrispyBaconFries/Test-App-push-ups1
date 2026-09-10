@@ -27,6 +27,12 @@ GoogleService-Info.plist
 # Real release-signing credentials (see keystore.properties.example, which IS committed)
 keystore.properties
 
+# Welches Firebase-Projekt diese Arbeitskopie gerade benutzt - schreibt die Firebase-CLI
+# selbst (`firebase use --add`, siehe docs/firebase-einrichten.md). Bewusst nicht
+# eingecheckt: Es ist eine Angabe zur jeweiligen Maschine, nicht zum Projekt, und
+# firebase.json (das die Regel-Pfade festlegt) IST eingecheckt.
+.firebaserc
+
 # Metro
 .metro-health-check*
 

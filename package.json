@@ -63,7 +63,8 @@
     "test": "jest",
     "postinstall": "patch-package",
     "clean:native": "node scripts/clean-native-build.js",
-    "analyze:reps": "node scripts/analyze-rep-log.js"
+    "analyze:reps": "node scripts/analyze-rep-log.js",
+    "firebase:check": "node scripts/check-firebase-setup.js"
   },
   "private": true,
   "jest": {

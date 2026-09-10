@@ -1261,6 +1261,13 @@ dem Deployen einmal im **Rules Playground** der Firebase-Konsole gegenprüfen
 
 ### Firebase-Projekt einrichten
 
+> **Ausführliche Anleitung mit allen Klicks, Befehlen und Stolperstellen:**
+> [`docs/firebase-einrichten.md`](docs/firebase-einrichten.md). Der Abschnitt hier ist die
+> Kurzfassung. Prüfen lässt sich der Stand jederzeit mit `npm run firebase:check` — das
+> Skript liest `google-services.json` und `app.json` und nennt bei jedem Problem den
+> konkreten nächsten Schritt.
+
+
 1. https://console.firebase.google.com/ → neues Projekt anlegen.
 2. **Android-App registrieren** (Paketname wie in `app.json` → `android.package`) →
    `google-services.json` herunterladen → ins **Projekt-Wurzelverzeichnis** legen
