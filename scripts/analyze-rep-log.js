@@ -104,9 +104,16 @@ if (discards.length > 0) {
       typeof d.minElbowAngleDeg === 'number' && d.maxElbowAngleDeg - d.minElbowAngleDeg > 50
         ? '  <-- weiter Bereich: hier steckten echte Wiederholungen drin'
         : '';
+    // Ein TRACKING_LOST mit vielen "aus dem Bild"-Frames heißt "steh weiter weg vom
+    // Handy", eines mit 0 heißt "MediaPipe hat die Pose verloren" - zwei völlig
+    // verschiedene Ursachen, die ohne diese Zahl gleich aussehen.
+    const outOfFrame =
+      typeof d.outOfFrameFrames === 'number' && d.outOfFrameFrames > 0
+        ? `, davon ${d.outOfFrameFrames} ausserhalb des Bildes`
+        : '';
     console.log(
       `    ${String(d.reason).padEnd(14)} ${String(d.durationMs).padStart(6)} ms, ` +
-        `${d.trackedFrames} Frames verfolgt / ${d.untrackedFrames} verloren, ${range}${hint}`
+        `${d.trackedFrames} Frames verfolgt / ${d.untrackedFrames} verloren${outOfFrame}, ${range}${hint}`
     );
   }
 } else {

@@ -536,6 +536,26 @@ abgeknickt, aufrecht, oder Pose weg.
 ein Ton, sobald es losgeht. Das ist Absicht: Wer davor liegt, kann sonst nur raten, warum
 nichts passiert.
 
+**Zwei Maßstäbe, weil die Fehlerrichtungen unterschiedlich viel kosten.** Für die
+Formpunkte (Hüfte, Knie, Ohr) gilt ein Sicherheitsabstand von 2 % zum Bildrand — eine
+angeschnittene Landmarke ist schon halb geraten, und ein Ausfall kostet dort nur *eine
+Formnote*. Für den **Arm** zählt dagegen nur „nachweislich außerhalb des Bildes": Wird er
+fälschlich ausgeschlossen, zählt die App **gar nichts mehr**, und man steht vor einem toten
+Zähler, ohne dass ein Log zur Verfügung stünde.
+
+**Der Bildschirm sagt jetzt, welcher Körperteil fehlt.** Vorher stand dort ein allgemeines
+„Nicht vollständig im Bild – bitte zurücktreten", das nie erschien (die Prüfung dahinter war
+wirkungslos). Jetzt gibt es zwei verschiedene Sätze, weil sie Gegenteiliges bedeuten:
+„Arme nicht im Bild – es wird gerade nicht gezählt" und „Beine nicht im Bild – Haltung wird
+nicht bewertet". Wer beim zweiten zurücktritt, macht es schlimmer — dann ragen womöglich
+die Arme raus und es zählt gar nichts mehr.
+
+Im Kalibrier-Log hält ein verworfener Abschnitt außerdem fest, **wie viele** der
+ausgefallenen Frames am Bildausschnitt lagen (`outOfFrameFrames`, wird von
+`npm run analyze:reps` ausgegeben). Ein `TRACKING_LOST` mit hohem Wert heißt „steh weiter
+weg vom Handy", eines mit 0 heißt „MediaPipe hat die Pose verloren" — zwei völlig
+verschiedene Ursachen, die sonst gleich aussehen.
+
 **Nebenwirkung der Bildprüfung, die eigenständig zählt:** Auch die *Formwerte* rechnen
 nicht mehr mit geschätzten Punkten. Ein Knie außerhalb des Bildes wurde bisher erfunden und
 der Winkel Schulter–Hüfte–Knie daraus berechnet — das ist die wahrscheinlichste Quelle der

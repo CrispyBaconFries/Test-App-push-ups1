@@ -55,6 +55,17 @@ export interface DiscardedRep {
   trackedFrames: number;
   untrackedFrames: number;
   /**
+   * Wie viele der ausgefallenen Frames daran lagen, dass der Arm aus dem **Bild** ragte -
+   * im Unterschied zu "nicht sicher erkannt".
+   *
+   * Rein diagnostisch, und der einzige Weg, das später zu erfahren: Im Release-Build gibt
+   * es kein Log, und die Kalibrierungsdaten sind alles, was von einer Trainingseinheit bei
+   * mir ankommt. Ein `TRACKING_LOST` mit hohem Wert hier heißt "steh weiter weg vom
+   * Handy", eines mit 0 heißt "MediaPipe hat die Pose verloren" - zwei völlig
+   * verschiedene Ursachen, die sonst gleich aussehen.
+   */
+  outOfFrameFrames: number;
+  /**
    * Kleinster und größter Ellbogenwinkel während der verworfenen Bewegung, `null` wenn
    * gar kein verwertbarer Frame dabei war.
    *
@@ -96,6 +107,22 @@ export interface RepResult {
   durationMs: number;
 }
 
+/**
+ * Was gerade nicht im Bild ist - und was das kostet.
+ *
+ * Zwei Fälle, die sich für den Nutzer völlig unterschiedlich anfühlen und deshalb nicht
+ * dieselbe Meldung bekommen dürfen:
+ *
+ * - `ARMS_OUT_OF_FRAME`: Der Arm ragt aus dem Bild. Es wird **gar nicht gezählt** - das
+ *   muss sofort und deutlich auf dem Bildschirm stehen, sonst steht jemand vor einem
+ *   toten Zähler und weiß nicht, warum.
+ * - `LOWER_BODY_OUT_OF_FRAME`: Hüfte oder Knie ragen aus dem Bild. Gezählt wird ganz
+ *   normal weiter, nur Hüft- und Nackenbewertung fallen aus (im Zweifel für den
+ *   Sportler). Ohne Hinweis wäre für den Nutzer nicht erklärbar, warum plötzlich nie
+ *   mehr etwas zur Haltung gemeldet wird.
+ */
+export type FramingIssue = 'ARMS_OUT_OF_FRAME' | 'LOWER_BODY_OUT_OF_FRAME';
+
 export interface LiveFeedback {
   phase: RepPhase;
   trackingOk: boolean;
@@ -110,6 +137,8 @@ export interface LiveFeedback {
    * damit keine Wiederholung mehr, egal wie er aussieht (siehe `startPosition.ts`).
    */
   startPosition: StartPositionProgress | null;
+  /** Welcher Körperteil gerade aus dem Bild ragt, `null` wenn alles drin ist. */
+  framing: FramingIssue | null;
 }
 
 export interface PushUpThresholds {
@@ -238,7 +267,7 @@ export interface PushUpThresholds {
   minTrackedFrameRatio: number;
   /**
    * Sicherheitsabstand zum Bildrand (Anteil der Bildbreite/-höhe), innerhalb dessen eine
-   * Landmarke noch als "im Bild" gilt.
+   * Landmarke noch als "im Bild" gilt - **nur für die Formprüfungen** (Hüfte, Knie, Ohr).
    *
    * Warum diese Prüfung überhaupt gebraucht wird, steht bei `allInFrame` in
    * landmarks.ts: MediaPipe liefert auch für Körperteile außerhalb des Bildes
@@ -248,8 +277,14 @@ export interface PushUpThresholds {
    * Zählungen, während jemand noch halb außerhalb des Bildes stand, und Hüftwinkel, die
    * innerhalb einer Sitzung zwischen 10° und 158° sprangen.
    *
-   * 0,02 (2 %) statt exakt der Bildkante: Eine Landmarke direkt am Rand ist bereits
-   * halb geraten, weil der Körperteil dort schon angeschnitten ist.
+   * **Warum der Arm einen anderen Maßstab bekommt** (siehe `processFrame`): Die beiden
+   * Fehlerrichtungen kosten völlig Unterschiedliches. Ist eine Hüfte fälschlich
+   * ausgeschlossen, fällt *eine Formnote* aus - im Zweifel für den Sportler, genau wie
+   * bei einem nie sichtbaren Unterkörper. Ist der Arm fälschlich ausgeschlossen, zählt
+   * die App **gar nichts mehr**, und chris steht mit einem toten Zähler vor dem Handy,
+   * ohne dass ihm ein Log zur Verfügung stünde. Deshalb ist beim Arm nur "nachweislich
+   * außerhalb des Bildes" ein Ausschlussgrund (Abstand 0), bei den Formpunkten dagegen
+   * schon der angeschnittene Rand.
    */
   frameMargin: number;
 }
@@ -392,6 +427,8 @@ interface RepAccumulator {
   trackedFrames: number;
   /** Frames ohne verwertbare Pose seit Beginn dieser Wiederholung. */
   untrackedFrames: number;
+  /** Davon die, bei denen der Arm nachweislich aus dem Bild ragte (siehe `DiscardedRep.outOfFrameFrames`). */
+  outOfFrameFrames: number;
 }
 
 function freshAccumulator(timeMs: number): RepAccumulator {
@@ -406,6 +443,7 @@ function freshAccumulator(timeMs: number): RepAccumulator {
     peakElbowSinceBottom: -Infinity,
     trackedFrames: 0,
     untrackedFrames: 0,
+    outOfFrameFrames: 0,
   };
 }
 
@@ -530,9 +568,12 @@ export class PushUpAnalyzer {
      * Last: `allVisible` ist dort wirkungslos, weil `react-native-mediapipe` den
      * Sichtbarkeitswert nie durchreicht (siehe landmarks.ts). Ohne `imageLandmarks` -
      * etwa in Tests - bleibt es beim alten Verhalten.
+     *
+     * `margin` unterscheidet Arm von Formpunkten, weil die Fehlerrichtungen
+     * unterschiedlich viel kosten - siehe `PushUpThresholds.frameMargin`.
      */
-    const usable = (indices: number[]) =>
-      allVisible(pose, indices, t.minVisibility) && allInFrame(imageLandmarks, indices, t.frameMargin);
+    const usable = (indices: number[], margin: number) =>
+      allVisible(pose, indices, t.minVisibility) && allInFrame(imageLandmarks, indices, margin);
 
     // Der Zeitablauf wird VOR der Sichtbarkeitsprüfung ausgewertet. Sonst könnte eine
     // Wiederholung, die genau deshalb hängt, weil das Tracking weggebrochen ist, nie
@@ -553,17 +594,32 @@ export class PushUpAnalyzer {
     // MediaPipe to trust, and requiring them here used to mean the rep counter simply
     // never advanced past 'up' whenever that happened - no rep ever counted, regardless
     // of how clean the push-up itself was.
-    if (!usable([idx.shoulder, idx.elbow, idx.wrist])) {
+    // Abstand 0: Nur ein Arm, der nachweislich aus dem Bild ragt, hält die Zählung an.
+    const armIndices = [idx.shoulder, idx.elbow, idx.wrist];
+    if (!usable(armIndices, 0)) {
       // Mitzählen, statt den Ausfall stillschweigend zu überspringen: Am Ende der
       // Wiederholung entscheidet dieser Anteil darüber, ob die Formwerte überhaupt
       // belastbar sind.
-      if (this.acc) this.acc.untrackedFrames += 1;
+      if (this.acc) {
+        this.acc.untrackedFrames += 1;
+        if (!allInFrame(imageLandmarks, armIndices, 0)) this.acc.outOfFrameFrames += 1;
+      }
       // Auch ein Frame ohne verwertbare Pose gehört in das Startpositions-Fenster: Er
       // verwirft die bisher gesammelte Haltezeit (wer zwischendurch aus dem Bild
       // verschwindet, hat nicht durchgehend gehalten) und lässt die Notbremse weiterlaufen.
       const startPosition = this.gate ? this.pushToGate(null, timestampMs) : null;
       return {
-        live: { phase: this.phase, trackingOk: false, elbowAngleDeg: 0, hipStraightnessDeg: 0, cue: null, startPosition },
+        live: {
+          phase: this.phase,
+          trackingOk: false,
+          elbowAngleDeg: 0,
+          hipStraightnessDeg: 0,
+          cue: null,
+          startPosition,
+          // Nur melden, was sich auch beheben lässt: "Arm aus dem Bild" heißt zurücktreten,
+          // "Arm nicht sicher erkannt" hieße nichts, was jemand tun könnte.
+          framing: allInFrame(imageLandmarks, armIndices, 0) ? null : 'ARMS_OUT_OF_FRAME',
+        },
         completedRep: null,
         discardedRep,
       };
@@ -574,9 +630,14 @@ export class PushUpAnalyzer {
     const wrist = getLandmark(pose, idx.wrist)!;
     const elbowAngleDeg = angleAtPoint(shoulder, elbow, wrist);
 
-    const hasHip = usable([idx.hip]);
-    const hasKnee = usable([idx.knee]);
-    const hasEar = usable([idx.ear]);
+    const hasHip = usable([idx.hip], t.frameMargin);
+    const hasKnee = usable([idx.knee], t.frameMargin);
+    const hasEar = usable([idx.ear], t.frameMargin);
+    // Gezählt wird weiter, nur Hüft- und Nackenbewertung fallen aus. Ohne Hinweis wäre
+    // für den Nutzer nicht erklärbar, warum plötzlich nie mehr etwas zur Haltung gemeldet
+    // wird - er würde es für "meine Haltung ist perfekt" halten.
+    const framing: FramingIssue | null =
+      !allInFrame(imageLandmarks, [idx.hip, idx.knee], t.frameMargin) ? 'LOWER_BODY_OUT_OF_FRAME' : null;
     const hip = hasHip ? getLandmark(pose, idx.hip)! : null;
     const knee = hasKnee ? getLandmark(pose, idx.knee)! : null;
     const ear = hasEar ? getLandmark(pose, idx.ear)! : null;
@@ -608,6 +669,7 @@ export class PushUpAnalyzer {
           hipStraightnessDeg: hipStraightnessDeg ?? 0,
           cue: null,
           startPosition,
+          framing,
         },
         completedRep: null,
         discardedRep,
@@ -710,6 +772,7 @@ export class PushUpAnalyzer {
         hipStraightnessDeg: hipStraightnessDeg ?? 0,
         cue,
         startPosition: null,
+        framing,
       },
       completedRep,
       discardedRep,
@@ -754,6 +817,7 @@ export class PushUpAnalyzer {
       durationMs: timestampMs - acc.startTimeMs,
       trackedFrames: acc.trackedFrames,
       untrackedFrames: acc.untrackedFrames,
+      outOfFrameFrames: acc.outOfFrameFrames,
       minElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.min(...acc.elbowAngles)) : null,
       maxElbowAngleDeg: acc.elbowAngles.length ? Math.round(Math.max(...acc.elbowAngles)) : null,
     };

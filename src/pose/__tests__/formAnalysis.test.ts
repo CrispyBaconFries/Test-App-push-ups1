@@ -821,6 +821,69 @@ describe('PushUpAnalyzer: nur was wirklich im Bild ist', () => {
     expect(reps[0].issues).not.toContain('HIPS_SAGGING');
   });
 
+  it('unterscheidet "Arme raus" von "Beine raus"', () => {
+    // Die beiden Fälle brauchen verschiedene Meldungen: Beim ersten zählt gar nichts,
+    // beim zweiten zählt es weiter und nur die Haltungsbewertung fällt aus. Wer beim
+    // zweiten zurücktritt, macht es schlimmer - dann ragen womöglich die Arme raus.
+    const analyzer = new PushUpAnalyzer();
+    const kneeOutside = imageFrame([PoseLandmarkIndex.rightKnee]);
+    const armed = armWithImage(analyzer, kneeOutside);
+
+    const lower = analyzer.processFrame(buildFrame({ elbowAngleDeg: 170 }), armed, kneeOutside);
+    expect(lower.live.framing).toBe('LOWER_BODY_OUT_OF_FRAME');
+    expect(lower.live.trackingOk).toBe(true);
+
+    const wristOutside = imageFrame([PoseLandmarkIndex.rightWrist]);
+    const arms = analyzer.processFrame(buildFrame({ elbowAngleDeg: 170 }), armed + FRAME_MS, wristOutside);
+    expect(arms.live.framing).toBe('ARMS_OUT_OF_FRAME');
+    expect(arms.live.trackingOk).toBe(false);
+
+    const allInside = imageFrame();
+    const fine = analyzer.processFrame(buildFrame({ elbowAngleDeg: 170 }), armed + 2 * FRAME_MS, allInside);
+    expect(fine.live.framing).toBeNull();
+  });
+
+  it('hält den Arm nur an, wenn er wirklich aus dem Bild ragt - nicht schon am Rand', () => {
+    // Die beiden Fehlerrichtungen kosten Unterschiedliches: Eine faelschlich
+    // ausgeschlossene Hüfte kostet eine Formnote, ein fälschlich ausgeschlossener Arm
+    // kostet die ganze Zählung. Deshalb gilt beim Arm nur "nachweislich draußen".
+    const analyzer = new PushUpAnalyzer();
+    // Handgelenk dicht am Rand (1 % vom Bildrand) - innerhalb des Sicherheitsabstands
+    // von 2 %, der für die Formpunkte gilt, aber eben noch im Bild.
+    const atTheEdge = imageFrame();
+    atTheEdge[PoseLandmarkIndex.rightWrist] = { x: 0.99, y: 0.5, z: 0 };
+
+    const armed = armWithImage(analyzer, atTheEdge);
+    expect(analyzer.isArmed()).toBe(true);
+
+    const { reps } = playWithImage(analyzer, repFrames(90), atTheEdge, armed);
+    expect(reps).toHaveLength(1);
+  });
+
+  it('hält im Verwurf fest, ob der Arm aus dem Bild ragte', () => {
+    // Im Release-Build gibt es kein Log - die Kalibrierungsdaten sind alles, was von
+    // einer Trainingseinheit bei mir ankommt. Ein TRACKING_LOST mit hohem Wert hier heißt
+    // "steh weiter weg vom Handy", eines mit 0 heißt "MediaPipe hat die Pose verloren".
+    const analyzer = new PushUpAnalyzer();
+    const allInside = imageFrame();
+    let t = armWithImage(analyzer, allInside);
+
+    // Abwärtsbewegung beginnen, damit eine Wiederholung läuft ...
+    analyzer.processFrame(buildFrame({ elbowAngleDeg: 150 }), t, allInside);
+    t += FRAME_MS;
+    // ... und dann aus dem Bild verschwinden, bis das Zeitlimit greift.
+    const wristOutside = imageFrame([PoseLandmarkIndex.rightWrist]);
+    let discarded: DiscardedRep | null = null;
+    for (let i = 0; i < 500 && !discarded; i++) {
+      discarded = analyzer.processFrame(buildFrame({ elbowAngleDeg: 150 }), t, wristOutside).discardedRep;
+      t += FRAME_MS;
+    }
+
+    expect(discarded).not.toBeNull();
+    expect(discarded!.outOfFrameFrames).toBeGreaterThan(0);
+    expect(discarded!.outOfFrameFrames).toBeLessThanOrEqual(discarded!.untrackedFrames);
+  });
+
   it('bleibt ohne Bildkoordinaten beim alten Verhalten', () => {
     // Die Bildlandmarken sind ein optionales Argument: Wer sie nicht mitgibt (Tests,
     // ältere Aufrufer), bekommt die Prüfung nicht aufgezwungen.

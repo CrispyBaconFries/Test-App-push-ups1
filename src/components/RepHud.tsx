@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { LiveFeedback, RepResult } from '../pose/formAnalysis';
-import { liveCueLabelDe } from '../pose/feedbackText';
+import { framingLabelDe, liveCueLabelDe } from '../pose/feedbackText';
 import { colors } from '../theme/colors';
 import { fonts } from '../theme/typography';
 
@@ -19,6 +19,7 @@ const CUE_COLORS: Record<string, string> = {
 
 export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
   const cueLabel = live ? liveCueLabelDe(live.cue) : '';
+  const framingLabel = live ? framingLabelDe(live.framing) : '';
   const cueColor = live?.cue === 'GOOD_FORM' ? CUE_COLORS.GOOD_FORM : CUE_COLORS.DEFAULT;
 
   // A small pop on every new rep - the one moment of tactile feedback a user gets mid-set.
@@ -49,17 +50,24 @@ export function RepHud({ repCount, live, lastRep, trackingOk }: RepHudProps) {
         </View>
       )}
 
-      {!trackingOk && (
+      {/* Der Bildausschnitt hat Vorrang vor jedem Formhinweis: Solange ein Körperteil
+          fehlt, ist der Formhinweis entweder gar nicht messbar oder geraten. Und die
+          beiden Fälle brauchen verschiedene Sätze - "Arme raus" heißt "es zählt nicht",
+          "Beine raus" heißt "es zählt, wird nur nicht bewertet". Wer beim zweiten
+          zurücktritt, macht es schlimmer. */}
+      {framingLabel !== '' ? (
         <View style={styles.cueBar}>
-          <Text style={[styles.cueText, { color: colors.warning }]}>Nicht vollständig im Bild – bitte zurücktreten</Text>
+          <Text style={[styles.cueText, { color: colors.warning }]}>{framingLabel}</Text>
         </View>
-      )}
-
-      {trackingOk && cueLabel !== '' && (
+      ) : !trackingOk ? (
+        <View style={styles.cueBar}>
+          <Text style={[styles.cueText, { color: colors.warning }]}>Pose nicht erkannt – kurz still halten</Text>
+        </View>
+      ) : cueLabel !== '' ? (
         <View style={styles.cueBar}>
           <Text style={[styles.cueText, { color: cueColor }]}>{cueLabel}</Text>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

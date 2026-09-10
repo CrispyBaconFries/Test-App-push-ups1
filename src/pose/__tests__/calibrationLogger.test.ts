@@ -56,6 +56,7 @@ const discarded: DiscardedRep = {
   durationMs: 300,
   trackedFrames: 5,
   untrackedFrames: 0,
+  outOfFrameFrames: 0,
   minElbowAngleDeg: 130,
   maxElbowAngleDeg: 150,
 };
