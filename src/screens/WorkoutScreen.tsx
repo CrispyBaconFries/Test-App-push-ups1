@@ -31,6 +31,7 @@ import { useAuth } from '../auth/AuthContext';
 // die Schwellwert-Kalibrierung anhand echter Gerätedaten abgeschlossen ist.
 import { recordCalibrationBaseline, recordCalibrationDiscard, recordCalibrationRep } from '../pose/calibrationLogger';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Workout'>;
@@ -317,36 +318,36 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: space(32),
   },
   permissionText: {
     fontFamily: fonts.regular,
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: font(16),
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    marginBottom: space(24),
+    lineHeight: font(22),
   },
   primaryButton: {
     backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 28,
+    borderRadius: radius(16),
+    paddingVertical: space(16),
+    paddingHorizontal: space(28),
     alignItems: 'center',
   },
   primaryButtonText: {
     fontFamily: fonts.bold,
     color: '#0B0F14',
-    fontSize: 16,
+    fontSize: font(16),
   },
   linkButton: {
-    marginTop: 16,
-    padding: 8,
+    marginTop: space(16),
+    padding: space(8),
   },
   linkButtonText: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 14,
+    fontSize: font(14),
   },
   finishButton: {
     position: 'absolute',
@@ -354,11 +355,11 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: space(8),
     backgroundColor: colors.primary,
-    borderRadius: 28,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    borderRadius: radius(28),
+    paddingVertical: space(14),
+    paddingHorizontal: space(28),
   },
   backButton: {
     position: 'absolute',
@@ -366,16 +367,16 @@ const styles = StyleSheet.create({
     left: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: space(6),
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    borderRadius: radius(24),
+    paddingVertical: space(12),
+    paddingHorizontal: space(18),
   },
   iconButtonText: {
     fontFamily: fonts.bold,
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: font(15),
   },
   pressed: {
     opacity: 0.8,

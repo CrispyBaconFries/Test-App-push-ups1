@@ -8,6 +8,7 @@ import { recordDuelCompleted } from '../duel/duelLog';
 import { applyDuelResult } from '../ranking/playerProfileStore';
 import { RankFrame } from '../components/RankFrame';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DuelResult'>;
@@ -152,84 +153,84 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: 24,
+    padding: space(24),
     alignItems: 'center',
     justifyContent: 'center',
   },
   waiting: {
     alignItems: 'center',
-    gap: 16,
+    gap: space(16),
   },
   waitingText: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 15,
+    fontSize: font(15),
     textAlign: 'center',
   },
   outcomeBadge: {
     width: 56,
     height: 56,
-    borderRadius: 18,
+    borderRadius: radius(18),
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: space(16),
   },
   outcomeTitle: {
     fontFamily: fonts.extraBold,
-    fontSize: 26,
+    fontSize: font(26),
     color: colors.textPrimary,
-    marginBottom: 32,
+    marginBottom: space(32),
   },
   tallyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
-    marginBottom: 24,
+    gap: space(24),
+    marginBottom: space(24),
   },
   tallyItem: {
     alignItems: 'center',
-    gap: 8,
+    gap: space(8),
     width: 110,
   },
   tallyReps: {
     fontFamily: fonts.extraBold,
-    fontSize: 32,
+    fontSize: font(32),
     color: colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   tallyName: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
   },
   vsText: {
     fontFamily: fonts.bold,
-    fontSize: 14,
+    fontSize: font(14),
     color: colors.textSecondary,
   },
   lpText: {
     fontFamily: fonts.extraBold,
-    fontSize: 20,
-    marginBottom: 32,
+    fontSize: font(20),
+    marginBottom: space(32),
   },
   friendlyHint: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
-    marginBottom: 32,
+    marginBottom: space(32),
   },
   primaryButton: {
     backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
+    borderRadius: radius(16),
+    paddingVertical: space(16),
+    paddingHorizontal: space(48),
     alignItems: 'center',
   },
   primaryButtonText: {
     fontFamily: fonts.bold,
     color: '#0B0F14',
-    fontSize: 16,
+    fontSize: font(16),
   },
   pressed: {
     opacity: 0.85,

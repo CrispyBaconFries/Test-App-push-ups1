@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { loadSessions, type WorkoutSession } from '../storage/workoutStorage';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'History'>;
@@ -72,62 +73,62 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 56,
-    paddingHorizontal: 24,
+    paddingTop: space(56),
+    paddingHorizontal: space(24),
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: space(20),
   },
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: radius(12),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    marginRight: 12,
+    marginRight: space(12),
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 24,
+    fontSize: font(24),
     color: colors.textPrimary,
   },
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: space(40),
   },
   emptyState: {
     alignItems: 'center',
-    marginTop: 60,
-    gap: 12,
+    marginTop: space(60),
+    gap: space(12),
   },
   emptyText: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 14,
+    fontSize: font(14),
     textAlign: 'center',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: radius(16),
+    padding: space(14),
+    marginBottom: space(12),
     borderWidth: 1,
     borderColor: colors.border,
   },
   rowIconBadge: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: radius(12),
     backgroundColor: colors.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: space(12),
   },
   rowTextWrap: {
     flex: 1,
@@ -135,18 +136,18 @@ const styles = StyleSheet.create({
   rowDate: {
     fontFamily: fonts.bold,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: font(15),
   },
   rowSub: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 2,
+    fontSize: font(13),
+    marginTop: space(2),
   },
   rowPoints: {
     fontFamily: fonts.extraBold,
     color: colors.primary,
-    fontSize: 18,
+    fontSize: font(18),
   },
   pressed: {
     opacity: 0.8,

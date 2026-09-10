@@ -29,6 +29,7 @@ import { clearCalibrationLog, countCalibrationEntries, shareCalibrationLog } fro
 import { LevelProgressBar } from '../components/LevelProgressBar';
 import { ProgressBar } from '../components/ProgressBar';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -399,7 +400,7 @@ export function HomeScreen({ navigation }: Props) {
             />
           ))}
 
-          <Text style={[styles.missionSectionLabel, { marginTop: 18 }]}>Diese Woche</Text>
+          <Text style={[styles.missionSectionLabel, { marginTop: space(18) }]}>Diese Woche</Text>
           {missions.weekly.map((mission) => (
             <MissionRow key={mission.definition.id} mission={mission} />
           ))}
@@ -407,7 +408,7 @@ export function HomeScreen({ navigation }: Props) {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Bestleistungen</Text>
-          <View style={[styles.statsRow, { marginTop: 14 }]}>
+          <View style={[styles.statsRow, { marginTop: space(14) }]}>
             <StatTile icon="today-outline" value={`${stats.bestDayReps}`} label="Bester Tag" />
             <StatTile icon="trending-up" value={`${stats.bestSessionReps}`} label="Beste Session" />
             <StatTile icon="checkmark-done" value={`${stats.bestAverageFormScore}`} label="Bester Score" />
@@ -499,29 +500,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    padding: 24,
-    paddingBottom: 40,
+    padding: space(24),
+    paddingBottom: space(40),
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: space(24),
   },
   logoBadge: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: radius(14),
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: space(14),
   },
   headerText: {
     flex: 1,
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 24,
+    fontSize: font(24),
     color: colors.textPrimary,
   },
   titleAccent: {
@@ -529,38 +530,38 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 18,
+    marginTop: space(2),
+    lineHeight: font(18),
   },
   // DEV CALIBRATION (temporär, siehe src/pose/calibrationLogger.ts) - Styles entfernen,
   // sobald die Schwellwert-Kalibrierung abgeschlossen ist.
   devCalibrationButton: {
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
+    borderRadius: radius(12),
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 10,
+    paddingVertical: space(10),
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: space(16),
   },
   devCalibrationHint: {
     fontFamily: fonts.regular,
-    fontSize: 10,
+    fontSize: font(10),
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: space(2),
   },
   devCalibrationButtonText: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
   },
   accountCard: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: radius(20),
+    padding: space(16),
+    marginBottom: space(16),
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -579,73 +580,73 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   googleButton: {
-    marginTop: 12,
+    marginTop: space(12),
   },
   avatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    marginRight: 12,
+    borderRadius: radius(20),
+    marginRight: space(12),
   },
   avatarFallback: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: radius(20),
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: space(12),
   },
   avatarFallbackText: {
     fontFamily: fonts.extraBold,
-    fontSize: 16,
+    fontSize: font(16),
     color: '#0B0F14',
   },
   accountTextWrap: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space(8),
   },
   accountName: {
     fontFamily: fonts.bold,
-    fontSize: 14,
+    fontSize: font(14),
     color: colors.textPrimary,
   },
   accountEmail: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: space(2),
   },
   signOutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    paddingVertical: space(8),
+    paddingHorizontal: space(14),
+    borderRadius: radius(20),
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   signOutButtonText: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
   },
   accountError: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.danger,
-    marginTop: 10,
+    marginTop: space(10),
   },
   statsCard: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: radius(20),
+    padding: space(20),
+    marginBottom: space(16),
     borderWidth: 1,
     borderColor: colors.border,
   },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: radius(20),
+    padding: space(20),
+    marginBottom: space(16),
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -653,67 +654,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: space(16),
   },
   cardTitle: {
     fontFamily: fonts.bold,
-    fontSize: 15,
+    fontSize: font(15),
     color: colors.textPrimary,
   },
   reminderButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 20,
+    gap: space(6),
+    paddingVertical: space(6),
+    paddingHorizontal: space(10),
+    borderRadius: radius(20),
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   reminderButtonText: {
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: font(11),
     color: colors.textSecondary,
   },
   reminderButtonStandalone: {
     alignSelf: 'flex-start',
-    marginBottom: 16,
+    marginBottom: space(16),
   },
   coinChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    gap: space(6),
+    paddingVertical: space(6),
+    paddingHorizontal: space(12),
+    borderRadius: radius(20),
     backgroundColor: 'rgba(255,194,75,0.14)',
   },
   coinChipText: {
     fontFamily: fonts.bold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.warning,
     fontVariant: ['tabular-nums'],
   },
   missionSectionLabel: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: space(10),
   },
   missionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: space(14),
   },
   missionIconBadge: {
     width: 34,
     height: 34,
-    borderRadius: 10,
+    borderRadius: radius(10),
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: space(12),
   },
   missionIconBadgeComplete: {
     backgroundColor: colors.primary,
@@ -728,54 +729,54 @@ const styles = StyleSheet.create({
   },
   missionTitle: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textPrimary,
   },
   missionReward: {
     fontFamily: fonts.bold,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.warning,
     fontVariant: ['tabular-nums'],
   },
   missionDescription: {
     fontFamily: fonts.regular,
-    fontSize: 11,
+    fontSize: font(11),
     color: colors.textSecondary,
-    marginTop: 2,
-    marginBottom: 6,
+    marginTop: space(2),
+    marginBottom: space(6),
     fontVariant: ['tabular-nums'],
   },
   streakSavedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: space(10),
     backgroundColor: colors.primary,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 16,
+    borderRadius: radius(16),
+    padding: space(14),
+    marginBottom: space(16),
   },
   streakSavedText: {
     flex: 1,
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: font(12),
     color: '#0B0F14',
   },
   freezeHintRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 12,
+    gap: space(5),
+    marginTop: space(12),
     justifyContent: 'center',
   },
   freezeHint: {
     fontFamily: fonts.regular,
-    fontSize: 11,
+    fontSize: font(11),
     color: colors.textSecondary,
   },
   statsDivider: {
     height: 1,
     backgroundColor: colors.border,
-    marginVertical: 16,
+    marginVertical: space(16),
   },
   statsRow: {
     flexDirection: 'row',
@@ -784,29 +785,29 @@ const styles = StyleSheet.create({
   statTile: {
     alignItems: 'center',
     flex: 1,
-    gap: 4,
+    gap: space(4),
   },
   statValue: {
     fontFamily: fonts.bold,
-    fontSize: 18,
+    fontSize: font(18),
     color: colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   statLabel: {
     fontFamily: fonts.regular,
-    fontSize: 10,
+    fontSize: font(10),
     color: colors.textSecondary,
     textAlign: 'center',
   },
   menu: {
-    gap: 12,
+    gap: space(12),
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    borderRadius: radius(18),
+    paddingVertical: space(14),
+    paddingHorizontal: space(16),
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -822,23 +823,23 @@ const styles = StyleSheet.create({
   menuIconBadge: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: radius(12),
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: space(14),
   },
   menuIconBadgeEmphasis: {
     backgroundColor: 'rgba(11,15,20,0.15)',
   },
   menuItemTextWrap: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space(8),
   },
   menuItemTitle: {
     fontFamily: fonts.bold,
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: font(16),
   },
   menuItemTitleEmphasis: {
     color: '#0B0F14',
@@ -846,8 +847,8 @@ const styles = StyleSheet.create({
   menuItemSubtitle: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: font(12),
+    marginTop: space(2),
   },
   menuItemSubtitleEmphasis: {
     color: 'rgba(11,15,20,0.7)',

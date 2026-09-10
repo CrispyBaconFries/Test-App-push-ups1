@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { StartPositionProgress, StartPositionStatus } from '../pose/startPosition';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 /**
@@ -86,50 +87,50 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,15,20,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: space(24),
   },
   panel: {
     width: '100%',
     maxWidth: 420,
     backgroundColor: 'rgba(11,15,20,0.85)',
-    borderRadius: 20,
+    borderRadius: radius(20),
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
+    paddingVertical: space(24),
+    paddingHorizontal: space(20),
     alignItems: 'center',
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 24,
+    fontSize: font(24),
     color: colors.textPrimary,
     textAlign: 'center',
   },
   hint: {
     fontFamily: fonts.regular,
-    fontSize: 15,
+    fontSize: font(15),
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 21,
+    marginTop: space(10),
+    lineHeight: font(21),
   },
   track: {
     width: '100%',
     height: 12,
-    borderRadius: 6,
+    borderRadius: radius(6),
     backgroundColor: 'rgba(255,255,255,0.12)',
-    marginTop: 22,
+    marginTop: space(22),
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 6,
+    borderRadius: radius(6),
   },
   seconds: {
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
-    marginTop: 10,
+    marginTop: space(10),
     textAlign: 'center',
   },
 });

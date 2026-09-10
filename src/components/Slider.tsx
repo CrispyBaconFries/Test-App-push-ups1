@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 /**
@@ -102,22 +103,22 @@ const KNOB_SIZE = 22;
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 14,
+    marginBottom: space(14),
   },
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 6,
+    marginBottom: space(6),
   },
   label: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textPrimary,
   },
   value: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
     fontVariant: ['tabular-nums'],
   },
@@ -127,13 +128,13 @@ const styles = StyleSheet.create({
   },
   track: {
     height: 6,
-    borderRadius: 3,
+    borderRadius: radius(3),
     backgroundColor: 'rgba(255,255,255,0.12)',
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: radius(3),
   },
   knob: {
     position: 'absolute',

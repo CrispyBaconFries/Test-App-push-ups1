@@ -17,6 +17,7 @@ import {
 import { getCoinBalance } from '../gamification/currencyStore';
 import { getHeldStreakFreezes } from '../gamification/streakFreezeStore';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Shop'>;
@@ -164,7 +165,7 @@ export function ShopScreen({ navigation }: Props) {
 }
 
 function GatedHint({ status }: { status: string }) {
-  if (status === 'loading') return <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />;
+  if (status === 'loading') return <ActivityIndicator color={colors.primary} style={{ marginBottom: space(16) }} />;
   return (
     <Text style={styles.infoText}>
       {status === 'notConfigured'
@@ -233,20 +234,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingTop: 56,
-    paddingHorizontal: 24,
-    paddingBottom: 48,
+    paddingTop: space(56),
+    paddingHorizontal: space(24),
+    paddingBottom: space(48),
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
+    marginBottom: space(20),
+    gap: space(12),
   },
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: radius(12),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
@@ -255,75 +256,75 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 22,
+    fontSize: font(22),
     color: colors.textPrimary,
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: space(2),
     maxWidth: 260,
   },
   balanceRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
+    gap: space(10),
+    marginBottom: space(24),
   },
   balanceChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
+    gap: space(6),
+    paddingVertical: space(8),
+    paddingHorizontal: space(14),
+    borderRadius: radius(20),
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   balanceChipText: {
     fontFamily: fonts.bold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   sectionTitle: {
     fontFamily: fonts.bold,
-    fontSize: 15,
+    fontSize: font(15),
     color: colors.textPrimary,
-    marginBottom: 6,
+    marginBottom: space(6),
   },
   sectionSpacing: {
-    marginTop: 24,
+    marginTop: space(24),
   },
   sectionHint: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
-    marginBottom: 12,
+    marginBottom: space(12),
   },
   infoText: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
-    lineHeight: 19,
-    marginBottom: 12,
+    lineHeight: font(19),
+    marginBottom: space(12),
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: radius(16),
+    padding: space(14),
+    marginBottom: space(10),
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 12,
+    gap: space(12),
   },
   iconBadge: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: radius(12),
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -336,20 +337,20 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     fontFamily: fonts.semiBold,
-    fontSize: 14,
+    fontSize: font(14),
     color: colors.textPrimary,
   },
   rowDescription: {
     fontFamily: fonts.regular,
-    fontSize: 11,
+    fontSize: font(11),
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: space(2),
   },
   actionButton: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    borderRadius: radius(12),
+    paddingVertical: space(10),
+    paddingHorizontal: space(14),
     minWidth: 84,
     alignItems: 'center',
   },
@@ -358,7 +359,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontFamily: fonts.bold,
-    fontSize: 12,
+    fontSize: font(12),
     color: '#0B0F14',
   },
   actionButtonTextEquipped: {

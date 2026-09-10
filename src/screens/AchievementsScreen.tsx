@@ -7,6 +7,7 @@ import type { RootStackParamList } from '../navigation/RootNavigator';
 import { loadSessions, computeStats } from '../storage/workoutStorage';
 import { computeBadgeStatuses, type BadgeStatus } from '../gamification/badges';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Achievements'>;
@@ -76,19 +77,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: 56,
-    paddingHorizontal: 24,
+    paddingTop: space(56),
+    paddingHorizontal: space(24),
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
+    marginBottom: space(20),
+    gap: space(12),
   },
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: radius(12),
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surface,
@@ -97,25 +98,25 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 22,
+    fontSize: font(22),
     color: colors.textPrimary,
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: space(2),
   },
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: space(40),
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: radius(16),
+    padding: space(14),
+    marginBottom: space(12),
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -125,23 +126,23 @@ const styles = StyleSheet.create({
   iconBadge: {
     width: 44,
     height: 44,
-    borderRadius: 14,
+    borderRadius: radius(14),
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: space(14),
   },
   iconBadgeUnlocked: {
     backgroundColor: colors.primary,
   },
   textWrap: {
     flex: 1,
-    marginRight: 8,
+    marginRight: space(8),
   },
   rowTitle: {
     fontFamily: fonts.bold,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: font(15),
   },
   rowTitleLocked: {
     color: colors.textSecondary,
@@ -149,14 +150,14 @@ const styles = StyleSheet.create({
   rowDescription: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: font(12),
+    marginTop: space(2),
   },
   rowProgress: {
     fontFamily: fonts.semiBold,
     color: colors.textSecondary,
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: font(12),
+    marginTop: space(4),
   },
   pressed: {
     opacity: 0.8,

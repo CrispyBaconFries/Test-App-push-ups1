@@ -138,7 +138,7 @@ morgen abzustimmen:
 | | Ansatz | Deckt ab | Aufwand |
 |---|---|---|---|
 | a | ~~**Web-Vorschau**~~ — **erledigt am 10.09.2026**: `npm run web`, siehe README „Web-Vorschau" | alle Screens, **auch** die Anzeigen über dem Kamerabild (Attrappe statt Kamera) | erledigt |
-| b | **Zentrale `src/theme/layout.ts`** — alle Positionen, Größen, Abstände an einer Stelle statt in 14 StyleSheets | alles | gering–mittel |
+| b | ~~**Zentrale `src/theme/layout.ts`**~~ — **erledigt am 10.09.2026**: 626 Werte aus 20 StyleSheets laufen durch `space()`/`radius()`/`font()`, drei Faktoren steuern die ganze App. Siehe README „Ein Ort für Abstände" | alles | erledigt |
 | c | **DEV-Layout-Modus in der App** — Overlay-Elemente per Finger verschieben, Werte als JSON exportieren und in `layout.ts` übernehmen | nur die Kamera-Overlays, die (a) nicht darstellen kann | mittel |
 | d | **DEV-Screen-Galerie** mit Mockdaten — jeden Screen-Zustand direkt anspringen, ohne ihn erspielen zu müssen | alle Screens | mittel |
 
@@ -152,7 +152,15 @@ Kamera-Overlays sehr wohl, weil die Kamera-Attrappe eine ruhige dunkle Fläche r
 alles darüber echt bleibt. **(c) ist damit vorerst hinfällig** — es bliebe nur der Wunsch,
 Elemente per Finger zu verschieben statt Zahlen zu ändern, und dafür ist (b) der kürzere Weg.
 
-**(b) ist der nächste Schritt.**
+**(b) ist ebenfalls erledigt** und wurde pixelgenau gegen den Stand davor geprüft (sechs von
+acht Bildschirmen exakt identisch, die zwei Abweichungen sind Animation und Countdown).
+
+**Offen bleibt die eigentliche Design-Runde**, und die gehört chris: Welche Faktoren sollen
+gelten, und sollen die heute 14 verschiedenen Abstandswerte auf eine strengere Stufung
+zusammengezogen werden? Beides ist jetzt eine Frage von Ausprobieren im Browser statt von
+Umbauarbeiten. **(d) DEV-Screen-Galerie** wäre der nächste sinnvolle Baustein, falls das
+Erspielen bestimmter Zustände (frisch installiert, lange Streak, volle Rangliste) beim
+Vergleichen stört.
 
 ## 4. Firebase App Check (Play Integrity)
 

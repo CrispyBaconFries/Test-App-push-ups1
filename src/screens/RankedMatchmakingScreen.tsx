@@ -10,6 +10,7 @@ import { generateDuelCode } from '../duel/duelCode';
 import { createDuel, joinDuel } from '../duel/duelSession';
 import { RankFrame } from '../components/RankFrame';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'RankedMatchmaking'>;
@@ -161,89 +162,89 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: 24,
+    padding: space(24),
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: radius(20),
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: space(16),
   },
   title: {
     fontFamily: fonts.extraBold,
-    fontSize: 24,
+    fontSize: font(24),
     color: colors.textPrimary,
   },
   subtitle: {
     fontFamily: fonts.regular,
-    fontSize: 14,
+    fontSize: font(14),
     color: colors.textSecondary,
-    marginTop: 4,
-    marginBottom: 24,
+    marginTop: space(4),
+    marginBottom: space(24),
   },
   infoText: {
     fontFamily: fonts.regular,
-    fontSize: 15,
+    fontSize: font(15),
     color: colors.textSecondary,
-    lineHeight: 22,
+    lineHeight: font(22),
   },
   spacingTop: {
-    marginTop: 24,
+    marginTop: space(24),
   },
   avatarPreview: {
     alignItems: 'center',
-    marginBottom: 32,
-    gap: 10,
+    marginBottom: space(32),
+    gap: space(10),
   },
   avatarName: {
     fontFamily: fonts.semiBold,
     color: colors.textPrimary,
-    fontSize: 14,
+    fontSize: font(14),
   },
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: space(8),
     backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderRadius: radius(16),
+    paddingVertical: space(16),
   },
   primaryButtonText: {
     fontFamily: fonts.bold,
     color: '#0B0F14',
-    fontSize: 16,
+    fontSize: font(16),
   },
   secondaryButton: {
-    marginTop: 20,
+    marginTop: space(20),
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    borderRadius: radius(16),
+    paddingVertical: space(14),
+    paddingHorizontal: space(28),
     borderWidth: 1,
     borderColor: colors.border,
   },
   secondaryButtonText: {
     fontFamily: fonts.bold,
     color: colors.textPrimary,
-    fontSize: 15,
+    fontSize: font(15),
   },
   waitingCard: {
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: radius(20),
+    padding: space(24),
     borderWidth: 1,
     borderColor: colors.border,
   },
   waitingHint: {
     fontFamily: fonts.regular,
     color: colors.textSecondary,
-    fontSize: 13,
-    marginTop: 12,
+    fontSize: font(13),
+    marginTop: space(12),
   },
   pressed: {
     opacity: 0.85,

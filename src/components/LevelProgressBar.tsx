@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ProgressBar } from './ProgressBar';
 import { colors } from '../theme/colors';
+import { font, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 export interface LevelProgressBarProps {
@@ -29,16 +30,16 @@ const styles = StyleSheet.create({
   labelRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: space(6),
   },
   label: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
+    fontSize: font(13),
     color: colors.textPrimary,
   },
   pointsLabel: {
     fontFamily: fonts.regular,
-    fontSize: 12,
+    fontSize: font(12),
     color: colors.textSecondary,
   },
 });

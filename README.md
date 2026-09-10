@@ -864,6 +864,57 @@ pro Sekunde — genau in dem Pfad, der ohnehin am meisten zu tun hat. Dafür gib
 `usePushUpAnalyzer()` (`src/pose/usePushUpAnalyzer.ts`), von allen drei Bildschirmen
 benutzt.
 
+## Ein Ort für Abstände, Rundungen und Schriftgrößen
+
+`src/theme/layout.ts`. Jede Abstands-, Rundungs- und Schriftzahl der App läuft durch
+`space()`, `radius()` oder `font()` — und ganz oben in der Datei stehen drei Faktoren:
+
+```ts
+const SPACING_SCALE = 1;   // 1.15 = überall 15 % luftiger
+const RADIUS_SCALE  = 1;   // 0.25 = fast eckig
+const FONT_SCALE    = 1;   // 1.1  = alle Texte größer
+```
+
+**Eine Zahl ändert die ganze App.** Vorher standen 626 Werte als Literale in 20
+StyleSheets: „alles etwas luftiger" hieß, jede Stelle einzeln anzufassen und dabei
+Dutzende zu übersehen. Zusammen mit `npm run web` (Ergebnis in ein bis zwei Sekunden im
+Browser) ist das der Design-Weg, um den es die ganze Zeit ging.
+
+**Drei getrennte Faktoren, weil es drei unabhängige Fragen sind.** „Zu gedrängt" hat nichts
+mit „zu rund" zu tun, und wer größere Schrift will, will deshalb keine größeren Abstände.
+
+### Warum die Übernahme nichts verändert hat
+
+Die Umstellung war bewusst **wirkungsneutral**: `space(16)` ergibt bei Faktor 1 exakt die
+16, die vorher dort stand. Das ist nicht behauptet, sondern gemessen — acht Bildschirme
+wurden vor und nach dem Umbau im Browser aufgenommen und Pixel für Pixel verglichen:
+
+| Bildschirm | Abweichung |
+|---|---|
+| Start, Training, Boss, Profil, Shop, Rangliste | **0 von 1.512.000 Pixeln** |
+| Effekt-Werkstatt | 0,2 % — laufende Animationen |
+| Länderspiel | 0,08 % — die mitlaufende Countdown-Anzeige |
+
+Die beiden Abweichungen sind keine Layout-Änderungen: Zwei Aufnahmen **derselben** Version
+unterscheiden sich an genau denselben zwei Stellen in derselben Größenordnung.
+
+### Was bewusst nicht gemacht wurde
+
+Es wäre naheliegend gewesen, bei der Gelegenheit aufzuräumen. Die App benutzt heute 2, 4,
+6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32 und 48 — praktisch jede gerade Zahl. Eine
+strengere Stufung (nur 4, 8, 16, 24, 32) wäre sauberer, verschiebt aber überall die Optik.
+Dasselbe gilt für benannte Maße wie `cardRadius`: Karten benutzen heute 14, 16, 18 und 20
+als Rundung, ein gemeinsamer Name hieße, sich für einen davon zu entscheiden.
+
+Beides sind **Design-Entscheidungen** — und die gehören chris, sobald er sie im Browser
+vergleichen kann. Sie nebenbei in einem Umbau mitzunehmen, dessen ganzer Zweck
+Wirkungsneutralität war, hätte aus einer prüfbaren Änderung eine stille Umgestaltung
+gemacht.
+
+Ein Test hält beide Zusagen fest (`src/theme/__tests__/layout.test.ts`): dass die
+eingecheckten Faktoren neutral stehen — beim Vorführen des Hebels wäre ein Demo-Wert fast
+im Commit gelandet — und dass in den Haupt-Bildschirmen keine nackten Zahlen zurückkehren.
+
 ## Web-Vorschau: Layout am PC ändern, ohne Gradle und ohne Handy
 
 ```bash

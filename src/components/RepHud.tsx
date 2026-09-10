@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import type { LiveFeedback, RepResult } from '../pose/formAnalysis';
 import { framingLabelDe, liveCueLabelDe } from '../pose/feedbackText';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 export interface RepHudProps {
@@ -91,22 +92,22 @@ const styles = StyleSheet.create({
   },
   repCounterBadge: {
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    borderRadius: radius(14),
+    paddingHorizontal: space(20),
+    paddingVertical: space(8),
     alignItems: 'center',
   },
   repCountText: {
     fontFamily: fonts.extraBold,
-    fontSize: 28,
+    fontSize: font(28),
     color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
   },
   repCountLabel: {
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: font(11),
     color: 'rgba(255,255,255,0.75)',
-    marginTop: 1,
+    marginTop: space(1),
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -115,21 +116,21 @@ const styles = StyleSheet.create({
     top: 20,
     right: 20,
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: radius(14),
+    paddingHorizontal: space(14),
+    paddingVertical: space(8),
     alignItems: 'center',
   },
   scoreValue: {
     fontFamily: fonts.extraBold,
-    fontSize: 20,
+    fontSize: font(20),
     color: colors.primary,
   },
   scoreLabel: {
     fontFamily: fonts.regular,
-    fontSize: 10,
+    fontSize: font(10),
     color: 'rgba(255,255,255,0.75)',
-    marginTop: 1,
+    marginTop: space(1),
   },
   cueBar: {
     position: 'absolute',
@@ -140,11 +141,11 @@ const styles = StyleSheet.create({
   },
   cueText: {
     backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    borderRadius: radius(12),
+    paddingHorizontal: space(16),
+    paddingVertical: space(10),
     fontFamily: fonts.bold,
-    fontSize: 16,
+    fontSize: font(16),
     textAlign: 'center',
     overflow: 'hidden',
   },

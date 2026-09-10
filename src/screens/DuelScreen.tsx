@@ -30,6 +30,7 @@ import {
   type DuelPlayerState,
 } from '../duel/duelSession';
 import { colors } from '../theme/colors';
+import { font, radius, space } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 const OVERLAY_FRAME_SKIP = 2;
@@ -281,12 +282,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: space(32),
   },
   permissionText: {
     fontFamily: fonts.regular,
     color: colors.textPrimary,
-    fontSize: 16,
+    fontSize: font(16),
     textAlign: 'center',
   },
   hudRow: {
@@ -301,9 +302,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 16,
-    padding: 6,
-    gap: 8,
+    borderRadius: radius(16),
+    padding: space(6),
+    gap: space(8),
     maxWidth: 150,
   },
   badgeRight: {
@@ -318,13 +319,13 @@ const styles = StyleSheet.create({
   },
   badgeReps: {
     fontFamily: fonts.extraBold,
-    fontSize: 20,
+    fontSize: font(20),
     color: '#FFFFFF',
     fontVariant: ['tabular-nums'],
   },
   badgeName: {
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: font(11),
     color: 'rgba(255,255,255,0.8)',
   },
   centerOverlay: {
@@ -338,27 +339,27 @@ const styles = StyleSheet.create({
   },
   centerText: {
     fontFamily: fonts.bold,
-    fontSize: 18,
+    fontSize: font(18),
     color: '#FFFFFF',
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    borderRadius: radius(14),
+    paddingHorizontal: space(18),
+    paddingVertical: space(10),
   },
   countdownText: {
     fontFamily: fonts.extraBold,
-    fontSize: 96,
+    fontSize: font(96),
     color: '#FFFFFF',
   },
   timerText: {
     position: 'absolute',
     top: 90,
     fontFamily: fonts.extraBold,
-    fontSize: 32,
+    fontSize: font(32),
     color: '#FFFFFF',
     backgroundColor: 'rgba(0,0,0,0.4)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    borderRadius: radius(14),
+    paddingHorizontal: space(16),
+    paddingVertical: space(6),
   },
 });
