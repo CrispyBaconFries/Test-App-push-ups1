@@ -643,6 +643,78 @@ describe('PushUpAnalyzer', () => {
     expect(trace!.sy[20]! - trace!.sy[0]!).toBe(20);
   });
 
+  it('verlangt die Position neu, wenn sie mitten in der Sitzung verlassen wird', () => {
+    // Bisher wurde die Startposition genau einmal geprüft. Wer sie einnahm und sich dann
+    // hinkniete, konnte den Rest der Sitzung in beliebiger Haltung verbringen.
+    const analyzer = new PushUpAnalyzer();
+    let ms = armAnalyzer(analyzer, 0);
+    expect(analyzer.isArmed()).toBe(true);
+
+    // Zwei Sekunden kniend mit vorgestreckten Armen - die Haltung, die kein Stütz ist.
+    for (let i = 0; i < 60; i++, ms += FRAME_MS) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 170, flareDeg: 174 }), ms);
+    }
+
+    expect(analyzer.isArmed()).toBe(false);
+    const out = analyzer.processFrame(buildFrame({ elbowAngleDeg: 170, flareDeg: 174 }), ms);
+    // Und die Anzeige sagt, dass es ein *erneutes* Einnehmen ist - nicht das erste.
+    expect(out.live.startPosition?.reentry).toBe(true);
+  });
+
+  it('lässt einen normalen Satz durchlaufen, ohne die Position neu zu verlangen', () => {
+    // Die Gegenprobe, und die teure Fehlerrichtung: Ein Fehlalarm kostet mitten im Satz
+    // zwei Sekunden Nachkalibrieren. Der Ellbogen geht in jeder Wiederholung auf rund
+    // 100° herunter - genau deshalb wird er hier nicht geprüft.
+    const analyzer = new PushUpAnalyzer();
+    let ms = armAnalyzer(analyzer, 0);
+    let reps = 0;
+    for (let round = 0; round < 5; round++) {
+      repFrames(95).forEach((pose) => {
+        const out = analyzer.processFrame(pose, ms);
+        ms += FRAME_MS;
+        if (out.completedRep) reps += 1;
+      });
+    }
+
+    expect(analyzer.isArmed()).toBe(true);
+    expect(reps).toBe(5);
+  });
+
+  it('lässt einen kurzen Aussetzer die Position nicht verwerfen', () => {
+    // Eine Sekunde ohne Pose ist ein Tracking-Schluckauf, kein Aufstehen. Nachkalibrieren
+    // wäre hier die teurere Antwort.
+    const analyzer = new PushUpAnalyzer();
+    let ms = armAnalyzer(analyzer, 0);
+    for (let i = 0; i < 30; i++, ms += FRAME_MS) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 170, visibility: 0.1 }), ms);
+    }
+
+    expect(analyzer.isArmed()).toBe(true);
+  });
+
+  it('behält beim erneuten Einnehmen die Schwellwerte der ersten Messung', () => {
+    // `personalThresholds` lockert nur. Ein zweites Kalibrieren wäre sonst ein Weg, sich
+    // durch absichtlich schlechte Haltung mildere Schwellwerte zu holen - und die Position
+    // zu verlieren wäre plötzlich ein Vorteil.
+    const analyzer = new PushUpAnalyzer();
+    let ms = armAnalyzer(analyzer, 0);
+    const first = analyzer.getThresholds();
+
+    for (let i = 0; i < 60; i++, ms += FRAME_MS) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 170, flareDeg: 174 }), ms);
+    }
+    // Erneut einnehmen, diesmal mit deutlich schlechterer Haltung (tiefe Hüfte).
+    for (let i = 0; i < ARMING_FRAMES; i++, ms += FRAME_MS) {
+      analyzer.processFrame(
+        buildFrame({ elbowAngleDeg: 172, flareDeg: PLANK_FLARE_DEG, hipOffsetY: 0.35 }),
+        ms
+      );
+    }
+
+    expect(analyzer.isArmed()).toBe(true);
+    expect(analyzer.getThresholds()).toEqual(first);
+  });
+
   it('gives the benefit of the doubt when the hip was never measurable', () => {
     // Füße und Hüfte außerhalb des Bildes: Die Stütz-Prüfung darf dann nicht greifen,
     // sonst verschwinden Wiederholungen wegen einer Kamera-Position statt wegen der Form.
@@ -1070,6 +1142,10 @@ describe('PushUpAnalyzer: nur was wirklich im Bild ist', () => {
     }
 
     expect(discarded).not.toBeNull();
+    // Seit dem 11.09.2026 greift hier die laufende Positionsprüfung: Wer aus dem Bild
+    // geht, hat die Stützposition verlassen, und das fällt nach 1,5 s auf - lange bevor
+    // das 12-Sekunden-Zeitlimit der Wiederholung erreicht wäre.
+    expect(discarded!.reason).toBe('NOT_A_PLANK');
     expect(discarded!.outOfFrameFrames).toBeGreaterThan(0);
     expect(discarded!.outOfFrameFrames).toBeLessThanOrEqual(discarded!.untrackedFrames);
   });

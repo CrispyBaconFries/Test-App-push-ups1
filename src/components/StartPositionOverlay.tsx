@@ -15,12 +15,37 @@ import { fonts } from '../theme/typography';
  * Frage, die sonst offen bliebe: Warum passiert nichts?
  */
 
+/**
+ * Überschrift beim **ersten** Einnehmen der Position, vor dem Training.
+ *
+ * `NO_POSE` heißt hier ausdrücklich nicht mehr "Ich sehe dich nicht": Das beschreibt das
+ * Problem aus Sicht der App, nicht die Handlung, die es löst. Wer zwei Meter entfernt auf
+ * dem Boden liegt, braucht keine Zustandsmeldung, sondern eine Anweisung.
+ */
 const TITLES: Record<StartPositionStatus, string> = {
-  NO_POSE: 'Ich sehe dich nicht',
+  NO_POSE: 'Position einnehmen',
   ARMS_BENT: 'Geh in die Liegestütz-Position',
   NOT_A_PLANK: 'Geh in die Liegestütz-Position',
   STANDING: 'Geh in die Liegestütz-Position',
   ARMS_NOT_SUPPORTING: 'Geh in die Liegestütz-Position',
+  MOVING: 'Ruhig halten',
+  HOLDING: 'Ruhig halten',
+};
+
+/**
+ * Überschrift, wenn die Position **mitten in der Sitzung** verloren ging.
+ *
+ * Bewusst andere Worte als oben: "Geh in die Liegestütz-Position" ist beim ersten Mal eine
+ * Anleitung, nach dem zwanzigsten Liegestütz aber die falsche Ansage - dort weiß die
+ * Person längst, wie die Position geht. Was sie erfahren muss, ist, *dass* sie sie
+ * verlassen hat und deshalb gerade nicht mehr gezählt wird.
+ */
+const REENTRY_TITLES: Record<StartPositionStatus, string> = {
+  NO_POSE: 'Nicht in Position',
+  ARMS_BENT: 'Nicht in Position',
+  NOT_A_PLANK: 'Nicht in Position',
+  STANDING: 'Nicht in Position',
+  ARMS_NOT_SUPPORTING: 'Nicht in Position',
   MOVING: 'Ruhig halten',
   HOLDING: 'Ruhig halten',
 };
@@ -34,6 +59,18 @@ const HINTS: Record<StartPositionStatus, string> = {
   MOVING: 'Fast – halt die Position kurz, wo sie ist.',
   HOLDING: 'Position wird vermessen …',
 };
+
+/**
+ * Der Hinweis beim erneuten Einnehmen: erst die Aufforderung, dann der Grund.
+ *
+ * Die Aufforderung steht vorn, weil sie in jedem Fall gilt - der Grund dahinter erklärt
+ * nur, woran es gerade konkret hängt. Bei `MOVING`/`HOLDING` entfällt sie: Da ist die
+ * Position schon wieder eingenommen und es geht nur noch ums Stillhalten.
+ */
+function reentryHint(status: StartPositionStatus): string {
+  if (status === 'MOVING' || status === 'HOLDING') return HINTS[status];
+  return `Position wieder einnehmen – ${HINTS[status][0].toLowerCase()}${HINTS[status].slice(1)}`;
+}
 
 export interface StartPositionOverlayProps {
   progress: StartPositionProgress;
@@ -72,8 +109,12 @@ export function StartPositionOverlay({ progress, prepareSeconds = null }: StartP
             </Text>
           </View>
         )}
-        <Text style={styles.title}>{TITLES[progress.status]}</Text>
-        <Text style={styles.hint}>{HINTS[progress.status]}</Text>
+        <Text style={styles.title}>
+          {progress.reentry ? REENTRY_TITLES[progress.status] : TITLES[progress.status]}
+        </Text>
+        <Text style={styles.hint}>
+          {progress.reentry ? reentryHint(progress.status) : HINTS[progress.status]}
+        </Text>
 
         <View style={styles.track}>
           <Animated.View
@@ -87,7 +128,8 @@ export function StartPositionOverlay({ progress, prepareSeconds = null }: StartP
           />
         </View>
         <Text style={styles.seconds}>
-          {(progress.requiredMs / 1000).toFixed(0)} Sekunden ruhig halten – dann geht es los
+          {(progress.requiredMs / 1000).toFixed(0)} Sekunden ruhig halten – dann geht es
+          {progress.reentry ? ' weiter' : ' los'}
         </Text>
       </View>
     </View>

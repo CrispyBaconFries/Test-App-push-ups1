@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 function progress(overrides: Partial<StartPositionProgress> = {}): StartPositionProgress {
-  return { status: 'MOVING', heldMs: 800, requiredMs: 2000, ...overrides };
+  return { status: 'MOVING', heldMs: 800, requiredMs: 2000, reentry: false, ...overrides };
 }
 
 /** Alle sichtbaren Textzeilen des gerenderten Baums, jede als eine Zeichenkette. */
@@ -73,6 +73,36 @@ describe('StartPositionOverlay', () => {
     const texts = textsOf(render(<StartPositionOverlay progress={progress()} prepareSeconds={0} />));
 
     expect(texts).toContain('Match startet, sobald ihr beide liegt');
+  });
+
+  it('sagt beim ersten Mal, was zu tun ist - nicht, was die App nicht sieht', () => {
+    // "Ich sehe dich nicht" beschreibt das Problem aus Sicht der App. Wer zwei Meter
+    // entfernt auf dem Boden liegt, braucht eine Anweisung, keine Zustandsmeldung.
+    const texts = textsOf(render(<StartPositionOverlay progress={progress({ status: 'NO_POSE' })} />));
+
+    expect(texts).toContain('Position einnehmen');
+    expect(texts).not.toContain('Ich sehe dich nicht');
+  });
+
+  it('sagt mitten im Satz, DASS die Position verlassen wurde', () => {
+    // Nach dem zwanzigsten Liegestütz ist "Geh in die Liegestütz-Position" die falsche
+    // Ansage - da weiß die Person längst, wie die Position geht.
+    const texts = textsOf(
+      render(<StartPositionOverlay progress={progress({ status: 'STANDING', reentry: true })} />)
+    );
+
+    expect(texts).toContain('Nicht in Position');
+    expect(texts.some((t) => t.startsWith('Position wieder einnehmen – '))).toBe(true);
+  });
+
+  it('fordert beim Stillhalten nicht noch einmal die Position ein', () => {
+    // Bei MOVING/HOLDING ist sie schon wieder eingenommen, es geht nur ums Ruhighalten.
+    const texts = textsOf(
+      render(<StartPositionOverlay progress={progress({ status: 'HOLDING', reentry: true })} />)
+    );
+
+    expect(texts).toContain('Ruhig halten');
+    expect(texts.some((t) => t.includes('Position wieder einnehmen'))).toBe(false);
   });
 
   it('unterscheidet die Gründe, warum noch nicht gezählt wird', () => {

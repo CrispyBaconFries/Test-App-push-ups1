@@ -325,6 +325,16 @@ export interface StartPositionProgress {
   heldMs: number;
   /** Wie lange gehalten werden muss (`criteria.holdMs`). */
   requiredMs: number;
+  /**
+   * `true`, wenn die Position schon einmal stand und mitten in der Sitzung wieder verloren
+   * ging - im Unterschied zum ersten Einnehmen vor dem Training.
+   *
+   * Nur für die Anzeige, die Prüfung selbst ist dieselbe. Der Unterschied ist trotzdem
+   * wichtig: "Geh in die Liegestütz-Position" ist beim ersten Mal eine Anleitung, mitten
+   * im Satz aber die falsche Ansage - dort weiß die Person längst, wie die Position geht,
+   * und muss nur erfahren, dass sie sie verlassen hat.
+   */
+  reentry: boolean;
 }
 
 interface Sample {
@@ -408,7 +418,13 @@ export class StartPositionGate {
   private restarts = 0;
   private dropouts = 0;
 
-  constructor(criteria: Partial<StartPositionCriteria> = {}) {
+  /**
+   * `reentry` sagt nur der Anzeige, ob dies das erste Einnehmen ist oder ein erneutes
+   * mitten in der Sitzung. Auf die Prüfung hat es bewusst keinen Einfluss: Wer die
+   * Position verloren hat, muss sie genauso beweisen wie beim ersten Mal - sonst wäre das
+   * Verlieren der Position ein Weg, die Prüfung abzukürzen.
+   */
+  constructor(criteria: Partial<StartPositionCriteria> = {}, private readonly reentry = false) {
     this.criteria = { ...DEFAULT_START_POSITION_CRITERIA, ...criteria };
   }
 
@@ -569,7 +585,12 @@ export class StartPositionGate {
     if (timedOut) return { ready: true, baseline: null };
     return {
       ready: false,
-      progress: { status, heldMs: this.heldMs(), requiredMs: this.criteria.holdMs },
+      progress: {
+        status,
+        heldMs: this.heldMs(),
+        requiredMs: this.criteria.holdMs,
+        reentry: this.reentry,
+      },
     };
   }
 

@@ -370,6 +370,32 @@ export interface PushUpThresholds {
    */
   notAPushUpFlareDeg: number;
   /**
+   * Wie lange die Stützhaltung durchgehend verlassen sein darf, bevor die Startposition
+   * neu eingenommen werden muss.
+   *
+   * # Wogegen das ist (11.09.2026)
+   *
+   * Die Startposition wurde bisher **einmal** geprüft und danach nie wieder. Wer sie
+   * einnahm und anschließend aufstand, sich hinkniete oder das Handy umstellte, konnte
+   * den Rest der Sitzung in beliebiger Haltung verbringen - die Prüfungen je Wiederholung
+   * greifen zwar weiter, aber sie greifen eben erst *nach* jeder Bewegung und sagen nichts
+   * darüber, ob die Person überhaupt noch trainiert.
+   *
+   * Jetzt läuft dieselbe Prüfung weiter: Bleibt die Haltung länger als diese Spanne
+   * außerhalb dessen, was ein Stütz ist, wird die Zählung angehalten und die Position muss
+   * erneut zwei Sekunden gehalten werden - wie beim ersten Mal.
+   *
+   * # Warum 1,5 Sekunden
+   *
+   * Die Kosten stehen hier ungewöhnlich: Ein Fehlalarm kostet mitten im Satz zwei Sekunden
+   * Nachkalibrieren, ein verpasster Alarm lässt beliebiges Schummeln zu. 1,5 Sekunden sind
+   * lang genug, dass kein Tracking-Aussetzer und kein tiefer Umkehrpunkt sie erreicht (eine
+   * ganze Wiederholung dauert im Median 1,2 s, die Haltung ist dabei durchgehend gültig),
+   * und kurz genug, dass niemand in dieser Zeit eine Wiederholung in falscher Haltung
+   * unterbringt.
+   */
+  postureLostMs: number;
+  /**
    * Um wie viele Grad der Ellbogenwinkel vom höchsten Punkt der Aufwärtsbewegung wieder
    * abfallen muss, damit die Wiederholung als beendet gilt - auch wenn `elbowUpDeg` nie
    * erreicht wurde.
@@ -522,6 +548,7 @@ export const DEFAULT_THRESHOLDS: PushUpThresholds = {
   notAPlankDepthDeg: 95,
   minRepRangeDeg: 45,
   notAPushUpFlareDeg: 120,
+  postureLostMs: 1500,
   repReversalToleranceDeg: 15,
   goodDepthElbowDeg: 105,
   minHipStraightnessDeg: 145,
@@ -738,6 +765,16 @@ export class PushUpAnalyzer {
    */
   private pendingTrace: RepTrace | null = null;
   /**
+   * Seit wann die Stützhaltung durchgehend verlassen ist, `null` solange sie stimmt.
+   * Grundlage für das erneute Einnehmen (siehe `PushUpThresholds.postureLostMs`).
+   */
+  private postureLostSinceMs: number | null = null;
+  /**
+   * Ob die Startposition in dieser Sitzung schon einmal stand. Entscheidet nur, welche
+   * Texte die Anzeige nimmt - die Prüfung selbst ist beim zweiten Mal dieselbe.
+   */
+  private armedBefore = false;
+  /**
    * Wie oft in dieser Sitzung eine Bewegung verworfen wurde, nach Grund. Rein
    * diagnostisch: Steigt hier etwas auffällig, stimmt etwas mit der Aufnahmesituation
    * nicht (Handy zu nah, Person halb aus dem Bild, Bildrate eingebrochen) - und nicht
@@ -783,6 +820,8 @@ export class PushUpAnalyzer {
     this.thresholds = this.baseThresholds;
     this.baseline = null;
     this.pendingTrace = null;
+    this.postureLostSinceMs = null;
+    this.armedBefore = false;
     this.gate = new StartPositionGate(this.gateCriteria);
   }
 
@@ -880,6 +919,9 @@ export class PushUpAnalyzer {
       // Auch ein Frame ohne verwertbare Pose gehört in das Startpositions-Fenster: Er
       // verwirft die bisher gesammelte Haltezeit (wer zwischendurch aus dem Bild
       // verschwindet, hat nicht durchgehend gehalten) und lässt die Notbremse weiterlaufen.
+      // Auch ohne Pose weiterprüfen: Wer aus dem Bild geht, hat die Position verlassen -
+      // und genau das war bisher der bequemste Weg, sich der Prüfung zu entziehen.
+      if (!this.gate) discardedRep = this.trackPosture(timestampMs, false, null, null) ?? discardedRep;
       const startPosition = this.gate ? this.pushToGate(null, timestampMs) : null;
       return {
         live: {
@@ -943,6 +985,30 @@ export class PushUpAnalyzer {
           hipStraightnessDeg: hipStraightnessDeg ?? 0,
           cue: null,
           startPosition,
+          framing,
+        },
+        completedRep: null,
+        discardedRep,
+        trace: this.takeTrace(),
+      };
+    }
+
+    // Weiterprüfen, ob die Stützhaltung überhaupt noch steht. Muss VOR die
+    // Zustandsmaschine, sonst liefe noch ein Frame in eine Wiederholung hinein, die in
+    // einer bereits verlassenen Haltung begonnen hat.
+    discardedRep = this.trackPosture(timestampMs, true, hipStraightnessDeg, elbowFlareDeg) ?? discardedRep;
+    if (this.gate) {
+      return {
+        live: {
+          phase: this.phase,
+          trackingOk: true,
+          elbowAngleDeg,
+          hipStraightnessDeg: hipStraightnessDeg ?? 0,
+          cue: null,
+          startPosition: this.pushToGate(
+            { elbowAngleDeg, hipStraightnessDeg, neckAngleDeg, elbowFlareDeg, torsoHorizontalRatio },
+            timestampMs
+          ),
           framing,
         },
         completedRep: null,
@@ -1095,9 +1161,23 @@ export class PushUpAnalyzer {
     });
     if (!outcome.ready) return outcome.progress;
     this.gate = null;
-    this.baseline = outcome.baseline;
-    if (outcome.baseline) {
-      this.thresholds = { ...this.baseThresholds, ...personalThresholds(outcome.baseline, this.baseThresholds) };
+    this.armedBefore = true;
+    // Nach dem erneuten Einnehmen darf die Uhr nicht mit einem alten Stand weiterlaufen.
+    this.postureLostSinceMs = null;
+    // Die Grundhaltung wird nur beim **ersten** Mal übernommen. Wer die Position mitten in
+    // der Sitzung verliert und neu einnimmt, behält die Schwellwerte der ersten Messung.
+    //
+    // Zwei Gründe. Erstens die Bewertung: Eine Sitzung, in der sich die Maßstäbe zwischen
+    // Wiederholung 12 und 13 verschieben, lässt sich hinterher nicht mehr deuten - die
+    // Formnoten davor und danach wären nicht vergleichbar. Zweitens, und wichtiger:
+    // `personalThresholds` lockert nur (nie umgekehrt). Ein zweites Kalibrieren wäre damit
+    // ein Weg, sich durch absichtlich schlechte Haltung mildere Schwellwerte zu holen -
+    // und die Position zu verlieren wäre plötzlich ein Vorteil.
+    if (this.baseline === null) {
+      this.baseline = outcome.baseline;
+      if (outcome.baseline) {
+        this.thresholds = { ...this.baseThresholds, ...personalThresholds(outcome.baseline, this.baseThresholds) };
+      }
     }
     return null;
   }
@@ -1116,6 +1196,56 @@ export class PushUpAnalyzer {
    * rund ein Drittel so lang wie `[{"t":0,...},{"t":33,...}]`, ohne dass ein Mensch es
    * anders lesen müsste - ausgewertet wird es ohnehin am PC.
    */
+  /**
+   * Prüft nach dem Scharfschalten weiter, ob die Stützhaltung überhaupt noch eingenommen
+   * ist - und schaltet zurück, wenn sie zu lange verlassen wurde.
+   *
+   * Bewusst **nicht** der Ellbogenwinkel: Der geht in jeder Wiederholung auf rund 100°
+   * herunter, das ist ja der Sinn der Übung. Geprüft wird nur, was während eines echten
+   * Liegestützes durchgehend gilt - Körper gestreckt und Oberarm quer zum Rumpf. Beides
+   * hält in den aufgezeichneten Sätzen jede einzelne Wiederholung ein (Hüfte 121-175°,
+   * Flare 54-88°), und beides verlässt jede der nachgestellten Trickhaltungen.
+   *
+   * `null` als Messwert heißt "diesen Frame nicht messbar" und zählt bewusst **nicht**
+   * gegen die Haltung: Ein aus dem Bild ragender Unterkörper ist eine Frage der
+   * Kameraposition, keine Aussage über die Haltung. Nur ein Frame ganz ohne Pose zählt
+   * dagegen (`posed: false`) - wer gar nicht mehr zu sehen ist, trainiert auch nicht.
+   */
+  private trackPosture(
+    timestampMs: number,
+    posed: boolean,
+    hipStraightnessDeg: number | null,
+    elbowFlareDeg: number | null
+  ): DiscardedRep | null {
+    const t = this.thresholds;
+    const inPosition =
+      posed &&
+      !(hipStraightnessDeg !== null && hipStraightnessDeg < t.minPlankHipStraightnessDeg) &&
+      !(elbowFlareDeg !== null && elbowFlareDeg < this.gateCriteria.minTorsoArmAngleDeg!) &&
+      !(elbowFlareDeg !== null && elbowFlareDeg > t.notAPushUpFlareDeg);
+
+    if (inPosition) {
+      this.postureLostSinceMs = null;
+      return null;
+    }
+    if (this.postureLostSinceMs === null) {
+      this.postureLostSinceMs = timestampMs;
+      return null;
+    }
+    if (timestampMs - this.postureLostSinceMs < t.postureLostMs) return null;
+
+    // Zurück zur Startposition. Die laufende Bewegung wird verworfen statt bewertet: Sie
+    // wurde in einer Haltung begonnen, die inzwischen nachweislich keine Stützposition
+    // mehr ist. Der Verwurf wird zurückgegeben und nicht stillschweigend geschluckt -
+    // sonst bliebe der Zähler stehen, ohne dass irgendwo stünde warum.
+    const discarded = this.acc ? this.discardRep('NOT_A_PLANK', timestampMs) : null;
+    this.postureLostSinceMs = null;
+    this.phase = 'up';
+    this.lockedSide = null;
+    this.gate = new StartPositionGate(this.gateCriteria, true);
+    return discarded;
+  }
+
   /** Gibt den zuletzt aufgezeichneten Verlauf heraus und vergisst ihn - genau einmal. */
   private takeTrace(): RepTrace | null {
     const trace = this.pendingTrace;

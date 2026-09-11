@@ -659,6 +659,54 @@ sind. Deshalb: höchstens **30 Bewegungen** je Aufzeichnung, jede auf **60 Frame
 ausgedünnt (gleichmäßig, nicht vorne abgeschnitten — sonst fehlt genau der Weg nach oben,
 um den es geht). Die Zusammenfassungen laufen davon unberührt weiter.
 
+### Die Position wird jetzt dauerhaft geprüft, nicht nur einmal (11.09.2026)
+
+Die Startposition wurde bisher **einmal** verlangt und danach nie wieder. Wer sie einnahm
+und anschließend aufstand, sich hinkniete oder das Handy umstellte, konnte den Rest der
+Sitzung in beliebiger Haltung verbringen. Die Prüfungen je Wiederholung greifen zwar
+weiter, aber sie greifen erst *nach* jeder Bewegung und sagen nichts darüber, ob die Person
+überhaupt noch trainiert.
+
+Jetzt läuft dieselbe Prüfung weiter: Bleibt die Haltung länger als **1,5 Sekunden**
+(`postureLostMs`) außerhalb dessen, was ein Stütz ist, wird die Zählung angehalten und die
+Position muss erneut zwei Sekunden gehalten werden — wie beim ersten Mal.
+
+**Geprüft wird ausdrücklich nicht der Ellbogenwinkel.** Der geht in jeder Wiederholung auf
+rund 100° herunter, das ist ja der Sinn der Übung. Geprüft wird nur, was während eines
+echten Liegestützes *durchgehend* gilt:
+
+| Bedingung | echte Sätze | nachgestellte Tricks |
+|---|---|---|
+| Hüfte ≥ 110° (Körper gestreckt) | 121–175° | kniend 110–114° |
+| Oberarm quer zum Rumpf (35–120°) | 54–88° | kniend 133–177° |
+| überhaupt eine Pose im Bild | ja | beim Weggehen: nein |
+
+**Warum 1,5 Sekunden.** Die Kosten stehen hier ungewöhnlich: Ein Fehlalarm kostet mitten im
+Satz zwei Sekunden Nachkalibrieren, ein verpasster Alarm lässt beliebiges Schummeln zu.
+1,5 s sind lang genug, dass kein Tracking-Aussetzer und kein tiefer Umkehrpunkt sie
+erreicht (eine ganze Wiederholung dauert im Median 1,2 s, die Haltung ist dabei durchgehend
+gültig), und kurz genug, dass niemand in dieser Zeit eine Wiederholung in falscher Haltung
+unterbringt.
+
+**Die Grundhaltung wird beim zweiten Mal nicht neu gemessen.** Wer die Position verliert und
+neu einnimmt, behält die Schwellwerte der ersten Messung. Zwei Gründe: Eine Sitzung, in der
+sich die Maßstäbe zwischen Wiederholung 12 und 13 verschieben, lässt sich hinterher nicht
+mehr deuten. Und wichtiger — `personalThresholds` lockert nur, nie umgekehrt. Ein zweites
+Kalibrieren wäre sonst ein Weg, sich durch absichtlich schlechte Haltung mildere
+Schwellwerte zu holen, und die Position zu verlieren wäre plötzlich ein *Vorteil*.
+
+#### Die Texte sagen jetzt, was zu tun ist
+
+- „Ich sehe dich nicht" → **„Position einnehmen"**. Der alte Satz beschrieb das Problem aus
+  Sicht der App. Wer zwei Meter entfernt auf dem Boden liegt, braucht eine Anweisung, keine
+  Zustandsmeldung.
+- Mitten im Satz heißt die Überschrift **„Nicht in Position"** und der Hinweis beginnt mit
+  **„Position wieder einnehmen – …"**, gefolgt vom konkreten Grund. „Geh in die
+  Liegestütz-Position" ist beim ersten Mal eine Anleitung, nach dem zwanzigsten Liegestütz
+  aber die falsche Ansage: Da weiß die Person längst, wie die Position geht, und muss nur
+  erfahren, *dass* sie sie verlassen hat.
+- Steht die Position wieder und es geht nur noch ums Stillhalten, entfällt die Aufforderung.
+
 #### Ein Verwurf ist nicht mehr stumm
 
 Bisher blieb der Zähler bei einem Verwurf einfach stehen. Für jemanden, der eine
@@ -1831,8 +1879,10 @@ ohne Werkzeug funktionierten):
    Rumpf stehen, nicht in seiner Verlängerung (`notAPushUpFlareDeg`, 120°).
 4. **Zucken statt Wiederholungen** zählt nicht mehr — `minRepDurationMs` (600 ms) und die
    Umkehrpunkt-Erkennung.
+5. **Einmal kalibrieren und dann machen, was man will** geht nicht mehr — die Position wird
+   dauerhaft geprüft (`postureLostMs`, 1,5 s), nicht nur beim Start.
 
-Alle vier verlangen jetzt eine echte Armbewegung im Stütz. Wer trotzdem tricksen will, muss
+Alle fünf verlangen jetzt eine echte Armbewegung im Stütz. Wer trotzdem tricksen will, muss
 dafür sehr flache, aber echte Liegestütze machen — dann ist es Technik-Diskussion, nicht
 Manipulation.
 
