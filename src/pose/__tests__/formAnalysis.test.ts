@@ -715,6 +715,33 @@ describe('PushUpAnalyzer', () => {
     expect(analyzer.getThresholds()).toEqual(first);
   });
 
+  it('erzeugt nach dem erneuten Einnehmen keine Wiederholung aus der Abwärtsbewegung', () => {
+    // Das kurze Halten beim erneuten Einnehmen (800 ms) kann eine sehr langsame
+    // Abwärtsbewegung nicht mehr aussperren - über diese Zeit liegt ihr Wandern unter dem
+    // Messrauschen (siehe `reentryHoldMs`). Es muss sie auch nicht: Was die Zählung hier
+    // schützt, sind die Prüfungen je Wiederholung. Genau das wird hier nachgewiesen.
+    const analyzer = new PushUpAnalyzer();
+    let ms = armAnalyzer(analyzer, 0);
+
+    // Position verlieren (kniend, Arme vorgestreckt) ...
+    for (let i = 0; i < 60; i++, ms += FRAME_MS) {
+      analyzer.processFrame(buildFrame({ elbowAngleDeg: 170, flareDeg: 174 }), ms);
+    }
+    expect(analyzer.isArmed()).toBe(false);
+
+    // ... und sich dann sehr langsam absenken, statt sauber anzukommen.
+    const reps: RepResult[] = [];
+    for (let i = 0; i < 200; i++, ms += FRAME_MS) {
+      const out = analyzer.processFrame(
+        buildFrame({ elbowAngleDeg: Math.max(95, 178 - i * 0.4), flareDeg: PLANK_FLARE_DEG }),
+        ms
+      );
+      if (out.completedRep) reps.push(out.completedRep);
+    }
+
+    expect(reps).toEqual([]);
+  });
+
   it('gives the benefit of the doubt when the hip was never measurable', () => {
     // Füße und Hüfte außerhalb des Bildes: Die Stütz-Prüfung darf dann nicht greifen,
     // sonst verschwinden Wiederholungen wegen einer Kamera-Position statt wegen der Form.

@@ -193,8 +193,36 @@ export interface StartPositionCriteria {
    * ein Glitch, fünfzehn sind eine Bewegung.
    */
   glitchGraceMs: number;
-  /** Wie lange die Position ruhig gehalten werden muss. */
+  /** Wie lange die Position beim **ersten** Einnehmen ruhig gehalten werden muss. */
   holdMs: number;
+  /**
+   * Wie lange beim **erneuten** Einnehmen mitten in der Sitzung gehalten werden muss.
+   *
+   * Deutlich kürzer als `holdMs`, und das aus einem sachlichen Grund: Die zwei Sekunden
+   * beim ersten Mal sind kein Ritual, sondern die Messzeit für die Grundhaltung
+   * (`PostureBaseline`) - je mehr Frames, desto belastbarer der Median. Beim zweiten Mal
+   * wird gar nicht mehr gemessen (die Grundhaltung der ersten Messung bleibt gültig, siehe
+   * `PushUpAnalyzer.pushToGate`), also gibt es auch nichts, wofür man Zeit bräuchte.
+   *
+   * Was eine knappe Sekunde noch leistet: Sie verlangt ein *Ankommen* statt eines
+   * Vorbeikommens. Wer sich hinlegt, verharrt nicht 800 ms mit gestreckten Armen im Stütz;
+   * wer wieder trainieren will, tut es.
+   *
+   * **Was sie nicht mehr leistet, und das ist Arithmetik, keine Nachlässigkeit:** Die
+   * Prüfung auf *Wandern* (`maxElbowDriftDeg`, 5°) greift in diesem kurzen Fenster nicht
+   * mehr. Eine sehr langsame Abwärtsbewegung von 4,5°/s erzeugt in 800 ms gerade 3,6° -
+   * das liegt unter dem Messrauschen (robuste Spannweite rund 10°), und was unter dem
+   * Rauschen liegt, trennt keine Statistik. Über zwei Sekunden sind es 9°, dort greift sie.
+   *
+   * Tragfähig ist die kurze Zeit trotzdem, weil beim erneuten Einnehmen nicht das Halten
+   * die Zählung schützt, sondern die Prüfungen je Wiederholung: `minRepRangeDeg` verlangt
+   * 45° Bewegungsumfang gegen die kalibrierte Streckung, dazu kommen Hüfte und
+   * Arm-zu-Rumpf-Winkel. Eine Abwärtsbewegung, die beim Scharfschalten noch läuft, wird
+   * dadurch zwar nicht mehr verhindert - aber sie erzeugt trotzdem keine gezählte
+   * Wiederholung. Geprüft in `formAnalysis.test.ts`, "erzeugt nach dem erneuten Einnehmen
+   * keine Wiederholung aus der Abwärtsbewegung".
+   */
+  reentryHoldMs: number;
   /**
    * Wie viele Frames das Haltefenster mindestens enthalten muss.
    *
@@ -202,6 +230,9 @@ export interface StartPositionCriteria {
    * Sekunde erfüllen - dazwischen könnte alles passiert sein. Bei 30 Bildern/s sind zwei
    * Sekunden rund 60 Frames; 12 ist also selbst bei stark eingebrochener Bildrate noch
    * erreichbar und schließt trotzdem den Extremfall aus.
+   *
+   * Gilt auch für das kürzere erneute Einnehmen: 800 ms sind bei 30 Bildern/s rund 24
+   * Frames, zwölf sind also weiterhin erreichbar.
    */
   minSamples: number;
   /**
@@ -230,6 +261,7 @@ export const DEFAULT_START_POSITION_CRITERIA: StartPositionCriteria = {
   dropoutGraceMs: 400,
   glitchGraceMs: 120,
   holdMs: 2000,
+  reentryHoldMs: 800,
   minSamples: 12,
   timeoutMs: 30000,
 };
@@ -428,6 +460,11 @@ export class StartPositionGate {
     this.criteria = { ...DEFAULT_START_POSITION_CRITERIA, ...criteria };
   }
 
+  /** Die geforderte Haltezeit - beim erneuten Einnehmen die kurze (siehe `reentryHoldMs`). */
+  private get requiredHoldMs(): number {
+    return this.reentry ? this.criteria.reentryHoldMs : this.criteria.holdMs;
+  }
+
   reset(): void {
     this.samples = [];
     this.firstFrameMs = null;
@@ -483,7 +520,7 @@ export class StartPositionGate {
     }
 
     const heldMs = this.heldMs();
-    if (heldMs >= c.holdMs && this.samples.length >= c.minSamples) {
+    if (heldMs >= this.requiredHoldMs && this.samples.length >= c.minSamples) {
       const baseline = this.buildBaseline(heldMs);
       this.reset();
       return { ready: true, baseline };
@@ -588,7 +625,7 @@ export class StartPositionGate {
       progress: {
         status,
         heldMs: this.heldMs(),
-        requiredMs: this.criteria.holdMs,
+        requiredMs: this.requiredHoldMs,
         reentry: this.reentry,
       },
     };

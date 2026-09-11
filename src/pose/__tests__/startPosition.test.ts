@@ -224,6 +224,44 @@ describe('StartPositionGate', () => {
     expect(gate.getStatus()).toBe('ARMS_NOT_SUPPORTING');
   });
 
+  it('schaltet beim erneuten Einnehmen deutlich schneller scharf', () => {
+    // Mitten im Satz ist die volle Messzeit von zwei Sekunden sinnlos: Die Grundhaltung
+    // wurde beim ersten Mal gemessen und bleibt gültig, es gibt also nichts mehr zu messen.
+    const ersteMal = new StartPositionGate();
+    const erneut = new StartPositionGate({}, true);
+
+    const ersterTreffer = play(ersteMal, hold(80)).readyAfter!;
+    const zweiterTreffer = play(erneut, hold(80)).readyAfter!;
+
+    expect(zweiterTreffer * FRAME_MS).toBeGreaterThanOrEqual(800);
+    expect(zweiterTreffer).toBeLessThan(ersterTreffer / 2);
+  });
+
+  it('verlangt auch beim erneuten Einnehmen ein Ankommen, kein Vorbeikommen', () => {
+    // Wer sich hinlegt, verharrt nicht 800 ms mit gestreckten Armen im Stütz. Eine
+    // zügige Abwärtsbewegung (1°/Frame, also rund 30°/s) schaltet deshalb weiterhin nicht
+    // scharf.
+    //
+    // Bewusst NICHT die 0,15°/Frame aus dem Test oben: In 800 ms sind das 3,6°, und das
+    // liegt unter dem Messrauschen (robuste Spannweite rund 10°). Was unter dem Rauschen
+    // liegt, trennt keine Statistik - diese Grenze steht bei `reentryHoldMs`, zusammen
+    // damit, was die Zählung stattdessen schützt.
+    const gate = new StartPositionGate({}, true);
+    const runter = Array.from({ length: 40 }, (_, i) => frame({ elbowAngleDeg: 178 - i }));
+
+    expect(play(gate, runter).readyAfter).toBeNull();
+  });
+
+  it('nennt im Fortschritt die kürzere Haltezeit, damit die Anzeige nicht lügt', () => {
+    const gate = new StartPositionGate({}, true);
+    const outcome = gate.push({ ...frame(), timeMs: 0 });
+
+    expect(outcome.ready).toBe(false);
+    if (outcome.ready) throw new Error('unerreichbar');
+    expect(outcome.progress.requiredMs).toBe(800);
+    expect(outcome.progress.reentry).toBe(true);
+  });
+
   it('schaltet als Notbremse auch ohne gültige Haltung scharf, aber ohne Grundhaltung', () => {
     // Ein Bildschirm, der unter ungünstigen Bedingungen nie zu zählen anfängt, ist
     // schlimmer als eine gelegentliche Fehlzählung.

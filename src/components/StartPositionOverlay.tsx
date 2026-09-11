@@ -72,6 +72,19 @@ function reentryHint(status: StartPositionStatus): string {
   return `Position wieder einnehmen – ${HINTS[status][0].toLowerCase()}${HINTS[status].slice(1)}`;
 }
 
+/**
+ * Die Zeile unter dem Balken: wie lange noch gehalten werden muss.
+ *
+ * Unter einer Sekunde wird keine Zahl genannt. "1 Sekunden ruhig halten" wäre falsch
+ * gerundet und obendrein die unwichtigere Information - beim erneuten Einnehmen zählt, dass
+ * es *gleich* weitergeht, nicht auf wie viele Zehntel genau.
+ */
+function holdHint(progress: StartPositionProgress): string {
+  const weiter = progress.reentry ? 'weiter' : 'los';
+  if (progress.requiredMs < 1000) return `Kurz ruhig halten – dann geht es ${weiter}`;
+  return `${(progress.requiredMs / 1000).toFixed(0)} Sekunden ruhig halten – dann geht es ${weiter}`;
+}
+
 export interface StartPositionOverlayProps {
   progress: StartPositionProgress;
   /**
@@ -127,10 +140,7 @@ export function StartPositionOverlay({ progress, prepareSeconds = null }: StartP
             ]}
           />
         </View>
-        <Text style={styles.seconds}>
-          {(progress.requiredMs / 1000).toFixed(0)} Sekunden ruhig halten – dann geht es
-          {progress.reentry ? ' weiter' : ' los'}
-        </Text>
+        <Text style={styles.seconds}>{holdHint(progress)}</Text>
       </View>
     </View>
   );

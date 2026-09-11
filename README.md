@@ -688,6 +688,26 @@ erreicht (eine ganze Wiederholung dauert im Median 1,2 s, die Haltung ist dabei 
 gültig), und kurz genug, dass niemand in dieser Zeit eine Wiederholung in falscher Haltung
 unterbringt.
 
+**Das erneute Einnehmen dauert 0,8 Sekunden, nicht zwei** (`reentryHoldMs`). Die zwei
+Sekunden beim ersten Mal sind kein Ritual, sondern die Messzeit für die Grundhaltung — je
+mehr Frames, desto belastbarer der Median. Beim zweiten Mal wird gar nicht mehr gemessen
+(siehe unten), es gibt also nichts, wofür man Zeit bräuchte. Was die knappe Sekunde noch
+leistet: Sie verlangt ein *Ankommen* statt eines Vorbeikommens — wer sich hinlegt, verharrt
+nicht 800 ms mit gestreckten Armen im Stütz.
+
+**Was sie nicht mehr leistet, und das ist Arithmetik, keine Nachlässigkeit:** Die Prüfung
+auf *Wandern* (`maxElbowDriftDeg`, 5°) greift in diesem kurzen Fenster nicht. Eine sehr
+langsame Abwärtsbewegung von 4,5°/s erzeugt in 800 ms gerade 3,6° — das liegt unter dem
+Messrauschen (robuste Spannweite rund 10°), und was unter dem Rauschen liegt, trennt keine
+Statistik. Über zwei Sekunden sind es 9°, dort greift sie.
+
+Tragfähig ist die kurze Zeit trotzdem, weil beim erneuten Einnehmen nicht das Halten die
+Zählung schützt, sondern die Prüfungen je Wiederholung: `minRepRangeDeg` verlangt 45°
+Bewegungsumfang gegen die kalibrierte Streckung, dazu Hüfte und Arm-zu-Rumpf-Winkel. Eine
+Abwärtsbewegung, die beim Scharfschalten noch läuft, wird dadurch zwar nicht mehr
+verhindert — aber sie erzeugt trotzdem keine gezählte Wiederholung. Belegt im Test
+„erzeugt nach dem erneuten Einnehmen keine Wiederholung aus der Abwärtsbewegung".
+
 **Die Grundhaltung wird beim zweiten Mal nicht neu gemessen.** Wer die Position verliert und
 neu einnimmt, behält die Schwellwerte der ersten Messung. Zwei Gründe: Eine Sitzung, in der
 sich die Maßstäbe zwischen Wiederholung 12 und 13 verschieben, lässt sich hinterher nicht
