@@ -107,10 +107,17 @@ Geteilte Antwort — es kommt darauf an, welche der drei Sorten:
 Stable Diffusion) macht in Minuten Avatar-Motive und Boss-Illustrationen, für die man sonst
 einen Illustrator bezahlt. Das kann ich nicht — ich schreibe Code, ich male keine Bilder.
 
-**Nein, für Punkt 3 (Effekte).** Ein rotierender Leucht-Rahmen ist kein Bild, sondern
-Code, der sich in `RankFrame.tsx`, das Rang-System und die Farbwerte einfügen muss. Eine
-KI, die das Projekt nicht kennt, fängt bei null an — und du hättest anschließend Code, den
-niemand getestet hat, in genau dem Pfad, der bei jedem Kamerabild mitläuft.
+**Nein, für Punkt 3 (Effekte) — mit einer Einschränkung.** Ein rotierender Leucht-Rahmen
+ist kein Bild, sondern Code, der sich in `RankFrame.tsx`, das Rang-System und die Farbwerte
+einfügen muss. Eine **Bild**-KI kann hier gar nichts liefern.
+
+Eine **Code**-KI kann es sehr wohl — aber nur, wenn sie das Projekt kennt. Genau das war
+der Einwand: Sie fängt sonst bei null an, und du hättest Code, den niemand geprüft hat, in
+genau dem Pfad, der bei jedem Kamerabild mitläuft. Dieser Einwand ist inzwischen
+ausgeräumt: `docs/prompt-rahmen-effekte.md` enthält einen Prompt mit den Schnittstellen,
+den Farbwerten, den Beispielen und den harten Regeln (kein neues Paket, nur
+`useNativeDriver`, Teilchenbudget). Damit liefert eine fremde KI etwas, das sich einbauen
+lässt — geprüft und getestet wird es hier.
 
 **Nein, für Punkt 1 (Bedien-Icons).** Bild-KIs sind bei kleinen Icons schwach: Bei 24 px
 verschwimmt alles, die Strichstärken passen nicht zueinander, und acht Icons „im selben

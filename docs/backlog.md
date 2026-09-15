@@ -36,6 +36,7 @@ Erkennung oder der Optik geraten statt begründet.
 4. **Schwellwerte gegen die neue Aufzeichnung prüfen** — Punkt 1.1 unten, plus die
    Gegenprobe zu den 20°/25° aus Punkt 2. Braucht Aufzeichnungen mit `kind: 'baseline'`.
 5. **Den gewählten Effekt einbauen**, wo er hingehört (Rangliste, Profil, Duell) — Punkt 5.
+   Vorlage für einen größeren Satz Effekte per fremder KI: `docs/prompt-rahmen-effekte.md`.
 6. **Zu zweit testen:** Freundschaftsspiel, Ranked, Länderspiel-Wertung. Braucht Firebase
    und eine zweite Person.
 
