@@ -243,7 +243,7 @@ const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
   ember: {
     id: 'ember',
     label: 'Glut',
-    description: 'Eine ruhige warme Glut mit einzelnen aufsteigenden Funken.',
+    description: 'Warmer Glutschein mit heißem Saum und einzelnen aufsteigenden Funken.',
     movingParts: 7,
   },
   smoke: {
@@ -274,7 +274,7 @@ const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
     id: 'electro',
     label: 'Strom',
     description: 'Kurze Entladungen knistern rund um den Rand.',
-    movingParts: 10,
+    movingParts: 11,
   },
   wave_points: {
     id: 'wave_points',
@@ -285,8 +285,8 @@ const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
   crown: {
     id: 'crown',
     label: 'Krone',
-    description: 'Eine leuchtende Krone steht über dem Avatar.',
-    movingParts: 5,
+    description: 'Gezackte Krone mit Reif und Stein, die über dem Avatar schimmert.',
+    movingParts: 1,
   },
 };
 

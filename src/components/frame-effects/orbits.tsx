@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Animated, View } from 'react-native';
 import { cycleDurationMs, effectOpacity, particleCount } from '../../ranking/frameEffects';
-import { Layer, Orbit, Spoke, breathe, effectStyles, phases, useLoop, type EffectProps } from './kit';
+import { Layer, Orbit, Spoke, breathe, edgeRadius, effectStyles, phases, useLoop, type EffectProps } from './kit';
 
 /**
  * Effekte, bei denen sich etwas **um den Avatar herum bewegt**.
@@ -20,8 +20,8 @@ import { Layer, Orbit, Spoke, breathe, effectStyles, phases, useLoop, type Effec
 /** Ein heller Kopf mit Schweif, der um den Rahmen jagt. */
 export function CometEffect({ settings, colors }: EffectProps) {
   const durationMs = cycleDurationMs(settings.speed, 5200, 1500);
-  const radius = settings.size / 2 + 10;
   const headSize = 5 + Math.round(settings.size / 20);
+  const radius = edgeRadius(settings.size, headSize / 2);
   const opacity = effectOpacity(settings.intensity);
   const parts = 5;
 
@@ -84,14 +84,14 @@ export function DoubleRotorEffect({ settings, colors }: EffectProps) {
   return (
     <Layer>
       {[0, 180].map((offsetDeg) => (
-        <Orbit key={`aussen-${offsetDeg}`} radius={settings.size / 2 + 12} loop={outer} offsetDeg={offsetDeg}>
+        <Orbit key={`aussen-${offsetDeg}`} radius={edgeRadius(settings.size, thick * 2)} loop={outer} offsetDeg={offsetDeg}>
           <View
             style={{ width: blade, height: thick, borderRadius: thick / 2, backgroundColor: colors[0], opacity }}
           />
         </Orbit>
       ))}
       {[90, 270].map((offsetDeg) => (
-        <Orbit key={`innen-${offsetDeg}`} radius={settings.size / 2 + 3} loop={inner} offsetDeg={offsetDeg} reverse>
+        <Orbit key={`innen-${offsetDeg}`} radius={edgeRadius(settings.size, thick / 2)} loop={inner} offsetDeg={offsetDeg} reverse>
           <View
             style={{
               width: Math.round(blade * 0.7),
@@ -119,7 +119,7 @@ export function OrbitRingsEffect({ settings, colors }: EffectProps) {
   return (
     <Layer>
       {[0, 1, 2].map((i) => {
-        const radius = settings.size / 2 + 6 + i * gap;
+        const radius = edgeRadius(settings.size, dot / 2) + i * gap;
         return (
           <React.Fragment key={i}>
             {/* Die Bahn selbst, ganz schwach: Ohne sie sieht man drei Punkte, die
@@ -181,8 +181,8 @@ function Satellite({
 /** Zwei gegenläufige Perlenbänder, deren Perlen vorn größer wirken als hinten. */
 export function HelixEffect({ settings, colors }: EffectProps) {
   const durationMs = cycleDurationMs(settings.speed, 6500, 2200);
-  const radius = settings.size / 2 + 9;
   const size = Math.max(3, Math.round(settings.size * 0.055));
+  const radius = edgeRadius(settings.size, size);
   const opacity = effectOpacity(settings.intensity);
   const perBand = 4;
 
@@ -263,7 +263,7 @@ export function SolarWindEffect({ settings, colors }: EffectProps) {
           delayMs={Math.round(base * phase)}
           // Ungleiche Radien: Streifen auf einer einzigen Bahn lesen sich als Ring,
           // nicht als Wind.
-          radius={settings.size / 2 + 6 + phase * settings.size * 0.18}
+          radius={edgeRadius(settings.size, 4) + phase * settings.size * 0.18}
           length={settings.size * (0.22 + phase * 0.18)}
           thickness={Math.max(2, Math.round(settings.size * 0.028))}
           color={colors[i % colors.length]}
@@ -315,10 +315,11 @@ function Gust({
 export function GravityEffect({ settings, colors }: EffectProps) {
   const count = particleCount(settings.intensity, 6, 10);
   const base = cycleDurationMs(settings.speed, 3400, 1200);
-  const radius = settings.size / 2 + Math.max(14, settings.size * 0.3);
   const opacity = effectOpacity(settings.intensity);
   const spread = useMemo(() => phases(count), [count]);
   const dot = Math.max(3, Math.round(settings.size * 0.035));
+  const rim = edgeRadius(settings.size, dot / 2);
+  const radius = rim + Math.round(settings.size * 0.3);
 
   return (
     <Layer>
@@ -329,7 +330,9 @@ export function GravityEffect({ settings, colors }: EffectProps) {
           durationMs={Math.round(base * (0.8 + phase * 0.5))}
           delayMs={Math.round(base * phase)}
           radius={radius}
-          travel={radius - settings.size / 2}
+          // Endet am Rand des Rings, nicht in der Mitte: Alles dahinter ist vom
+          // Avatar verdeckt, das Teilchen würde einfach verschwinden statt anzukommen.
+          travel={radius - rim}
           size={dot}
           color={colors[i % colors.length]}
           opacity={opacity}
@@ -399,7 +402,7 @@ export function StardustEffect({ settings, colors }: EffectProps) {
           angleDeg={(360 * i) / count + (phase - 0.5) * 26}
           // Ungleiche Abstände sind hier der ganze Punkt: Gleich weit entfernte Punkte
           // lesen sich als Perlenkette, nicht als Sternenstaub.
-          radius={settings.size / 2 + 6 + phase * settings.size * 0.34}
+          radius={edgeRadius(settings.size, 3) + phase * settings.size * 0.34}
           durationMs={Math.round(base * (0.6 + phase * 0.9))}
           delayMs={Math.round(base * phase)}
           size={Math.max(2, Math.round(settings.size * (0.018 + phase * 0.022)))}

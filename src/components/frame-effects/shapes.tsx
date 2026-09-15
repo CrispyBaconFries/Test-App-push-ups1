@@ -7,6 +7,7 @@ import {
   SpinGroup,
   blink,
   breathe,
+  edgeRadius,
   effectStyles,
   phases,
   useLoop,
@@ -47,7 +48,7 @@ export function ShardsEffect({ settings, colors }: EffectProps) {
           angleDeg={(360 * i) / count + (phase - 0.5) * 16}
           durationMs={Math.round(base * (0.8 + phase * 0.5))}
           delayMs={Math.round(base * phase)}
-          radius={settings.size / 2 + 4}
+          radius={edgeRadius(settings.size)}
           travel={Math.round(settings.size * 0.3)}
           length={length}
           width={Math.max(2, Math.round(settings.size * 0.045))}
@@ -110,9 +111,9 @@ export function CrystalsEffect({ settings, colors }: EffectProps) {
   const outer = useLoop(cycleDurationMs(settings.speed, 14000, 5000));
   const inner = useLoop(cycleDurationMs(settings.speed, 9000, 3400));
   const opacity = effectOpacity(settings.intensity);
-  const outerRadius = settings.size / 2 + 10;
-  const innerRadius = settings.size / 2 + 2;
   const gem = Math.max(4, Math.round(settings.size * 0.09));
+  const innerRadius = edgeRadius(settings.size, gem / 2);
+  const outerRadius = innerRadius + Math.round(settings.size * 0.14);
 
   return (
     <Layer>
@@ -171,7 +172,7 @@ export function RaysEffect({ settings, colors }: EffectProps) {
   const count = 12;
   const long = Math.max(10, Math.round(settings.size * 0.38));
   const short = Math.round(long * 0.55);
-  const radius = settings.size / 2 + long;
+  const radius = edgeRadius(settings.size) + long;
 
   return (
     <Layer>
@@ -199,8 +200,9 @@ export function RaysEffect({ settings, colors }: EffectProps) {
 
 /** Kurze Entladungen, die rund um den Rand knistern. */
 export function ElectroEffect({ settings, colors }: EffectProps) {
-  const count = particleCount(settings.intensity, 6, 10);
+  const count = particleCount(settings.intensity, 7, 11);
   const base = cycleDurationMs(settings.speed, 1800, 650);
+  const thickness = Math.max(2, Math.round(settings.size * 0.05));
   const opacity = effectOpacity(settings.intensity);
   const spread = useMemo(() => phases(count), [count]);
 
@@ -214,11 +216,14 @@ export function ElectroEffect({ settings, colors }: EffectProps) {
           // Anzeigefehler, ungleichmäßiges als Elektrizität.
           durationMs={Math.round(base * (0.6 + phase * 0.9))}
           delayMs={Math.round(base * phase)}
-          radius={settings.size / 2 + 5}
+          // Lag vorher bei `size / 2 + 5` - also innerhalb von Avatar plus Ring und
+          // damit vollständig verdeckt. Man sah nichts und hätte den Fehler im Takt
+          // gesucht statt in der Lage.
+          radius={edgeRadius(settings.size, thickness / 2)}
           // Quer zur Speiche, also am Rand entlang - das unterscheidet den Effekt von den
           // Blitzen, die nach außen zeigen.
-          length={Math.max(5, Math.round(settings.size * 0.16))}
-          thickness={Math.max(2, Math.round(settings.size * 0.03))}
+          length={Math.max(6, Math.round(settings.size * 0.24))}
+          thickness={thickness}
           color={colors[i % colors.length]}
           opacity={opacity}
         />
@@ -254,7 +259,10 @@ function Arc({
           width: length,
           height: thickness,
           backgroundColor: color,
-          opacity: Animated.multiply(blink(loop, 0, 1, 0.12), opacity),
+          // Etwas längeres Fenster und ein schwacher Grundwert: Bei 12 % Einschaltdauer
+          // und Deckkraft 0 war jede Entladung kürzer als ein Wimpernschlag, und
+          // dazwischen war da nichts, woran das Auge hängen bleiben konnte.
+          opacity: Animated.multiply(blink(loop, 0.12, 1, 0.24), opacity),
         }}
       />
     </Spoke>
@@ -268,8 +276,10 @@ export function WavePointsEffect({ settings, colors }: EffectProps) {
   const count = particleCount(settings.intensity, 8, 10);
   const base = cycleDurationMs(settings.speed, 3600, 1300);
   const opacity = effectOpacity(settings.intensity);
-  const radius = settings.size / 2 + 12;
   const dot = Math.max(3, Math.round(settings.size * 0.045));
+  const amplitude = Math.round(settings.size * 0.12);
+  // Der Ausschlag nach innen zählt mit: Sonst taucht die halbe Welle hinter dem Avatar ab.
+  const radius = edgeRadius(settings.size, dot / 2) + amplitude;
 
   return (
     <Layer>
@@ -282,7 +292,7 @@ export function WavePointsEffect({ settings, colors }: EffectProps) {
           // Nachbar, und genau das liest das Auge als Wanderung.
           delayMs={Math.round((base / count) * i)}
           radius={radius}
-          amplitude={Math.round(settings.size * 0.12)}
+          amplitude={amplitude}
           size={dot}
           color={colors[i % colors.length]}
           opacity={opacity}
@@ -334,66 +344,83 @@ function WaveDot({
 export function CrownEffect({ settings, colors }: EffectProps) {
   const loop = useLoop(cycleDurationMs(settings.speed, 3600, 1500));
   const opacity = effectOpacity(settings.intensity);
-  const spikeWidth = Math.max(3, Math.round(settings.size * 0.07));
-  const gap = Math.round(settings.size * 0.115);
-  const lift = settings.size * 0.58;
-  // Mitte am höchsten, nach außen kürzer - gleich hohe Zacken sehen aus wie ein Kamm.
-  const heights = [0.6, 0.85, 1, 0.85, 0.6];
 
-  const bandHeight = Math.max(2, Math.round(settings.size * 0.035));
+  // Erster Anlauf waren fünf schmale Balken nebeneinander - das las sich als Haare, nicht
+  // als Krone. Was gefehlt hat, sind die zwei Dinge, an denen man eine Krone überhaupt
+  // erkennt: **spitze Zacken** statt Balken und ein durchgehender **Reif** darunter, der
+  // sie verbindet. Beides geht ohne SVG.
+  const bandWidth = Math.round(settings.size * 0.74);
+  const bandHeight = Math.max(4, Math.round(settings.size * 0.1));
+  const peak = Math.max(8, Math.round(settings.size * 0.26));
+  const spikeBase = Math.round(bandWidth / 5);
+  const gem = Math.max(4, Math.round(settings.size * 0.06));
+  // Mitte am höchsten, nach außen kürzer - gleich hohe Zacken sehen aus wie ein Kamm.
+  const heights = [0.5, 0.78, 1, 0.78, 0.5];
+
+  // Die Unterkante des Reifs liegt auf dem Rand des Rang-Rings, mit einem Pixel
+  // Überlappung, damit die Krone aufsitzt statt zu schweben. Tiefer ginge nicht: Alles
+  // innerhalb von `edgeRadius` verschwindet hinter dem Avatar - und ausgerechnet der
+  // Reif, der die Krone zur Krone macht, wäre das Erste, was fehlt.
+  const total = peak + bandHeight;
+  const lift = edgeRadius(settings.size) - 3 + total / 2;
 
   return (
     <Layer>
-      {heights.map((factor, i) => {
-        const height = Math.max(6, Math.round(settings.size * 0.24 * factor));
-        return (
-          <View
-            key={i}
-            pointerEvents="none"
-            style={[
-              effectStyles.stacked,
-              {
-                // `stacked` zentriert sein Kind, `translateY` verschiebt also dessen
-                // *Mitte*. Damit alle fünf Zacken trotz unterschiedlicher Höhe auf
-                // derselben Linie stehen, muss die halbe Höhe mit hinein - sonst hängen
-                // die kurzen Zacken in der Luft und die langen ragen in den Avatar.
-                transform: [{ translateX: (i - 2) * gap }, { translateY: -lift - height / 2 }],
-              },
-            ]}
-          >
-            <Animated.View
-              style={{
-                width: spikeWidth,
-                height,
-                backgroundColor: colors[i % colors.length],
-                borderTopLeftRadius: spikeWidth / 2,
-                borderTopRightRadius: spikeWidth / 2,
-                opacity: Animated.multiply(breathe(loop, 0.55, 1), opacity),
-                // Wächst nach oben statt in beide Richtungen - sonst löst sich die Zacke
-                // beim Atmen vom Reif darunter.
-                transform: [{ scaleY: breathe(loop, 0.88, 1.08) }],
-                transformOrigin: 'center bottom',
-              }}
-            />
-          </View>
-        );
-      })}
-      {/* Der Reif, auf dem die Zacken stehen: seine Oberkante liegt genau auf der Linie,
-          auf der alle Zacken enden. Unbewegt, damit die Krone nicht schwebt. */}
-      <View
+      <Animated.View
         pointerEvents="none"
         style={[
           effectStyles.stacked,
           {
-            width: gap * 4 + spikeWidth,
-            height: bandHeight,
-            borderRadius: bandHeight / 2,
-            backgroundColor: colors[0],
-            opacity,
-            transform: [{ translateY: -lift + bandHeight / 2 }],
+            opacity: Animated.multiply(breathe(loop, 0.65, 1), opacity),
+            transform: [{ translateY: -lift }, { scale: breathe(loop, 0.98, 1.05) }],
           },
         ]}
-      />
+      >
+        <View style={{ alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+            {heights.map((factor, i) => (
+              <View
+                key={i}
+                style={{
+                  // Der Dreiecks-Kniff: eine Box ohne eigene Fläche, deren linker und
+                  // rechter Rand durchsichtig sind. Übrig bleibt der untere Rand - als
+                  // Dreieck mit der Spitze nach oben.
+                  width: 0,
+                  height: 0,
+                  backgroundColor: 'transparent',
+                  borderLeftWidth: spikeBase / 2,
+                  borderRightWidth: spikeBase / 2,
+                  borderBottomWidth: Math.round(peak * factor),
+                  borderLeftColor: 'transparent',
+                  borderRightColor: 'transparent',
+                  borderBottomColor: colors[i % colors.length],
+                }}
+              />
+            ))}
+          </View>
+          <View
+            style={{
+              width: bandWidth,
+              height: bandHeight,
+              borderRadius: Math.round(bandHeight / 3),
+              backgroundColor: colors[0],
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {/* Ein Stein in der Mitte des Reifs - die kleinste Zutat, die aus einem
+                gezackten Band eine Krone macht. */}
+            <View
+              style={{
+                width: gem,
+                height: gem,
+                backgroundColor: colors[colors.length - 1],
+                transform: [{ rotate: '45deg' }],
+              }}
+            />
+          </View>
+        </View>
+      </Animated.View>
     </Layer>
   );
 }

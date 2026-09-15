@@ -10,7 +10,7 @@ import {
   type EffectSettings,
   type FrameEffectId,
 } from '../ranking/frameEffects';
-import { Layer, Orbit, breathe, effectStyles, phases, useLoop } from './frame-effects/kit';
+import { Layer, Orbit, breathe, edgeRadius, effectStyles, phases, useLoop } from './frame-effects/kit';
 import {
   CometEffect,
   DoubleRotorEffect,
@@ -215,7 +215,7 @@ function GlowEffect({ settings, colors }: EffectProps) {
 /** Ein heller Punkt, der einmal um den Ring wandert. */
 function RotorEffect({ settings, colors }: EffectProps) {
   const loop = useLoop(cycleDurationMs(settings.speed, 5000, 1200));
-  const ring = settings.size + 16;
+  const ring = edgeRadius(settings.size) * 2;
   const rotate = loop.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   return (
@@ -250,9 +250,9 @@ function RotorEffect({ settings, colors }: EffectProps) {
 /** Funken, die auf einer Kreisbahn um den Rahmen laufen. */
 function SparksEffect({ settings, colors }: EffectProps) {
   const count = particleCount(settings.intensity, 3, 9);
-  const radius = settings.size / 2 + 10;
   const baseDuration = cycleDurationMs(settings.speed, 6000, 1600);
   const dotSize = 4 + Math.round(settings.size / 24);
+  const radius = edgeRadius(settings.size, dotSize / 2);
   const spread = useMemo(() => phases(count), [count]);
   const opacity = effectOpacity(settings.intensity);
 
@@ -318,7 +318,7 @@ function FlamesEffect({ settings, colors }: EffectProps) {
             angleDeg={(360 * i) / count + (phase - 0.5) * 18}
             durationMs={Math.round(baseDuration * (0.75 + phase * 0.6))}
             delayMs={Math.round(baseDuration * phase)}
-            radius={settings.size / 2 + length}
+            radius={edgeRadius(settings.size) + length}
             length={length}
             // Deutlich schmaler als zuvor (0,2): Eine Flamme ist hoch und schmal, eine
             // breite Zunge liest sich als Blatt.
@@ -411,7 +411,7 @@ function LightningEffect({ settings, colors }: EffectProps) {
   const count = particleCount(settings.intensity, 2, 5);
   const baseDuration = cycleDurationMs(settings.speed, 2600, 900);
   const length = settings.size * 0.5;
-  const radius = settings.size / 2 + length;
+  const radius = edgeRadius(settings.size) + length;
   const spread = useMemo(() => phases(count), [count]);
   const opacity = effectOpacity(settings.intensity);
 

@@ -38,7 +38,32 @@ import type { EffectSettings } from '../../ranking/frameEffects';
  * `(phase + 0.15) % 1` kippt bei hohen Phasen über die 1 und React Native wirft dann
  * beim Rendern. Der Versatz gehört deshalb in `useLoop(dauer, versatz)`, nicht in die
  * Kennlinie.
+ *
+ * **4. Die Ebene liegt HINTER dem Avatar.** Alles, was näher am Mittelpunkt sitzt als der
+ * Außenrand des Rang-Rings, ist schlicht verdeckt - der Effekt läuft, man sieht ihn nur
+ * nicht. Das ist der teuerste Fehler von allen, weil er wie "der Effekt ist kaputt"
+ * aussieht und nicht wie "der Effekt sitzt falsch". Dafür ist `edgeRadius` da.
  */
+
+/**
+ * Der kleinste Radius, bei dem etwas **sicher außerhalb** von Avatar und Rang-Ring liegt.
+ *
+ * Der Avatar hat den Radius `size / 2`, darum liegt der Ring. Wie dick der ist, weiß die
+ * Effektebene nicht - die Ringdicke gehört dem Rang (`rankFrameStyle.ts`, heute 3 bis
+ * 6 px) und ist in der Werkstatt bis 14 px verstellbar. Der Zuschlag hier deckt das mit
+ * Luft ab und wächst mit der Größe mit, damit ein Effekt bei 36 px in der Rangliste
+ * genauso sitzt wie bei 140 px im Profil.
+ *
+ * `extra` ist für die halbe Breite des Elements selbst: Ein Punkt mit Radius 5, dessen
+ * *Mittelpunkt* genau auf dem Rand sitzt, ragt zur Hälfte darunter.
+ *
+ * Wer eine Bahn oder eine Speiche ohne diesen Helfer setzt, baut sich mit hoher
+ * Wahrscheinlichkeit einen unsichtbaren Effekt - genau das ist beim ersten Anlauf bei
+ * "Glut", "Strom", "Neon" und "Prisma" passiert.
+ */
+export function edgeRadius(size: number, extra = 0): number {
+  return size / 2 + Math.max(12, Math.round(size * 0.09)) + extra;
+}
 
 export interface EffectProps {
   settings: EffectSettings;

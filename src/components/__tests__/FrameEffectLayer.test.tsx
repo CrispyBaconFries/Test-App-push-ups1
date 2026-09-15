@@ -2,7 +2,12 @@ import React from 'react';
 import { StyleSheet, type ViewStyle } from 'react-native';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 import { FrameEffectLayer } from '../FrameEffectLayer';
-import { FRAME_EFFECT_IDS, SIZE_RANGE, type EffectSettings } from '../../ranking/frameEffects';
+import {
+  DEFAULT_RING_WIDTH,
+  FRAME_EFFECT_IDS,
+  SIZE_RANGE,
+  type EffectSettings,
+} from '../../ranking/frameEffects';
 import { resolveFrameGradient } from '../../ranking/rankFrameStyle';
 
 /**
@@ -27,6 +32,36 @@ function renderEffect(effectId: (typeof FRAME_EFFECT_IDS)[number], settings: Eff
     );
   });
   return renderer!;
+}
+
+/**
+ * Wie weit der Effekt vom Mittelpunkt aus reicht, in px.
+ *
+ * Grob gerechnet, und das reicht: je Element die halbe Kantenlänge plus die festen
+ * Verschiebungen auf dem Weg dorthin. Drehungen bleiben außen vor - für die Frage
+ * "ragt überhaupt irgendetwas über den Avatar hinaus?" macht das keinen Unterschied.
+ */
+function effectReach(node: unknown, offsetX = 0, offsetY = 0): number {
+  if (!node || typeof node !== 'object') return 0;
+  const element = node as { props?: { style?: unknown }; children?: unknown[] };
+  const style = StyleSheet.flatten(element.props?.style as ViewStyle | ViewStyle[]) ?? {};
+
+  let x = offsetX;
+  let y = offsetY;
+  for (const step of Array.isArray(style.transform) ? style.transform : []) {
+    const move = step as { translateX?: unknown; translateY?: unknown };
+    if (typeof move.translateX === 'number') x += move.translateX;
+    if (typeof move.translateY === 'number') y += move.translateY;
+  }
+
+  const width = typeof style.width === 'number' ? style.width : 0;
+  const height = typeof style.height === 'number' ? style.height : 0;
+  let reach = Math.max(width, height) / 2 + Math.abs(x) + Math.abs(y);
+
+  for (const child of element.children ?? []) {
+    reach = Math.max(reach, effectReach(child, x, y));
+  }
+  return reach;
 }
 
 describe('FrameEffectLayer', () => {
@@ -104,6 +139,38 @@ describe('FrameEffectLayer', () => {
       act(() => {
         renderer.unmount();
       });
+    }
+  );
+
+  it.each(FRAME_EFFECT_IDS.filter((id) => id !== 'none'))(
+    'zeichnet "%s" nicht komplett hinter den Avatar',
+    (effectId) => {
+      // Der teuerste Fehler dieser Datei, weil er nicht wie ein Fehler aussieht: Die
+      // Effektebene liegt HINTER dem Avatar (zIndex -1). Alles, was näher am Mittelpunkt
+      // sitzt als der Außenrand des Rang-Rings, ist verdeckt - der Effekt läuft, man
+      // sieht ihn nur nie, und es wirkt wie "der Effekt ist kaputt". Genau so waren
+      // "Glut", "Strom", "Neon" und "Prisma" beim ersten Anlauf unsichtbar.
+      for (const size of [SIZE_RANGE.min, settings.size, SIZE_RANGE.max]) {
+        const renderer = renderEffect(effectId, { ...settings, size });
+        act(() => {
+          jest.advanceTimersByTime(2000);
+        });
+
+        const avatarEdge = size / 2 + DEFAULT_RING_WIDTH;
+        // Als Objekt verglichen, damit im Fehlerfall Effekt, Größe und die erreichte
+        // Weite dastehen - "expected 49 to be greater than 52" allein sagt nicht, welcher
+        // Effekt bei welcher Größe.
+        const reach = effectReach(renderer.toJSON());
+        expect({ effectId, size, reachesBeyondAvatar: reach > avatarEdge }).toEqual({
+          effectId,
+          size,
+          reachesBeyondAvatar: true,
+        });
+
+        act(() => {
+          renderer.unmount();
+        });
+      }
     }
   );
 

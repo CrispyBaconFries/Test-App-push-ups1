@@ -1504,7 +1504,7 @@ schon die Posenerkennung rechnet. Was das kostet: Eine Flamme kann ihre *Form* n
 verändern, nur Größe, Lage und Deckkraft. Für mehrere Zungen mit versetzten Phasen reicht
 das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
 
-**Vier Fallen, die beim Bauen zugeschlagen haben** (alle stehen als Kommentar in
+**Fünf Fallen, die beim Bauen zugeschlagen haben** (alle stehen als Kommentar in
 `frame-effects/kit.tsx`, wo die Bausteine sie abfangen):
 
 - Ein Teilchen mit `translateY` nach außen schieben und *dann* drehen dreht um den
@@ -1523,12 +1523,22 @@ das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
   (Bruchring), verschiedene Seitenfarben (Prisma) oder ein Zeiger (Radar). Ein
   „rotierender Ring“ ohne eines dieser drei Merkmale ist ein toter Effekt, der im Katalog
   Platz belegt.
+- **Die Ebene liegt hinter dem Avatar** (`zIndex: -1`). Alles, was näher am Mittelpunkt
+  sitzt als der Außenrand des Rang-Rings, ist schlicht verdeckt: Der Effekt läuft, man
+  sieht ihn nur nie. Das ist die teuerste der fünf, weil sie wie „der Effekt ist kaputt“
+  aussieht und nicht wie „der Effekt sitzt falsch“ — Glut, Strom, Neon und Prisma waren
+  beim ersten Anlauf genau deshalb unsichtbar. `edgeRadius(size, extra)` liefert den
+  kleinsten Radius, bei dem etwas sicher außerhalb liegt; `extra` ist die halbe Breite des
+  Elements selbst, denn ein Punkt, dessen *Mittelpunkt* auf dem Rand sitzt, ragt zur
+  Hälfte darunter.
 
-**Drei Tests halten das, was `tsc` nicht sieht:** dass jeder Effekt an beiden
+**Vier Tests halten das, was `tsc` nicht sieht:** dass jeder Effekt an beiden
 Reglergrenzen wirklich rendert (dort fliegt eine kaputte Kennlinie auf), dass **jedes**
 Element eines Effekts absolut auf dem Mittelpunkt liegt (sonst zentriert `Layer` per
-Flexbox und macht aus dem Effekt eine Spalte), und dass kein Effekt die Obergrenze von
-zwölf bewegten Teilen reißt (`movingParts`, siehe `frameEffects.ts`).
+Flexbox und macht aus dem Effekt eine Spalte), dass **irgendetwas** am Effekt über den
+Rand des Avatars hinausragt (sonst ist er unsichtbar — geprüft bei 36, 88 und 140 px), und
+dass kein Effekt die Obergrenze von zwölf bewegten Teilen reißt (`movingParts`, siehe
+`frameEffects.ts`).
 
 **Der Schieberegler ist selbst gebaut** (`src/components/Slider.tsx`). React Native bringt
 seit Jahren keinen mit, und `@react-native-community/slider` wäre eine **native**
