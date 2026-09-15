@@ -1504,8 +1504,8 @@ schon die Posenerkennung rechnet. Was das kostet: Eine Flamme kann ihre *Form* n
 verändern, nur Größe, Lage und Deckkraft. Für mehrere Zungen mit versetzten Phasen reicht
 das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
 
-**Fünf Fallen, die beim Bauen zugeschlagen haben** (alle stehen als Kommentar in
-`frame-effects/kit.tsx`, wo die Bausteine sie abfangen):
+**Sechs Fallen, die beim Bauen zugeschlagen haben** (die ersten fünf stehen als Kommentar
+in `frame-effects/kit.tsx`, wo die Bausteine sie abfangen):
 
 - Ein Teilchen mit `translateY` nach außen schieben und *dann* drehen dreht um den
   Mittelpunkt des **Teilchens**, nicht um den des Avatars. Bei einem runden Punkt sieht
@@ -1531,6 +1531,12 @@ das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
   kleinsten Radius, bei dem etwas sicher außerhalb liegt; `extra` ist die halbe Breite des
   Elements selbst, denn ein Punkt, dessen *Mittelpunkt* auf dem Rand sitzt, ragt zur
   Hälfte darunter.
+- **Eine Form, die aus Teilen zusammengesetzt ist, zeigt beim Skalieren ihre Nähte.** Die
+  Krone bestand erst aus fünf Dreiecken auf einem Reif — beim Atmen wurde jedes Teil für
+  sich skaliert und auf ganze Pixel gerundet, und zwischen den Nachbarn blieb ein
+  Haarspalt stehen. Etwas, das als *ein* Gegenstand gelesen werden soll, gehört in **einen**
+  geschlossenen SVG-Pfad. Bei Funken, Strahlen und Kristallen ist das Gegenteil richtig:
+  Dort sind die Einzelteile gewollt einzeln.
 
 **Vier Tests halten das, was `tsc` nicht sieht:** dass jeder Effekt an beiden
 Reglergrenzen wirklich rendert (dort fliegt eine kaputte Kennlinie auf), dass **jedes**

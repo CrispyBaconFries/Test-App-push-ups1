@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { Animated, View } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { cycleDurationMs, effectOpacity, particleCount } from '../../ranking/frameEffects';
 import {
   Layer,
+  Orbit,
   Spoke,
   SpinGroup,
   blink,
@@ -198,74 +200,116 @@ export function RaysEffect({ settings, colors }: EffectProps) {
 
 /* -------------------------------------------------------------------- Strom */
 
-/** Kurze Entladungen, die rund um den Rand knistern. */
+/**
+ * Feine Blitze, die rund um den Rahmen knistern - der Super-Saiyajin-2-Look.
+ *
+ * Vorlage sind die Beschreibungen der Form: **viele** dünne, zickzackförmige Funken, die
+ * **ununterbrochen** um den Körper zucken, nicht ein paar große Blitze, die ab und zu
+ * einschlagen. Genau daran hängen die drei Entscheidungen hier:
+ *
+ * - **Dünn und gezackt** statt breiter Balken: zwei gestrichelte Pfade übereinander, ein
+ *   farbiger und ein weißer Kern darin. Das ist der Unterschied zwischen "Stromschlag"
+ *   und "Lichtbalken".
+ * - **Durchgehend**: Jeder Blitz leuchtet nur einen Wimpernschlag, aber die Takte sind so
+ *   versetzt, dass sich die Fenster überlappen. Es ist immer irgendwo einer an.
+ * - **Wandernd**: Alle Blitze hängen an *einer* langsamen Drehung. Weil jeder auf einem
+ *   eigenen, schnellen Takt blitzt, schlägt er bei jedem Durchlauf an einer etwas anderen
+ *   Stelle ein - ohne `Math.random()`, das bei jedem Render neu würfeln würde.
+ *
+ * Abgegrenzt gegen "Blitze": Das sind zwei bis fünf große, langsame Einschläge. Hier sind
+ * es sechs bis neun kleine, schnelle - dieselbe Idee in einer anderen Tonlage.
+ */
 export function ElectroEffect({ settings, colors }: EffectProps) {
-  const count = particleCount(settings.intensity, 7, 11);
-  const base = cycleDurationMs(settings.speed, 1800, 650);
-  const thickness = Math.max(2, Math.round(settings.size * 0.05));
+  const count = particleCount(settings.intensity, 6, 9);
+  const base = cycleDurationMs(settings.speed, 1600, 600);
+  // Sehr langsam: Die Drehung soll man nicht sehen, sie soll nur dafür sorgen, dass die
+  // Einschläge nicht jedes Mal an derselben Stelle sitzen.
+  const drift = useLoop(cycleDurationMs(settings.speed, 20000, 9000));
   const opacity = effectOpacity(settings.intensity);
   const spread = useMemo(() => phases(count), [count]);
+  const rim = edgeRadius(settings.size);
 
   return (
     <Layer>
-      {spread.map((phase, i) => (
-        <Arc
-          key={i}
-          angleDeg={(360 * i) / count + (phase - 0.5) * 14}
-          // Sehr kurze, ungleich lange Takte: Gleichmäßiges Blinken liest sich als
-          // Anzeigefehler, ungleichmäßiges als Elektrizität.
-          durationMs={Math.round(base * (0.6 + phase * 0.9))}
-          delayMs={Math.round(base * phase)}
-          // Lag vorher bei `size / 2 + 5` - also innerhalb von Avatar plus Ring und
-          // damit vollständig verdeckt. Man sah nichts und hätte den Fehler im Takt
-          // gesucht statt in der Lage.
-          radius={edgeRadius(settings.size, thickness / 2)}
-          // Quer zur Speiche, also am Rand entlang - das unterscheidet den Effekt von den
-          // Blitzen, die nach außen zeigen.
-          length={Math.max(6, Math.round(settings.size * 0.24))}
-          thickness={thickness}
-          color={colors[i % colors.length]}
-          opacity={opacity}
-        />
-      ))}
+      {spread.map((phase, i) => {
+        const length = Math.max(8, Math.round(settings.size * (0.15 + phase * 0.16)));
+        return (
+          <CrackleBolt
+            key={i}
+            drift={drift}
+            offsetDeg={(360 * i) / count + (phase - 0.5) * 20}
+            durationMs={Math.round(base * (0.7 + phase * 0.7))}
+            // Gleichmäßig über den Takt verteilt: So überlappen sich die kurzen Fenster
+            // zu einem durchgehenden Knistern statt zu vereinzeltem Blinken.
+            delayMs={Math.round((base / count) * i)}
+            radius={rim + length}
+            length={length}
+            width={Math.max(4, Math.round(settings.size * 0.08))}
+            color={colors[i % colors.length]}
+            opacity={opacity}
+          />
+        );
+      })}
     </Layer>
   );
 }
 
-function Arc({
-  angleDeg,
+function CrackleBolt({
+  drift,
+  offsetDeg,
   durationMs,
   delayMs,
   radius,
   length,
-  thickness,
+  width,
   color,
   opacity,
 }: {
-  angleDeg: number;
+  drift: Animated.Value;
+  offsetDeg: number;
   durationMs: number;
   delayMs: number;
   radius: number;
   length: number;
-  thickness: number;
+  width: number;
   color: string;
   opacity: number;
 }) {
-  const loop = useLoop(durationMs, delayMs);
+  const flash = useLoop(durationMs, delayMs);
+  // Zweimal kurz an, dann lange aus: Ein einzelnes Aufleuchten wirkt wie ein
+  // Anzeigefehler, ein Doppelzucken wie Elektrizität.
+  const glow = flash.interpolate({
+    inputRange: [0, 0.04, 0.08, 0.12, 0.2, 1],
+    outputRange: [0, 1, 0.25, 0.9, 0, 0],
+  });
+  const zigzag = 'M8 0 L3 11 L9 14 L2 29 L8 31 L4 44';
+
   return (
-    <Spoke radius={radius} angleDeg={angleDeg}>
-      <Animated.View
-        style={{
-          width: length,
-          height: thickness,
-          backgroundColor: color,
-          // Etwas längeres Fenster und ein schwacher Grundwert: Bei 12 % Einschaltdauer
-          // und Deckkraft 0 war jede Entladung kürzer als ein Wimpernschlag, und
-          // dazwischen war da nichts, woran das Auge hängen bleiben konnte.
-          opacity: Animated.multiply(blink(loop, 0.12, 1, 0.24), opacity),
-        }}
-      />
-    </Spoke>
+    <Orbit radius={radius} loop={drift} offsetDeg={offsetDeg}>
+      <Animated.View style={{ opacity: Animated.multiply(glow, opacity) }}>
+        <Svg width={width} height={length} viewBox="0 0 12 44">
+          {/* Zwei Striche auf demselben Pfad: außen die Rangfarbe als Schein, innen ein
+              dünner weißer Kern. Das ist die Zeichnung, an der man einen elektrischen
+              Funken erkennt - eine einfarbige Linie sieht nach Strich aus. */}
+          <Path
+            d={zigzag}
+            stroke={color}
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+          <Path
+            d={zigzag}
+            stroke="#FFFFFF"
+            strokeWidth={1.1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </Svg>
+      </Animated.View>
+    </Orbit>
   );
 }
 
@@ -340,29 +384,28 @@ function WaveDot({
 
 /* --------------------------------------------------------------------- Krone */
 
-/** Eine leuchtende Krone über dem Avatar. */
+/**
+ * Eine leuchtende Krone über dem Avatar - **eine** Form, kein Bausatz.
+ *
+ * Erster Anlauf waren fünf Balken nebeneinander: las sich als Haare. Zweiter Anlauf waren
+ * fünf Dreiecke auf einem Reif: sah aus wie zusammengestellte Einzelteile, und beim
+ * Atmen gingen die Teile sichtbar auseinander - jedes Element wird für sich skaliert und
+ * auf ganze Pixel gerundet, und zwischen zwei Nachbarn bleibt dabei ein Haarspalt stehen.
+ *
+ * Deshalb jetzt **ein einziger geschlossener SVG-Pfad**: Zacken und Reif sind dieselbe
+ * Kontur, es gibt keine Naht, die aufgehen könnte. Das ist auch der Grund, warum die
+ * Krone hier SVG benutzt und die übrigen Formen dieser Datei nicht - bei allen anderen
+ * sind die Einzelteile *gewollt* einzeln.
+ */
 export function CrownEffect({ settings, colors }: EffectProps) {
   const loop = useLoop(cycleDurationMs(settings.speed, 3600, 1500));
   const opacity = effectOpacity(settings.intensity);
-
-  // Erster Anlauf waren fünf schmale Balken nebeneinander - das las sich als Haare, nicht
-  // als Krone. Was gefehlt hat, sind die zwei Dinge, an denen man eine Krone überhaupt
-  // erkennt: **spitze Zacken** statt Balken und ein durchgehender **Reif** darunter, der
-  // sie verbindet. Beides geht ohne SVG.
-  const bandWidth = Math.round(settings.size * 0.74);
-  const bandHeight = Math.max(4, Math.round(settings.size * 0.1));
-  const peak = Math.max(8, Math.round(settings.size * 0.26));
-  const spikeBase = Math.round(bandWidth / 5);
-  const gem = Math.max(4, Math.round(settings.size * 0.06));
-  // Mitte am höchsten, nach außen kürzer - gleich hohe Zacken sehen aus wie ein Kamm.
-  const heights = [0.5, 0.78, 1, 0.78, 0.5];
-
-  // Die Unterkante des Reifs liegt auf dem Rand des Rang-Rings, mit einem Pixel
-  // Überlappung, damit die Krone aufsitzt statt zu schweben. Tiefer ginge nicht: Alles
-  // innerhalb von `edgeRadius` verschwindet hinter dem Avatar - und ausgerechnet der
-  // Reif, der die Krone zur Krone macht, wäre das Erste, was fehlt.
-  const total = peak + bandHeight;
-  const lift = edgeRadius(settings.size) - 3 + total / 2;
+  const width = Math.max(18, Math.round(settings.size * 0.8));
+  const height = Math.round(width * 0.68);
+  // Die Unterkante sitzt auf dem Rang-Ring auf, mit drei Pixeln Überlappung, damit die
+  // Krone aufliegt statt zu schweben. Tiefer ginge nicht: Alles innerhalb von
+  // `edgeRadius` verschwindet hinter dem Avatar - und der Reif wäre das Erste, was fehlt.
+  const lift = edgeRadius(settings.size) - 3 + height / 2;
 
   return (
     <Layer>
@@ -371,55 +414,36 @@ export function CrownEffect({ settings, colors }: EffectProps) {
         style={[
           effectStyles.stacked,
           {
-            opacity: Animated.multiply(breathe(loop, 0.65, 1), opacity),
-            transform: [{ translateY: -lift }, { scale: breathe(loop, 0.98, 1.05) }],
+            opacity: Animated.multiply(breathe(loop, 0.7, 1), opacity),
+            // Skaliert wird die ganze Krone auf einmal, nicht jede Zacke für sich -
+            // genau daher kamen die Spalten.
+            transform: [{ translateY: -lift }, { scale: breathe(loop, 0.98, 1.04) }],
           },
         ]}
       >
-        <View style={{ alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
-            {heights.map((factor, i) => (
-              <View
-                key={i}
-                style={{
-                  // Der Dreiecks-Kniff: eine Box ohne eigene Fläche, deren linker und
-                  // rechter Rand durchsichtig sind. Übrig bleibt der untere Rand - als
-                  // Dreieck mit der Spitze nach oben.
-                  width: 0,
-                  height: 0,
-                  backgroundColor: 'transparent',
-                  borderLeftWidth: spikeBase / 2,
-                  borderRightWidth: spikeBase / 2,
-                  borderBottomWidth: Math.round(peak * factor),
-                  borderLeftColor: 'transparent',
-                  borderRightColor: 'transparent',
-                  borderBottomColor: colors[i % colors.length],
-                }}
-              />
-            ))}
-          </View>
-          <View
-            style={{
-              width: bandWidth,
-              height: bandHeight,
-              borderRadius: Math.round(bandHeight / 3),
-              backgroundColor: colors[0],
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {/* Ein Stein in der Mitte des Reifs - die kleinste Zutat, die aus einem
-                gezackten Band eine Krone macht. */}
-            <View
-              style={{
-                width: gem,
-                height: gem,
-                backgroundColor: colors[colors.length - 1],
-                transform: [{ rotate: '45deg' }],
-              }}
-            />
-          </View>
-        </View>
+        <Svg width={width} height={height} viewBox="0 0 100 68">
+          <Defs>
+            <SvgGradient id="crownFill" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.95} />
+              <Stop offset="38%" stopColor={colors[0]} stopOpacity={1} />
+              <Stop offset="100%" stopColor={colors[colors.length - 1]} stopOpacity={1} />
+            </SvgGradient>
+          </Defs>
+          {/*
+            Fünf Zacken (bei x = 8, 29, 50, 71, 92) mit vier Tälern dazwischen, unten
+            durchgehend geschlossen zum Reif. Die Mitte ist die höchste Zacke, nach außen
+            werden sie niedriger - gleich hohe Zacken sehen aus wie ein Kamm.
+          */}
+          <Path
+            d="M2 68 L98 68 L98 46 L92 20 L81 38 L71 10 L60 34 L50 0 L40 34 L29 10 L18 38 L8 20 L2 46 Z"
+            fill="url(#crownFill)"
+          />
+          {/* Drei Steine im Reif. Sie liegen innerhalb der Kontur, können also keine Naht
+              erzeugen - sie sind Zeichnung auf der Form, nicht ein weiteres Teil daneben. */}
+          <Circle cx={25} cy={57} r={4.5} fill={colors[colors.length - 1]} opacity={0.9} />
+          <Circle cx={50} cy={57} r={6} fill="#FFFFFF" opacity={0.85} />
+          <Circle cx={75} cy={57} r={4.5} fill={colors[colors.length - 1]} opacity={0.9} />
+        </Svg>
       </Animated.View>
     </Layer>
   );

@@ -273,8 +273,8 @@ const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
   electro: {
     id: 'electro',
     label: 'Strom',
-    description: 'Kurze Entladungen knistern rund um den Rand.',
-    movingParts: 11,
+    description: 'Feine Blitze zucken ununterbrochen rund um den Rahmen - Super-Saiyajin-Look.',
+    movingParts: 10,
   },
   wave_points: {
     id: 'wave_points',

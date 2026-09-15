@@ -43,7 +43,10 @@ function renderEffect(effectId: (typeof FRAME_EFFECT_IDS)[number], settings: Eff
  */
 function effectReach(node: unknown, offsetX = 0, offsetY = 0): number {
   if (!node || typeof node !== 'object') return 0;
-  const element = node as { props?: { style?: unknown }; children?: unknown[] };
+  const element = node as {
+    props?: { style?: unknown; width?: unknown; height?: unknown };
+    children?: unknown[];
+  };
   const style = StyleSheet.flatten(element.props?.style as ViewStyle | ViewStyle[]) ?? {};
 
   let x = offsetX;
@@ -54,8 +57,20 @@ function effectReach(node: unknown, offsetX = 0, offsetY = 0): number {
     if (typeof move.translateY === 'number') y += move.translateY;
   }
 
-  const width = typeof style.width === 'number' ? style.width : 0;
-  const height = typeof style.height === 'number' ? style.height : 0;
+  // `<Svg>` trägt seine Maße als Eigenschaften, nicht im Stil - ohne diesen Zweig
+  // zählten die Effekte aus SVG (Flammen, Blitze, Aura, Strom, Krone) als ausdehnungslos.
+  const width =
+    typeof style.width === 'number'
+      ? style.width
+      : typeof element.props?.width === 'number'
+        ? element.props.width
+        : 0;
+  const height =
+    typeof style.height === 'number'
+      ? style.height
+      : typeof element.props?.height === 'number'
+        ? element.props.height
+        : 0;
   let reach = Math.max(width, height) / 2 + Math.abs(x) + Math.abs(y);
 
   for (const child of element.children ?? []) {
