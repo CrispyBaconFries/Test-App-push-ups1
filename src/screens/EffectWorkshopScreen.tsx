@@ -8,7 +8,9 @@ import { FrameEffectLayer } from '../components/FrameEffectLayer';
 import { Slider } from '../components/Slider';
 import {
   DEFAULT_EFFECT_SETTINGS,
+  DEFAULT_RING_WIDTH,
   FRAME_EFFECTS,
+  RING_RANGE,
   SIZE_RANGE,
   describeSelection,
   frameEffectById,
@@ -24,7 +26,7 @@ import { font, radius, space, PILL_RADIUS } from '../theme/layout';
 import { fonts } from '../theme/typography';
 
 /**
- * Effekt-Werkstatt: alle Rahmen-Effekte nebeneinander, mit Reglern.
+ * Effekt-Werkstatt: **ein** Rahmen-Effekt in groß, mit Reglern.
  *
  * # Wofür
  *
@@ -32,10 +34,28 @@ import { fonts } from '../theme/typography';
  * schaut es an, beschreibt in Worten was ihm nicht passt, ich rate, was gemeint ist.
  * Eine Runde kostet einen Build und einen Abend.
  *
- * Dieser Bildschirm dreht das um. chris sieht alle Varianten **gleichzeitig auf seinem
- * Handy**, schiebt an Stärke, Tempo und Größe, und liest unten eine Zeile ab wie
- * `Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Rang Challenger`. Die schickt er mir,
- * und ich setze genau das ein. Kein Raten mehr.
+ * Dieser Bildschirm dreht das um. chris probiert auf seinem **Handy** aus, schiebt an
+ * Stärke, Tempo, Größe und Ringdicke, und liest unten eine Zeile ab wie
+ * `Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Ringdicke 4 px · Rang Challenger`.
+ * Die schickt er mir, und ich setze genau das ein. Kein Raten mehr.
+ *
+ * # Warum nur einer statt alle nebeneinander
+ *
+ * Früher lief hier eine Wand aus Vorschaukacheln, jede mit einer eigenen laufenden
+ * Animation. Bei sieben Effekten ging das noch; mit dem geplanten Katalog von über
+ * dreißig wären es weit über hundert gleichzeitige Animationen - und dann ruckelt die
+ * Werkstatt selbst, und man kann nicht mehr unterscheiden, ob der Effekt hakt oder der
+ * Bildschirm.
+ *
+ * Deshalb: Die Auswahl darunter ist reiner Text, ohne jede Bewegung. Es läuft immer genau
+ * **eine** Effektebene, nämlich die in der Vorschau. Und weil `stageKey` bei jeder Wahl
+ * (Effekt, Rang, Theme) ein anderer ist, wird die Vorschau dabei ausgehängt und neu
+ * aufgebaut - die alten Animationen sind damit nachweislich gestoppt, statt im
+ * Hintergrund weiterzulaufen.
+ *
+ * Die drei Regler bleiben bewusst *außerhalb* von `stageKey`: Beim Ziehen würde jeder
+ * Zwischenwert die Vorschau neu aufbauen, das wäre ruckeliger als das Problem, das es
+ * lösen soll. Sie ändern ohnehin nur Zahlen an einer bereits laufenden Animation.
  *
  * # Warum nicht hinter `__DEV__`
  *
@@ -47,19 +67,22 @@ import { fonts } from '../theme/typography';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EffectWorkshop'>;
 
-/** Einstellungen für die kleinen Kacheln in der Auswahl. */
-const TILE_SIZE = 52;
-const TILE_INTENSITY = 0.55;
-
 export function EffectWorkshopScreen({ navigation }: Props) {
   const [effectId, setEffectId] = useState<FrameEffectId>('aura');
   const [settings, setSettings] = useState<EffectSettings>(DEFAULT_EFFECT_SETTINGS);
+  const [ringWidth, setRingWidth] = useState(DEFAULT_RING_WIDTH);
   const [tier, setTier] = useState<RankTier>('CHALLENGER');
   const [themeId, setThemeId] = useState<FrameThemeId>('default');
 
   const gradient = useMemo(() => resolveFrameGradient(tier, themeId), [tier, themeId]);
   const tierLabel = RANK_TIERS.find((t) => t.tier === tier)?.label ?? tier;
-  const recipe = describeSelection(effectId, settings, tierLabel);
+  const recipe = describeSelection(effectId, settings, tierLabel, ringWidth);
+
+  /**
+   * Wechselt bei jeder *Auswahl* und baut die Vorschau damit neu auf (siehe Kopfkommentar).
+   * Die Regler stehen absichtlich nicht drin - die sollen live nachziehen, nicht neu starten.
+   */
+  const stageKey = `${effectId}|${tier}|${themeId}`;
 
   const update = (patch: Partial<EffectSettings>) => setSettings((prev) => ({ ...prev, ...patch }));
 
@@ -78,13 +101,14 @@ export function EffectWorkshopScreen({ navigation }: Props) {
 
         <Text style={styles.title}>Effekt-Werkstatt</Text>
         <Text style={styles.subtitle}>
-          Such dir aus, wie der Rahmen um den Avatar aussehen soll. Unten steht die Auswahl als eine
-          Zeile – die schickst du mir, dann baue ich genau das ein.
+          Such dir aus, wie der Rahmen um den Avatar im Profil aussehen soll. Es läuft immer nur der
+          Effekt, den du gerade gewählt hast – tipp dich durch die Liste, um zu vergleichen. Unten
+          steht die Auswahl als eine Zeile – die schickst du mir, dann baue ich genau das ein.
         </Text>
 
         {/* Große Vorschau. Fest hohe Fläche, damit die Seite beim Größe-Regler nicht springt. */}
         <View style={styles.stage}>
-          <View style={styles.stageInner}>
+          <View key={stageKey} style={styles.stageInner}>
             <FrameEffectLayer effectId={effectId} settings={settings} colors={gradient} />
             <RankFrame
               avatar={DEFAULT_AVATAR}
@@ -92,6 +116,7 @@ export function EffectWorkshopScreen({ navigation }: Props) {
               lp={2400}
               size={settings.size}
               frameThemeId={themeId}
+              borderWidth={ringWidth}
             />
           </View>
         </View>
@@ -99,40 +124,20 @@ export function EffectWorkshopScreen({ navigation }: Props) {
         <Text style={styles.effectName}>{frameEffectById(effectId).label}</Text>
         <Text style={styles.effectDescription}>{frameEffectById(effectId).description}</Text>
 
+        {/* Reine Textauswahl, ohne Vorschaubilder: Jede Kachel wäre eine weitere laufende
+            Animation, und genau die sollen hier nicht nebenher rechnen. Verglichen wird,
+            indem man sich durchtippt - die Vorschau oben zeigt dabei die echten Werte. */}
         <Section title="Effekt">
-          <View style={styles.tileGrid}>
-            {FRAME_EFFECTS.map((effect) => {
-              const selected = effect.id === effectId;
-              return (
-                <Pressable
-                  key={effect.id}
-                  onPress={() => setEffectId(effect.id)}
-                  style={({ pressed }) => [styles.tile, selected && styles.tileSelected, pressed && styles.pressed]}
-                >
-                  <View style={styles.tilePreview}>
-                    {/* Die Kacheln laufen bewusst mit fester, mittlerer Stärke und kleiner
-                        Größe: Sieben Effekte gleichzeitig in voller Stärke wären mehrere
-                        Dutzend Animationen auf einmal. Zum Vergleichen reicht das, und die
-                        große Vorschau oben zeigt ohnehin die echten Werte. */}
-                    <FrameEffectLayer
-                      effectId={effect.id}
-                      settings={{ intensity: TILE_INTENSITY, speed: settings.speed, size: TILE_SIZE }}
-                      colors={gradient}
-                    />
-                    <RankFrame
-                      avatar={DEFAULT_AVATAR}
-                      tier={tier}
-                      lp={2400}
-                      size={TILE_SIZE}
-                      frameThemeId={themeId}
-                    />
-                  </View>
-                  <Text style={[styles.tileLabel, selected && styles.tileLabelSelected]} numberOfLines={1}>
-                    {effect.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <View style={styles.chipRow}>
+            {FRAME_EFFECTS.map((effect) => (
+              <Chip
+                key={effect.id}
+                label={effect.label}
+                selected={effect.id === effectId}
+                color={gradient[0]}
+                onPress={() => setEffectId(effect.id)}
+              />
+            ))}
           </View>
         </Section>
 
@@ -160,9 +165,19 @@ export function EffectWorkshopScreen({ navigation }: Props) {
             displayValue={`${Math.round(settings.size)} px`}
             tint={gradient[0]}
           />
+          <Slider
+            label="Ringdicke"
+            value={(ringWidth - RING_RANGE.min) / (RING_RANGE.max - RING_RANGE.min)}
+            onChange={(ratio) =>
+              setRingWidth(Math.round(RING_RANGE.min + ratio * (RING_RANGE.max - RING_RANGE.min)))
+            }
+            displayValue={`${ringWidth} px`}
+            tint={gradient[0]}
+          />
           <Text style={styles.hint}>
-            36 px ist die Größe in der Rangliste, 140 px die im Profil. Ein Effekt muss in beiden
-            wirken – deshalb der Regler.
+            Die Größe bestimmt, wie groß der Avatar in der Vorschau ist – im Profil sind es heute
+            72 px. Die Ringdicke steht im Spiel für den Rang (Bronze 3 px bis Challenger 6 px);
+            hier kannst du ausprobieren, ob dieser Bereich passt.
           </Text>
         </Section>
 
@@ -208,7 +223,10 @@ export function EffectWorkshopScreen({ navigation }: Props) {
 
         <Pressable
           style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}
-          onPress={() => setSettings(DEFAULT_EFFECT_SETTINGS)}
+          onPress={() => {
+            setSettings(DEFAULT_EFFECT_SETTINGS);
+            setRingWidth(DEFAULT_RING_WIDTH);
+          }}
         >
           <Text style={styles.resetButtonText}>Regler zurücksetzen</Text>
         </Pressable>
@@ -329,39 +347,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: space(12),
-  },
-  tileGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: space(10),
-  },
-  tile: {
-    width: 96,
-    borderRadius: radius(16),
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingVertical: space(12),
-    alignItems: 'center',
-  },
-  tileSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surfaceElevated,
-  },
-  tilePreview: {
-    height: 78,
-    width: 78,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileLabel: {
-    fontFamily: fonts.semiBold,
-    fontSize: font(11),
-    color: colors.textSecondary,
-    marginTop: space(4),
-  },
-  tileLabelSelected: {
-    color: colors.textPrimary,
   },
   hint: {
     fontFamily: fonts.regular,

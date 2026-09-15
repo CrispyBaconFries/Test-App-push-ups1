@@ -17,6 +17,8 @@ declare module 'react-test-renderer' {
   export interface ReactTestInstance {
     props: Record<string, unknown> & { children?: unknown };
     findAllByType(type: unknown): ReactTestInstance[];
+    /** Alle Knoten im Teilbaum, auf die die Bedingung zutrifft. Ohne Treffer ein leeres Feld - anders als `find`, das wirft. */
+    findAll(predicate: (node: ReactTestInstance) => boolean): ReactTestInstance[];
   }
 
   export interface ReactTestRenderer {

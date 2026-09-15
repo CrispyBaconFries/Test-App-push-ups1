@@ -1423,18 +1423,45 @@ Erreichbar über den Startbildschirm: **🎨 Effekt-Werkstatt (DEV)**.
 neu, schaut es an, beschreibt in Worten was ihm nicht passt, ich rate was gemeint ist. Eine
 Runde kostet einen Build und einen Abend.
 
-Dieser Bildschirm dreht das um. Alle Rahmen-Effekte laufen **gleichzeitig auf dem Handy**,
-mit Reglern für Stärke, Tempo und Größe sowie Umschaltern für Rang und Rahmen-Theme. Unten
-steht die Auswahl als eine Zeile:
+Dieser Bildschirm dreht das um. Der gewählte Rahmen-Effekt läuft **groß auf dem Handy**,
+mit Reglern für Stärke, Tempo, Größe und Ringdicke sowie Umschaltern für Rang und
+Rahmen-Theme. Unten steht die Auswahl als eine Zeile:
 
 ```
-Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Rang Challenger
+Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Ringdicke 4 px · Rang Challenger
 ```
 
 Die schickt chris per „Auswahl teilen" — und ich setze genau das ein, statt zu raten.
 
 **Sieben Effekte** (`src/ranking/frameEffects.ts`): Ohne (Vergleichsmaßstab), Leuchten,
 Lichtlauf, Funken, Flammen, Blitze, Aura.
+
+**Es läuft immer nur einer.** Früher stand hier eine Wand aus Vorschaukacheln, jede mit
+einer eigenen laufenden Animation. Bei sieben Effekten ging das; der Katalog, der gerade
+entsteht, hat 31 — und jeder besteht aus mehreren Einzelanimationen. Das wären weit über
+hundert gleichzeitig, in einer `ScrollView` ohne Recycling. Dann ruckelt die Werkstatt
+selbst, und man kann nicht mehr unterscheiden, ob der Effekt hakt oder der Bildschirm —
+also genau die eine Unterscheidung, für die es den Bildschirm gibt.
+
+Deshalb: Die Auswahl darunter ist reiner Text ohne Bewegung, und es läuft genau **eine**
+Effektebene. Bei jeder Wahl (Effekt, Rang, Theme) wird die Vorschau ausgehängt und neu
+aufgebaut, damit die alte Animation nachweislich gestoppt ist. Die Regler lösen bewusst
+keinen Neuaufbau aus — beim Ziehen wäre jeder Zwischenwert ein Neuaufbau, und das ruckelt
+mehr, als es hilft. Ein Test hält das fest („lässt immer nur den gewählten Effekt laufen"),
+weil eine Vorschaukachel wieder einzubauen eine naheliegende, gut gemeinte Änderung ist.
+
+**Die Ringdicke ist nur hier verstellbar.** Im Spiel bestimmt sie der Rang (Bronze 3 px bis
+Challenger 6 px, `rankFrameStyle.ts`) — daran soll man die Stufe erkennen. Der Regler ist
+dazu da, herauszufinden, ob dieser Bereich der richtige ist; er geht deshalb absichtlich
+darüber hinaus (1–14 px).
+
+**Effekte laufen nur im Profil.** Alle Effekte sind für einen **Kreis** gebaut: Sie kreisen
+um einen Mittelpunkt, atmen radial, strahlen nach außen. Der Profil-Avatar ist genau das.
+Eine Ranglisten-Zeile ist es nicht — dort sitzt ein kreisrunder Effekt schief, der Halo der
+einen Zeile ragt in die nächste, und zwanzig sichtbare Zeilen mal mehrere Animationen ist
+derselbe Rechenfehler wie oben, nur an der Stelle, wo nebenher die Posenerkennung läuft.
+Für die Tabellenansicht kommt später eine eigene Familie, die sich an Kanten statt um einen
+Punkt bewegt (Richtung in `docs/grafik-plan.md`, Nachtrag 15.09.2026).
 
 **Warum das keine Bilddateien sind.** Ausführlich in `docs/grafik-plan.md`, kurz: keine
 neue native Abhängigkeit (`react-native-svg`, `expo-linear-gradient` und die Animationen von

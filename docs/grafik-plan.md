@@ -175,3 +175,57 @@ dort schadet Einzigartigkeit nicht, weil es kein Satz ist, der zusammenpassen mu
 
 Punkt 1 und 2 brauchen dich nur zum Schauen und Entscheiden — keine Bildbearbeitung, keine
 Lizenzfragen, kein neuer Build außer dem gewohnten.
+
+---
+
+## Nachtrag 15.09.2026 — wo Effekte laufen, und wo nicht
+
+Zwei Entscheidungen, die beim Umbau der Werkstatt gefallen sind. Beide sind
+Festlegungen, nicht Geschmack — sie begrenzen, was später gebaut wird.
+
+### 1. Die Werkstatt zeigt einen Effekt, nicht alle
+
+Bis hierher lief in der Werkstatt pro Effekt eine eigene Vorschaukachel. Bei sieben
+Effekten ging das. Der Katalog, der gerade entsteht, hat **31** — und jeder Effekt
+besteht aus mehreren laufenden Einzelanimationen (Funken, Flammenzungen, Ringe). Das
+wären deutlich über hundert gleichzeitig, in einer `ScrollView` ohne Recycling.
+
+Das Problem daran ist nicht nur Rechenlast: Wenn die Werkstatt selbst ruckelt, kann man
+nicht mehr unterscheiden, ob ein Effekt hakt oder der Bildschirm — und genau diese
+Unterscheidung ist der einzige Zweck des Bildschirms.
+
+Deshalb jetzt: Die Auswahl ist **reiner Text**, ohne Bewegung. Es läuft immer genau eine
+Effektebene, nämlich die in der großen Vorschau. Bei jeder Wahl (Effekt, Rang, Theme)
+wird die Vorschau ausgehängt und neu aufgebaut, damit die alte Animation nachweislich
+gestoppt ist statt im Hintergrund weiterzulaufen. Die Regler lösen bewusst **keinen**
+Neuaufbau aus — beim Ziehen wäre das ruckeliger als das Problem, das es löst.
+
+Ein Test hält das fest (`EffectWorkshopScreen.test.tsx`, „lässt immer nur den gewählten
+Effekt laufen"): Eine Vorschaukachel wieder einzubauen ist eine naheliegende, gut
+gemeinte Änderung, und sie soll auffallen, bevor sie auf dem Gerät landet.
+
+### 2. Rahmen-Effekte gehören ins Profil, nicht in die Rangliste
+
+Alle Effekte des Katalogs sind für einen **Kreis** gebaut: Sie kreisen um einen
+Mittelpunkt, atmen radial, strahlen nach außen. Der Avatar im Profil ist genau das —
+ein runder Kreis mit Platz drumherum.
+
+Die Rangliste ist es nicht. Dort sind es **rechteckige Zeilen**, dicht gestapelt, mit
+36-px-Avataren. Ein Effekt, der für einen Kreis gedacht ist, sitzt darin schief, und der
+Halo der einen Zeile ragt in die nächste. Dazu kommt: zwanzig sichtbare Zeilen mal
+mehrere Animationen je Zeile ist derselbe Rechenfehler wie oben, nur an der Stelle, wo
+nebenher die Posenerkennung läuft.
+
+**Festlegung:** `FrameEffectLayer` wird nur im Profil eingesetzt. Für die
+Tabellenansicht kommt später eine **eigene Familie** von Effekten, die auf rechteckige
+Zellen zugeschnitten ist — Kandidaten, die sich an einer Kante entlang statt um einen
+Punkt bewegen:
+
+- Lichtlauf **die Zeilenkante entlang** (statt um einen Kreis)
+- Farbverlauf, der von links nach rechts durch die Zeile wandert
+- leuchtende Kante nur links (dort, wo heute die Platzierung steht)
+- Schimmer, der einmal schräg über die Zelle streicht
+- Rahmenlinie mit wandernder Lücke (`broken_ring`, aber rechteckig)
+
+Das ist noch keine Auswahl, nur die Richtung. Entworfen wird sie, wenn die runden
+Effekte stehen.

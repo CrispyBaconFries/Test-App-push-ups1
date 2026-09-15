@@ -23,10 +23,22 @@
  *
  * # Wofür der Werkstatt-Bildschirm da ist
  *
- * `EffectWorkshopScreen` zeigt alle Effekte nebeneinander, mit Reglern für Stärke, Tempo
- * und Größe. chris entscheidet damit **auf dem Handy** statt an einem Screenshot, und
- * kann das Ergebnis als eine Zeile ablesen (`describeSelection`) und mir durchgeben.
- * Ohne das rate ich, wie etwas wirkt, das ich nie zu sehen bekomme.
+ * `EffectWorkshopScreen` zeigt **einen** Effekt in einer großen Vorschau, mit Reglern für
+ * Stärke, Tempo, Größe und Ringdicke. chris entscheidet damit **auf dem Handy** statt an
+ * einem Screenshot, und kann das Ergebnis als eine Zeile ablesen (`describeSelection`)
+ * und mir durchgeben. Ohne das rate ich, wie etwas wirkt, das ich nie zu sehen bekomme.
+ *
+ * Bewusst *einer* und nicht alle nebeneinander: Jedes Teilchen eines Effekts ist eine
+ * eigene laufende Animation. Bei einer Wand aus Vorschauen sind das schnell über hundert
+ * gleichzeitig - dann ruckelt die Werkstatt selbst, und man sieht nicht mehr, ob der
+ * Effekt ruckelt oder der Bildschirm.
+ *
+ * # Wo Effekte im Spiel auftauchen
+ *
+ * Nur im **Profil**, am großen runden Avatar. In der Rangliste nicht: Dort sind es
+ * rechteckige Zeilen, und ein Effekt, der für einen Kreis gebaut ist, sitzt darin falsch.
+ * Für die Tabellenansicht kommt später eine eigene Familie von Effekten, die auf
+ * rechteckige Zellen zugeschnitten ist.
  */
 
 export const FRAME_EFFECT_IDS = ['none', 'glow', 'rotor', 'sparks', 'flames', 'lightning', 'aura'] as const;
@@ -100,6 +112,18 @@ export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {
 /** Kleinster und größter Avatar-Durchmesser im Werkstatt-Bildschirm. 36 px ist die Größe in der Rangliste, 140 px die im Profil. */
 export const SIZE_RANGE = { min: 36, max: 140 } as const;
 
+/**
+ * Kleinste und größte Ringdicke im Werkstatt-Bildschirm, in px.
+ *
+ * Die Rang-Stufen liegen heute zwischen 3 px (Bronze) und 6 px (Challenger), siehe
+ * `rankFrameStyle.ts`. Der Regler geht bewusst darüber hinaus: Er ist dazu da, den
+ * *richtigen* Bereich zu finden, nicht den bestehenden zu bestätigen.
+ */
+export const RING_RANGE = { min: 1, max: 14 } as const;
+
+/** Ringdicke, mit der die Werkstatt startet - die Mitte der heutigen Rang-Stufen. */
+export const DEFAULT_RING_WIDTH = 4;
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
@@ -155,10 +179,17 @@ export function particleCount(intensity: number, min: number, max: number): numb
  * ab und schickt sie mir. Dann setze ich genau das ein, statt aus "mach's etwas cooler"
  * raten zu müssen.
  */
-export function describeSelection(effectId: FrameEffectId, settings: EffectSettings, tierLabel: string): string {
+export function describeSelection(
+  effectId: FrameEffectId,
+  settings: EffectSettings,
+  tierLabel: string,
+  /** Weggelassen = Ringdicke nicht Teil der Auswahl (sie kommt dann weiterhin vom Rang). */
+  ringWidthPx?: number
+): string {
   const pct = (value: number) => `${Math.round(clamp01(value) * 100)} %`;
+  const ring = ringWidthPx === undefined ? '' : ` · Ringdicke ${Math.round(ringWidthPx)} px`;
   return (
     `${frameEffectById(effectId).label} · Stärke ${pct(settings.intensity)} · ` +
-    `Tempo ${pct(settings.speed)} · Größe ${Math.round(settings.size)} px · Rang ${tierLabel}`
+    `Tempo ${pct(settings.speed)} · Größe ${Math.round(settings.size)} px${ring} · Rang ${tierLabel}`
   );
 }

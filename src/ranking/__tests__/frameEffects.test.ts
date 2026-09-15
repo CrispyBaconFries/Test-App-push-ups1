@@ -1,5 +1,7 @@
 import {
   DEFAULT_EFFECT_SETTINGS,
+  DEFAULT_RING_WIDTH,
+  RING_RANGE,
   FRAME_EFFECTS,
   FRAME_EFFECT_IDS,
   SIZE_RANGE,
@@ -122,5 +124,30 @@ describe('describeSelection', () => {
     const line = describeSelection('glow', { intensity: 0.333, speed: 0.666, size: 87.4 }, 'Gold');
 
     expect(line).toBe('Leuchten · Stärke 33 % · Tempo 67 % · Größe 87 px · Rang Gold');
+  });
+
+  it('nimmt die Ringdicke mit, sobald sie mitgewählt wurde', () => {
+    const line = describeSelection('aura', { intensity: 0.7, speed: 0.4, size: 96 }, 'Challenger', 5);
+
+    expect(line).toBe('Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Ringdicke 5 px · Rang Challenger');
+  });
+
+  it('lässt die Ringdicke weg, wenn sie nicht mitgewählt wurde', () => {
+    // Ohne den Regler bestimmt weiterhin der Rang die Dicke - dann gehört sie auch nicht
+    // in eine Zeile, die als Bauanweisung gelesen wird.
+    const line = describeSelection('aura', { intensity: 0.7, speed: 0.4, size: 96 }, 'Challenger');
+
+    expect(line).not.toContain('Ringdicke');
+  });
+});
+
+describe('RING_RANGE', () => {
+  it('umschließt die heutigen Rang-Dicken, statt sie nur zu bestätigen', () => {
+    // Bronze 3 px bis Challenger 6 px (rankFrameStyle.ts). Ein Regler, der genau diesen
+    // Bereich abdeckt, kann die Frage "ist der Bereich richtig gewählt?" nicht beantworten.
+    expect(RING_RANGE.min).toBeLessThan(3);
+    expect(RING_RANGE.max).toBeGreaterThan(6);
+    expect(DEFAULT_RING_WIDTH).toBeGreaterThanOrEqual(RING_RANGE.min);
+    expect(DEFAULT_RING_WIDTH).toBeLessThanOrEqual(RING_RANGE.max);
   });
 });

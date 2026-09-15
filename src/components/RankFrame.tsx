@@ -19,6 +19,14 @@ interface Props {
   size?: number;
   /** Gekauftes Rahmen-Theme (Münz-Shop) - überschreibt nur die Farben, nicht Ringdicke/Glow/Pulsieren der Rang-Stufe. 'default' (oder weggelassen) = normale Rang-Farbe. */
   frameThemeId?: FrameThemeId;
+  /**
+   * Überschreibt die Ringdicke der Rang-Stufe, in px.
+   *
+   * Nur für die Effekt-Werkstatt gedacht, wo chris genau diesen Wert aussuchen soll. Im
+   * Spiel bleibt die Dicke bei dem, was der Rang vorgibt (`rankFrameStyle.ts`) - sonst
+   * stünde die Dicke nicht mehr für den Rang, und genau das ist ihre Aufgabe.
+   */
+  borderWidth?: number;
 }
 
 /**
@@ -27,10 +35,11 @@ interface Props {
  * leichtes Pulsieren bei Challenger). Die konkrete Icon-/Bild-Auswahl kommt in einem
  * späteren Schritt; hier zählt nur, dass der Rahmen schon jetzt für jeden Rang steht.
  */
-export function RankFrame({ avatar, tier, lp, size = 56, frameThemeId = 'default' }: Props) {
+export function RankFrame({ avatar, tier, lp, size = 56, frameThemeId = 'default', borderWidth }: Props) {
   const tierStyle = frameStyleForTier(tier);
   const style = { ...tierStyle, gradientColors: resolveFrameGradient(tier, frameThemeId) };
-  const outerSize = size + style.borderWidth * 2;
+  const ringWidth = borderWidth ?? style.borderWidth;
+  const outerSize = size + ringWidth * 2;
 
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
