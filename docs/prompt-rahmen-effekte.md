@@ -423,3 +423,81 @@ Wir übernehmen deine Lieferung nur, wenn alles davon zutrifft:
 - Keine Erklärungen, wie React Native funktioniert. Wir kennen es. Schreib den Code.
 - Nichts erfinden, was du nicht sicher weißt. Wenn ein Effekt unter diesen Regeln nicht
   umsetzbar ist, sag das in einem Satz und liefere stattdessen einen weiteren, der es ist.
+
+---
+
+# Nachfass-Befehl (Runde 2)
+
+Zu benutzen, wenn aus Runde 1 eine *Spezifikation* zurückkam statt der Effekt-Komponenten.
+Alles ab der Trennlinie kopieren.
+
+---
+
+Die Übergabe-Dokumentation ist angekommen und inhaltlich freigegeben. Die 24 Effekt-IDs,
+die Beschreibungen, die Rangzuordnung und die Element-Zahlen sind übernommen — daran musst
+du nichts mehr ändern.
+
+**Was fehlt, ist der Code.** Ich brauche jetzt die Implementierung, nicht noch eine
+Beschreibung. Liefere in einer Antwort:
+
+1. **`src/ranking/frameEffects.ts`** — der vollständige, fertige Block: `FRAME_EFFECT_IDS`
+   mit allen 31 Einträgen und das komplette `DEFINITIONS`-Objekt. `'none'` bleibt der
+   **erste** Eintrag (ein Test prüft das), die bestehenden sechs behalten ihre Reihenfolge,
+   die 24 neuen kommen dahinter.
+2. **`src/ranking/rankFrameStyle.ts`** — der vollständige Block mit allen fünf Rängen und
+   dem erweiterten Interface.
+3. **Eine Komponente je neuem Effekt**, 24 Stück, im Muster von `GlowEffect`/`SparksEffect`.
+   Signatur exakt:
+   `function XEffect({ settings, colors }: { settings: EffectSettings; colors: readonly [string, string, ...string[]] })`
+4. **Die erweiterte `switch`-Anweisung** in `FrameEffectLayer`.
+
+Dabei sind acht Punkte zu beachten, die in der Übergabe noch fehlen:
+
+**A. `effectSettings` am Rang hat kein `size`, `EffectSettings` schon.** Das ist richtig so
+— die Größe kommt aus dem Anzeigeort (36 px Rangliste, 140 px Profil), nicht aus dem Rang.
+Schreibe an der Stelle, wo beides zusammenkommt, einen Kommentar dazu, und liefere die
+Zusammenführung mit:
+`const settings: EffectSettings = { ...style.effectSettings, size };`
+
+**B. Alles, was „wächst", „sich ausbreitet" oder „zusammenzieht", muss `scale` sein.**
+Betrifft `radar`, `implosion`, `shockwave`, `rays`, `crown`, `ember`. Ein animierter
+SVG-Radius (`r`), eine animierte `width`/`height` oder ein animierter `borderRadius`
+funktionieren mit `useNativeDriver: true` **nicht** — sie werfen zur Laufzeit oder werden
+still ignoriert. Ein Ring, der nach außen läuft, ist also ein `Animated.View` mit festem
+Durchmesser und `transform: [{ scale }]`, dazu abnehmende `opacity`.
+
+**C. „Unregelmäßig" ohne `Math.random()`.** Betrifft `neon`, `electro`, `stardust`,
+`lightning`. Nimm eine Interpolation mit mehreren, ungleich verteilten Stützstellen, z. B.:
+`loop.interpolate({ inputRange: [0, 0.07, 0.11, 0.38, 0.42, 0.61, 1], outputRange: [1, 0.2, 1, 0.35, 1, 0.15, 1] })`
+Die Stützstellen sind fest im Code, damit das Flackern bei jedem Durchlauf gleich aussieht
+und nicht bei jedem Renderdurchlauf neu gewürfelt wird.
+
+**D. Der Werkstatt-Bildschirm zeigt alle Effekte gleichzeitig.** Nach deiner Element-Zählung
+wären das **151 gleichzeitig laufende Animationen** in einer `ScrollView` ohne
+Virtualisierung — auf einem Mittelklasse-Android wird das ruckeln. Liefere deshalb
+zusätzlich:
+
+- eine Konstante je Effekt, die seine Element-Zahl maschinenlesbar macht (z. B. Feld
+  `movingParts: number` in `FrameEffectDefinition`), und
+- einen Vorschlag in zwei Sätzen, wie der Werkstatt-Bildschirm das lösen sollte
+  (Vorschlag von mir: nur der gerade ausgewählte Effekt läuft animiert, alle anderen als
+  Standbild — aber sag, wenn du etwas Besseres siehst).
+
+**E. Gold bekommt `glow`** — das ist der schlichteste der bestehenden Effekte und gleichzeitig
+der Standard-Look. Die drei obersten Ränge sollen sich deutlich voneinander abheben. Schlage
+für Gold **einen der neuen** Effekte vor (`comet` oder `marquee` wären meine Kandidaten) und
+begründe in einem Satz. Diamant (`prism`) und Challenger (`aura`) bleiben.
+
+**F. `FrameEffectId` ist ein aus `FRAME_EFFECT_IDS` abgeleiteter Union-Typ**, und
+`DEFINITIONS` ist ein `Record<FrameEffectId, FrameEffectDefinition>`. Fehlt auch nur eine
+Kennung, schlägt der Typecheck fehl. Liefere das Objekt vollständig, nicht mit „… usw.".
+
+**G. Keine Auslassungen.** Kein `// ... wie oben`, kein „analog zu". Jede der 24 Komponenten
+vollständig ausgeschrieben. Wenn die Antwort dafür zu lang wird, teile sie auf mehrere
+Nachrichten auf und sag am Ende jeder, was noch kommt.
+
+**H. Prüfe deinen eigenen Code vor dem Absenden** gegen diese Liste und schreibe unter jeden
+Block eine Zeile, dass er sie einhält:
+kein neues Paket · `useNativeDriver: true` · nur `transform`/`opacity` animiert · kein
+`Math.random()` · keine hartkodierte Farbe · alle Maße aus `settings.size` · höchstens 12
+bewegte Elemente · nichts schneller als ~4 Hz.
