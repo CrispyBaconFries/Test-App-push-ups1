@@ -1433,15 +1433,30 @@ Aura · Stärke 70 % · Tempo 40 % · Größe 96 px · Ringdicke 4 px · Rang Ch
 
 Die schickt chris per „Auswahl teilen" — und ich setze genau das ein, statt zu raten.
 
-**Sieben Effekte** (`src/ranking/frameEffects.ts`): Ohne (Vergleichsmaßstab), Leuchten,
-Lichtlauf, Funken, Flammen, Blitze, Aura.
+**31 Effekte** (`src/ranking/frameEffects.ts`), nach Art der Bewegung sortiert:
+
+| Gruppe | Datei | Effekte |
+|---|---|---|
+| Ursprünglich | `FrameEffectLayer.tsx` | Ohne (Vergleichsmaßstab), Leuchten, Lichtlauf, Funken, Flammen, Blitze, Aura |
+| Kreisend | `frame-effects/orbits.tsx` | Komet, Doppelrotor, Umlaufbahnen, Helix, Sonnenwind, Schwerkraft, Sternenstaub, Goldregen |
+| Ringe & Flächen | `frame-effects/rings.tsx` | Radar, Implosion, Druckwelle, Prisma, Bruchring, Neon, Lauflicht, Herzschlag, Glut, Rauch |
+| Feste Formen | `frame-effects/shapes.tsx` | Splitter, Kristalle, Strahlenkranz, Strom, Wellenpunkte, Krone |
+
+Die sieben ursprünglichen sind dort geblieben, wo sie sind: Sie sind die einzigen, die SVG
+und Farbverläufe brauchen, und ein Umzug hätte sieben funktionierende Effekte angefasst,
+um nichts zu gewinnen.
+
+**Die Regler starten in der Mitte** — Stärke 50 %, Tempo 50 %, Größe 88 px, Ringdicke 8 px
+(`sliderMidpoint`). Bei Größe und Ringdicke fängt der Bereich nicht bei null an; gemeint
+ist die Mitte des Reglers, nicht die Hälfte des Höchstwerts. Die läge bei der Größe im
+linken Drittel und sähe aus wie ein Fehler.
 
 **Es läuft immer nur einer.** Früher stand hier eine Wand aus Vorschaukacheln, jede mit
-einer eigenen laufenden Animation. Bei sieben Effekten ging das; der Katalog, der gerade
-entsteht, hat 31 — und jeder besteht aus mehreren Einzelanimationen. Das wären weit über
-hundert gleichzeitig, in einer `ScrollView` ohne Recycling. Dann ruckelt die Werkstatt
-selbst, und man kann nicht mehr unterscheiden, ob der Effekt hakt oder der Bildschirm —
-also genau die eine Unterscheidung, für die es den Bildschirm gibt.
+einer eigenen laufenden Animation. Bei sieben Effekten ging das; bei 31 — jeder aus
+mehreren Einzelanimationen — wären es weit über hundert gleichzeitig, in einer
+`ScrollView` ohne Recycling. Dann ruckelt die Werkstatt selbst, und man kann nicht mehr
+unterscheiden, ob der Effekt hakt oder der Bildschirm — also genau die eine
+Unterscheidung, für die es den Bildschirm gibt.
 
 Deshalb: Die Auswahl darunter ist reiner Text ohne Bewegung, und es läuft genau **eine**
 Effektebene. Bei jeder Wahl (Effekt, Rang, Theme) wird die Vorschau ausgehängt und neu
@@ -1463,6 +1478,17 @@ derselbe Rechenfehler wie oben, nur an der Stelle, wo nebenher die Posenerkennun
 Für die Tabellenansicht kommt später eine eigene Familie, die sich an Kanten statt um einen
 Punkt bewegt (Richtung in `docs/grafik-plan.md`, Nachtrag 15.09.2026).
 
+**Die Tür für gekaufte und erspielte Effekte steht offen.** `PlayerFrameEffect`
+(`frameEffects.ts`) beschreibt, was ein einzelner Spieler trägt: Effekt **plus** seine
+Regler-Werte. Dass die Werte mitreisen statt fest im Effekt zu stehen, ist der ganze
+Punkt — zwei Spieler mit demselben Effekt, aber eigener Stärke, eigenem Tempo und eigener
+Größe sehen unterschiedlich aus. Damit kann derselbe Effekt später im Münz-Shop liegen
+(wie die Rahmen-Themes), gegen echtes Geld gehen oder die Belohnung für eine Leistung
+sein, und die Werkstatt ist die Vorlage für den Einstell-Bildschirm, den ein Spieler dann
+bekommt. Bewusst **kein** Preis- oder Freigabemodell im Code: Solange nicht entschieden
+ist, was etwas kostet und was man dafür tun muss, wäre das geraten. Heute trägt niemand
+einen Effekt — im Spiel ist überall `none`.
+
 **Warum das keine Bilddateien sind.** Ausführlich in `docs/grafik-plan.md`, kurz: keine
 neue native Abhängigkeit (`react-native-svg`, `expo-linear-gradient` und die Animationen von
 React Native waren längst da — also kein `npm install`, kein Prebuild, kein neues
@@ -1478,15 +1504,31 @@ schon die Posenerkennung rechnet. Was das kostet: Eine Flamme kann ihre *Form* n
 verändern, nur Größe, Lage und Deckkraft. Für mehrere Zungen mit versetzten Phasen reicht
 das; für eine echte, sich verformende Flamme wäre Lottie der richtige Weg.
 
-**Zwei Fallen, die beim Bauen zugeschlagen haben** (beide stehen als Kommentar im Code):
+**Vier Fallen, die beim Bauen zugeschlagen haben** (alle stehen als Kommentar in
+`frame-effects/kit.tsx`, wo die Bausteine sie abfangen):
 
 - Ein Teilchen mit `translateY` nach außen schieben und *dann* drehen dreht um den
-  Mittelpunkt des **Teilchens**, nicht um den des Avatars. Richtig ist ein quadratischer
-  Kasten, der sich dreht, mit dem Teilchen oben mittig — der Radius ist dann die halbe
-  Kastenbreite.
+  Mittelpunkt des **Teilchens**, nicht um den des Avatars. Bei einem runden Punkt sieht
+  man von der Drehung gar nichts, und alle Teilchen liegen auf einer Geraden statt auf
+  einem Kreis. Richtig ist ein quadratischer Kasten, der sich dreht, mit dem Teilchen oben
+  mittig — der Radius ist dann die halbe Kastenbreite. Dafür sind `Orbit` und `Spoke` da.
 - `Animated.delay` **innerhalb** von `Animated.loop` wartet bei *jedem* Durchlauf erneut;
   aus gleichmäßigem Kreisen wird Stottern. Gewollt ist eine einmalige Phasenverschiebung,
-  also ein `setTimeout` vor dem Start der Schleife.
+  also ein `setTimeout` vor dem Start der Schleife (`useLoop(dauer, versatz)`).
+- Eine **`inputRange` muss steigen**. Ein Versatz, der mit `(phase + 0.15) % 1` gerechnet
+  wird, kippt bei hohen Phasen über die 1, und React Native wirft beim Rendern. Der
+  Versatz gehört in `useLoop`, nicht in die Kennlinie.
+- Ein **gleichfarbiger Kreisrand, der sich dreht, sieht aus wie einer, der steht.**
+  Drehung wird nur sichtbar, wenn der Ring irgendwo anders ist als anderswo — eine Lücke
+  (Bruchring), verschiedene Seitenfarben (Prisma) oder ein Zeiger (Radar). Ein
+  „rotierender Ring“ ohne eines dieser drei Merkmale ist ein toter Effekt, der im Katalog
+  Platz belegt.
+
+**Drei Tests halten das, was `tsc` nicht sieht:** dass jeder Effekt an beiden
+Reglergrenzen wirklich rendert (dort fliegt eine kaputte Kennlinie auf), dass **jedes**
+Element eines Effekts absolut auf dem Mittelpunkt liegt (sonst zentriert `Layer` per
+Flexbox und macht aus dem Effekt eine Spalte), und dass kein Effekt die Obergrenze von
+zwölf bewegten Teilen reißt (`movingParts`, siehe `frameEffects.ts`).
 
 **Der Schieberegler ist selbst gebaut** (`src/components/Slider.tsx`). React Native bringt
 seit Jahren keinen mit, und `@react-native-community/slider` wäre eine **native**

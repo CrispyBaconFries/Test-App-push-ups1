@@ -123,6 +123,14 @@ export function EffectWorkshopScreen({ navigation }: Props) {
 
         <Text style={styles.effectName}>{frameEffectById(effectId).label}</Text>
         <Text style={styles.effectDescription}>{frameEffectById(effectId).description}</Text>
+        {/* Die Zahl steht hier, weil sie eine echte Entscheidungshilfe ist: Zwölf bewegte
+            Teile kosten spürbar mehr als zwei, und beim Aussuchen soll man das sehen
+            können statt es später am Ruckeln zu merken. */}
+        <Text style={styles.effectMeta}>
+          {frameEffectById(effectId).movingParts === 0
+            ? 'Nichts in Bewegung'
+            : `${frameEffectById(effectId).movingParts} bewegte Teile bei voller Stärke`}
+        </Text>
 
         {/* Reine Textauswahl, ohne Vorschaubilder: Jede Kachel wäre eine weitere laufende
             Animation, und genau die sollen hier nicht nebenher rechnen. Verglichen wird,
@@ -336,6 +344,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: font(19),
     marginTop: space(4),
+  },
+  effectMeta: {
+    fontFamily: fonts.semiBold,
+    fontSize: font(11),
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: space(6),
   },
   section: {
     marginTop: space(24),

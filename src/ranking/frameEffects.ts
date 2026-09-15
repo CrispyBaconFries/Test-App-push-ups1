@@ -41,7 +41,44 @@
  * rechteckige Zellen zugeschnitten ist.
  */
 
-export const FRAME_EFFECT_IDS = ['none', 'glow', 'rotor', 'sparks', 'flames', 'lightning', 'aura'] as const;
+export const FRAME_EFFECT_IDS = [
+  // Die ersten sieben sind die ursprünglichen und stehen bewusst zuerst - "Ohne" ist der
+  // Vergleichsmaßstab im Werkstatt-Bildschirm und muss der erste Eintrag bleiben.
+  'none',
+  'glow',
+  'rotor',
+  'sparks',
+  'flames',
+  'lightning',
+  'aura',
+  // Vierundzwanzig weitere, nach Art der Bewegung sortiert: erst kreisende, dann Ringe
+  // und Flächen, dann feste Formen. Die Reihenfolge ist die Reihenfolge im
+  // Werkstatt-Bildschirm.
+  'comet',
+  'double_rotor',
+  'orbit_rings',
+  'helix',
+  'solar_wind',
+  'gravity',
+  'stardust',
+  'gold_rain',
+  'radar',
+  'implosion',
+  'shockwave',
+  'prism',
+  'broken_ring',
+  'neon',
+  'marquee',
+  'heartbeat',
+  'ember',
+  'smoke',
+  'shards',
+  'crystals',
+  'rays',
+  'electro',
+  'wave_points',
+  'crown',
+] as const;
 
 export type FrameEffectId = (typeof FRAME_EFFECT_IDS)[number];
 
@@ -50,43 +87,206 @@ export interface FrameEffectDefinition {
   label: string;
   /** Ein Satz, der beschreibt, was man sieht - steht im Werkstatt-Bildschirm unter dem Effekt. */
   description: string;
+  /**
+   * Wie viele Elemente bei voller Stärke gleichzeitig animiert laufen.
+   *
+   * Kein Schmuckwert: Jedes bewegte Element ist eine eigene Animation, und die App rechnet
+   * nebenher die Posenerkennung. Die Zahl ist die Obergrenze, gegen die ein Test prüft -
+   * ohne sie wächst ein Effekt beim Feintuning still von acht auf dreißig Teilchen, und
+   * auffallen würde es erst auf dem Gerät.
+   */
+  movingParts: number;
 }
+
+/** Obergrenze für `movingParts`. Bewusst niedrig - siehe dort. */
+export const MAX_MOVING_PARTS = 12;
 
 const DEFINITIONS: Record<FrameEffectId, FrameEffectDefinition> = {
   none: {
     id: 'none',
     label: 'Ohne',
     description: 'Nur der Rang-Ring, wie er heute aussieht. Der Vergleichsmaßstab.',
+    movingParts: 0,
   },
   glow: {
     id: 'glow',
     label: 'Leuchten',
     description: 'Weicher Schein rundherum, der mit dem Atem größer und kleiner wird.',
+    movingParts: 1,
   },
   rotor: {
     id: 'rotor',
     label: 'Lichtlauf',
     description: 'Ein heller Punkt wandert einmal um den Ring - der "legendär"-Look.',
+    movingParts: 1,
   },
   sparks: {
     id: 'sparks',
     label: 'Funken',
     description: 'Kleine Funken kreisen um den Rahmen, jeder mit eigenem Tempo.',
+    movingParts: 9,
   },
   flames: {
     id: 'flames',
     label: 'Flammen',
     description: 'Züngelnde Flammenzungen rund um den Rahmen, jede in eigenem Takt.',
+    movingParts: 9,
   },
   lightning: {
     id: 'lightning',
     label: 'Blitze',
     description: 'Gezackte Blitze, die im unregelmäßigen Takt kurz aufblitzen.',
+    movingParts: 5,
   },
   aura: {
     id: 'aura',
     label: 'Aura',
     description: 'Große pulsierende Aura mit aufsteigenden Funken - Super-Saiyajin.',
+    movingParts: 11,
+  },
+  comet: {
+    id: 'comet',
+    label: 'Komet',
+    description: 'Ein heller Kopf mit Schweif jagt um den Rahmen.',
+    movingParts: 5,
+  },
+  double_rotor: {
+    id: 'double_rotor',
+    label: 'Doppelrotor',
+    description: 'Zwei gegenläufige Flügelpaare auf unterschiedlichen Bahnen.',
+    movingParts: 4,
+  },
+  orbit_rings: {
+    id: 'orbit_rings',
+    label: 'Umlaufbahnen',
+    description: 'Drei Bahnen mit je einem Trabanten, jeder in eigenem Tempo.',
+    movingParts: 3,
+  },
+  helix: {
+    id: 'helix',
+    label: 'Helix',
+    description: 'Zwei gegenläufige Perlenbänder, deren Perlen vorn größer wirken als hinten.',
+    movingParts: 8,
+  },
+  solar_wind: {
+    id: 'solar_wind',
+    label: 'Sonnenwind',
+    description: 'Langgezogene Böen ziehen auf mehreren Bahnen am Rahmen vorbei.',
+    movingParts: 8,
+  },
+  gravity: {
+    id: 'gravity',
+    label: 'Schwerkraft',
+    description: 'Teilchen werden von außen zum Avatar gezogen und werden dabei kleiner.',
+    movingParts: 10,
+  },
+  stardust: {
+    id: 'stardust',
+    label: 'Sternenstaub',
+    description: 'Ein stilles Funkelfeld in ungleichen Abständen rund um den Rahmen.',
+    movingParts: 12,
+  },
+  gold_rain: {
+    id: 'gold_rain',
+    label: 'Goldregen',
+    description: 'Glitzernde Tropfen fallen am Rahmen vorbei nach unten.',
+    movingParts: 11,
+  },
+  radar: {
+    id: 'radar',
+    label: 'Radar',
+    description: 'Ein Zeiger mit Nachleuchten streicht wie auf einem Radarschirm umher.',
+    movingParts: 6,
+  },
+  implosion: {
+    id: 'implosion',
+    label: 'Implosion',
+    description: 'Ringe fallen von außen auf den Avatar zusammen.',
+    movingParts: 3,
+  },
+  shockwave: {
+    id: 'shockwave',
+    label: 'Druckwelle',
+    description: 'Ringe laufen vom Avatar nach außen und verlaufen sich.',
+    movingParts: 3,
+  },
+  prism: {
+    id: 'prism',
+    label: 'Prisma',
+    description: 'Ein Ring mit verschiedenfarbigen Seiten dreht sich, innen ein zweiter dagegen.',
+    movingParts: 2,
+  },
+  broken_ring: {
+    id: 'broken_ring',
+    label: 'Bruchring',
+    description: 'Zwei Ringe mit wandernder Lücke, gegenläufig.',
+    movingParts: 2,
+  },
+  neon: {
+    id: 'neon',
+    label: 'Neon',
+    description: 'Eine Leuchtröhre, die unruhig flackert.',
+    movingParts: 2,
+  },
+  marquee: {
+    id: 'marquee',
+    label: 'Lauflicht',
+    description: 'Lampen rund um den Rahmen springen der Reihe nach an.',
+    movingParts: 12,
+  },
+  heartbeat: {
+    id: 'heartbeat',
+    label: 'Herzschlag',
+    description: 'Der Ring pocht im Doppelschlag, wie ein Puls.',
+    movingParts: 2,
+  },
+  ember: {
+    id: 'ember',
+    label: 'Glut',
+    description: 'Eine ruhige warme Glut mit einzelnen aufsteigenden Funken.',
+    movingParts: 7,
+  },
+  smoke: {
+    id: 'smoke',
+    label: 'Rauch',
+    description: 'Große weiche Schwaden steigen langsam auf und vergehen.',
+    movingParts: 3,
+  },
+  shards: {
+    id: 'shards',
+    label: 'Splitter',
+    description: 'Scharfkantige Splitter fliegen vom Rahmen weg und verglühen.',
+    movingParts: 8,
+  },
+  crystals: {
+    id: 'crystals',
+    label: 'Kristalle',
+    description: 'Zwei gegenläufige Kränze aus Rauten, die dabei atmen.',
+    movingParts: 9,
+  },
+  rays: {
+    id: 'rays',
+    label: 'Strahlenkranz',
+    description: 'Unterschiedlich lange Strahlen drehen sich langsam um den Avatar.',
+    movingParts: 12,
+  },
+  electro: {
+    id: 'electro',
+    label: 'Strom',
+    description: 'Kurze Entladungen knistern rund um den Rand.',
+    movingParts: 10,
+  },
+  wave_points: {
+    id: 'wave_points',
+    label: 'Wellenpunkte',
+    description: 'Eine Welle läuft durch die Punkte am Rand, nach außen und zurück.',
+    movingParts: 10,
+  },
+  crown: {
+    id: 'crown',
+    label: 'Krone',
+    description: 'Eine leuchtende Krone steht über dem Avatar.',
+    movingParts: 5,
   },
 };
 
@@ -103,11 +303,39 @@ export interface EffectSettings {
   size: number;
 }
 
-export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {
-  intensity: 0.6,
-  speed: 0.5,
-  size: 96,
-};
+/** Ein Regler-Bereich mit kleinstem und größtem Wert. */
+export interface SliderRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * Die Mitte eines Regler-Bereichs - der Startwert jedes Effekts.
+ *
+ * chris wollte "alle Werte vorab auf 50 %". Bei Stärke und Tempo (0 bis 1) ist das
+ * eindeutig: 0,5. Bei Größe und Ringdicke fängt der Bereich nicht bei null an, und dort
+ * gibt es zwei Lesarten - die Hälfte des Höchstwerts (70 px) oder die Mitte des Bereichs
+ * (88 px). Gewählt ist die Mitte des Bereichs, weil das die Lesart ist, die man auf dem
+ * Bildschirm *sieht*: Der Reglerknopf steht in der Mitte, nach links wie nach rechts ist
+ * gleich viel Luft. Die Hälfte des Höchstwerts läge bei Größe im linken Drittel und sähe
+ * aus wie ein Fehler.
+ *
+ * Eine Funktion und keine ausgeschriebenen Zahlen, damit ein geänderter Bereich den
+ * Startwert automatisch mitnimmt - sonst steht irgendwann eine Vorgabe außerhalb ihres
+ * eigenen Reglers.
+ */
+export function sliderMidpoint(range: SliderRange): number {
+  return Math.round((range.min + range.max) / 2);
+}
+
+/**
+ * Stärke und Tempo laufen von 0 bis 1, hier in Prozent notiert.
+ *
+ * In Prozent und nicht als 0..1, damit `sliderMidpoint` überall dieselbe, ganzzahlige
+ * Rechnung macht - bei 0..1 käme dort durch das Runden 1 statt 0,5 heraus.
+ */
+export const INTENSITY_RANGE = { min: 0, max: 100 } as const;
+export const SPEED_RANGE = { min: 0, max: 100 } as const;
 
 /** Kleinster und größter Avatar-Durchmesser im Werkstatt-Bildschirm. 36 px ist die Größe in der Rangliste, 140 px die im Profil. */
 export const SIZE_RANGE = { min: 36, max: 140 } as const;
@@ -121,8 +349,20 @@ export const SIZE_RANGE = { min: 36, max: 140 } as const;
  */
 export const RING_RANGE = { min: 1, max: 14 } as const;
 
-/** Ringdicke, mit der die Werkstatt startet - die Mitte der heutigen Rang-Stufen. */
-export const DEFAULT_RING_WIDTH = 4;
+/** Ringdicke, mit der die Werkstatt startet: die Mitte des Reglers (siehe `sliderMidpoint`). */
+export const DEFAULT_RING_WIDTH = sliderMidpoint(RING_RANGE);
+
+/**
+ * Womit jeder Effekt startet: jeder Regler in der Mitte.
+ *
+ * Ein bewusst neutraler Ausgangspunkt - von hier aus ist "mehr" und "weniger" gleich weit
+ * entfernt, und niemand muss raten, ob eine Vorgabe schon eine Meinung war.
+ */
+export const DEFAULT_EFFECT_SETTINGS: EffectSettings = {
+  intensity: sliderMidpoint(INTENSITY_RANGE) / 100,
+  speed: sliderMidpoint(SPEED_RANGE) / 100,
+  size: sliderMidpoint(SIZE_RANGE),
+};
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -193,3 +433,39 @@ export function describeSelection(
     `Tempo ${pct(settings.speed)} · Größe ${Math.round(settings.size)} px${ring} · Rang ${tierLabel}`
   );
 }
+
+/**
+ * Was ein einzelner Spieler an seinem Avatar trägt.
+ *
+ * # Warum die Regler-Werte mitreisen und nicht fest im Effekt stehen
+ *
+ * Noch trägt niemand einen Effekt - im Spiel ist heute überall `none`, und eingebaut wird
+ * erst, was chris in der Werkstatt aussucht (Aufgabe #10). Dieser Typ hält die Tür für
+ * zwei Dinge offen, die später kommen sollen:
+ *
+ * - **Gekauft** (Münz-Shop, wie die Rahmen-Themes in `frameThemes.ts`) oder später gegen
+ *   echtes Geld.
+ * - **Erspielt** - ein Effekt als Belohnung für eine Leistung, nicht für Geld.
+ *
+ * In beiden Fällen ist das Verstellbare der eigentliche Wert: Zwei Spieler mit demselben
+ * Effekt, aber eigener Stärke, eigenem Tempo und eigener Größe sehen unterschiedlich aus.
+ * Stünden die Werte fest im Effekt, wäre jeder gekaufte Effekt bei allen gleich, und die
+ * Werkstatt wäre ein Entwicklerwerkzeug geblieben statt der Vorlage für einen späteren
+ * Einstell-Bildschirm.
+ *
+ * Bewusst **kein** Freigabe-/Preis-Modell hier: Solange niemand entschieden hat, was
+ * etwas kostet und was man dafür tun muss, wäre das geraten. Der Typ beschreibt nur, was
+ * ein Spieler trägt - wer es ihm gegeben hat, klärt die Stelle, die es vergibt.
+ */
+export interface PlayerFrameEffect {
+  effectId: FrameEffectId;
+  settings: EffectSettings;
+  /** Ringdicke in px, oder weggelassen: dann bestimmt sie weiterhin der Rang. */
+  ringWidthPx?: number;
+}
+
+/** Was jeder Spieler hat, solange nichts gekauft oder erspielt wurde: den Rang-Ring, sonst nichts. */
+export const DEFAULT_PLAYER_FRAME_EFFECT: PlayerFrameEffect = {
+  effectId: 'none',
+  settings: DEFAULT_EFFECT_SETTINGS,
+};

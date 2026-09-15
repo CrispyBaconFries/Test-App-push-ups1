@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet, type ViewStyle } from 'react-native';
 import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 import { FrameEffectLayer } from '../FrameEffectLayer';
 import { FRAME_EFFECT_IDS, SIZE_RANGE, type EffectSettings } from '../../ranking/frameEffects';
@@ -77,6 +78,34 @@ describe('FrameEffectLayer', () => {
     const renderer = renderEffect('none', settings);
     expect(renderer.toJSON()).toBeNull();
   });
+
+  it.each(FRAME_EFFECT_IDS.filter((id) => id !== 'none'))(
+    'legt bei "%s" jedes Element absolut auf den Mittelpunkt',
+    (effectId) => {
+      // Der Fehler, den dieser Test fängt: `Layer` zentriert seine Kinder per Flexbox.
+      // Ein Kind ohne `position: 'absolute'` landet deshalb *unter* seinen Geschwistern
+      // statt über ihnen - aus einem Effekt wird eine Spalte, die den Avatar wegschiebt.
+      // Das ist beim ersten Anlauf reihenweise passiert, `tsc` merkt davon nichts, und
+      // auf dem Bildschirm sieht man es erst nach einem kompletten Release-Build.
+      const renderer = renderEffect(effectId, settings);
+      act(() => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      const layer = renderer.toJSON() as { children?: { props?: { style?: unknown } }[] } | null;
+      expect(layer).not.toBeNull();
+      const children = layer?.children ?? [];
+      expect(children.length).toBeGreaterThan(0);
+      for (const child of children) {
+        const flat = StyleSheet.flatten(child.props?.style as ViewStyle | ViewStyle[]);
+        expect(flat?.position).toBe('absolute');
+      }
+
+      act(() => {
+        renderer.unmount();
+      });
+    }
+  );
 
   it('sammelt bei wiederholtem Öffnen keine Schleifen an', () => {
     // Ohne sauberes Aufräumen liefen die Animationen weiter, nachdem der Bildschirm

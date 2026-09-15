@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 import {
@@ -10,6 +10,37 @@ import {
   type EffectSettings,
   type FrameEffectId,
 } from '../ranking/frameEffects';
+import { Layer, Orbit, breathe, effectStyles, phases, useLoop } from './frame-effects/kit';
+import {
+  CometEffect,
+  DoubleRotorEffect,
+  GoldRainEffect,
+  GravityEffect,
+  HelixEffect,
+  OrbitRingsEffect,
+  SolarWindEffect,
+  StardustEffect,
+} from './frame-effects/orbits';
+import {
+  BrokenRingEffect,
+  EmberEffect,
+  HeartbeatEffect,
+  ImplosionEffect,
+  MarqueeEffect,
+  NeonEffect,
+  PrismEffect,
+  RadarEffect,
+  ShockwaveEffect,
+  SmokeEffect,
+} from './frame-effects/rings';
+import {
+  CrownEffect,
+  CrystalsEffect,
+  ElectroEffect,
+  RaysEffect,
+  ShardsEffect,
+  WavePointsEffect,
+} from './frame-effects/shapes';
 
 /**
  * Zeichnet einen Rahmen-Effekt **hinter** einen Avatar (siehe `RankFrame`).
@@ -32,6 +63,22 @@ import {
  * eine echte, sich verformende Flamme nicht - dafür wäre Lottie der richtige Weg, siehe
  * `docs/grafik-plan.md`.
  *
+ * # Wo was steht
+ *
+ * Diese Datei ist die **Weiche**: Sie ordnet jeder Kennung ihren Effekt zu. Die Effekte
+ * selbst liegen daneben, nach Art der Bewegung getrennt:
+ *
+ * - `frame-effects/kit.tsx` - die gemeinsamen Bausteine (`Layer`, `Orbit`, `Spoke`,
+ *   `SpinGroup`, `useLoop`, `breathe`, `phases`). **Dort** stehen auch die drei Fallen,
+ *   in die man bei Kreisbahnen und Kennlinien sonst zuverlässig tritt.
+ * - `frame-effects/orbits.tsx` - alles, was um den Avatar herumläuft.
+ * - `frame-effects/rings.tsx` - Ringe und Flächen.
+ * - `frame-effects/shapes.tsx` - feste Formen an festen Stellen.
+ *
+ * Die sieben ursprünglichen Effekte sind bewusst *hier* geblieben: Sie sind die einzigen,
+ * die SVG und Farbverläufe brauchen, und ein Umzug hätte sieben funktionierende Effekte
+ * angefasst, um nichts zu gewinnen.
+ *
  * # Wie die Ebenen liegen
  *
  * Jeder Effekt sitzt in einer `Layer`: absolut positioniert, füllt den Elternknoten
@@ -40,10 +87,10 @@ import {
  * müssen - und weil die Ebene absolut liegt, verschiebt sie das Layout nicht.
  *
  * Kreisende Teilchen benutzen durchgehend dasselbe Muster: **ein quadratischer Kasten,
- * der sich dreht, mit dem Teilchen oben mittig**. Der Radius ist damit die halbe
- * Kastenbreite. Der naheliegende Weg (Teilchen um `translateY` verschieben und dann
- * drehen) tut nicht dasselbe - gedreht würde um den Mittelpunkt des *Teilchens*, nicht um
- * den des Avatars.
+ * der sich dreht, mit dem Teilchen oben mittig** (`Orbit`, bzw. `Spoke` für einen festen
+ * Winkel). Der Radius ist damit die halbe Kastenbreite. Der naheliegende Weg (Teilchen um
+ * `translateY` verschieben und dann drehen) tut nicht dasselbe - gedreht würde um den
+ * Mittelpunkt des *Teilchens*, nicht um den des Avatars.
  */
 
 export interface FrameEffectLayerProps {
@@ -51,77 +98,6 @@ export interface FrameEffectLayerProps {
   settings: EffectSettings;
   /** Farben des Rang-Rings bzw. des gekauften Themes - der Effekt nimmt sie mit. */
   colors: readonly [string, string, ...string[]];
-}
-
-/**
- * Ein Wert, der endlos von 0 nach 1 läuft.
- *
- * `Easing.linear` und nicht die Vorgabe: Bei Drehungen erzeugt jede andere Kennlinie ein
- * sichtbares Stocken an der Stelle, an der der Durchlauf von 1 wieder auf 0 springt.
- *
- * Der Versatz (`delayMs`) läuft über `setTimeout` und **nicht** über `Animated.delay`
- * innerhalb der Schleife: Dort würde er bei *jedem* Durchlauf erneut warten, aus dem
- * gleichmäßigen Kreisen würde ein Stottern. Gewollt ist eine einmalige Phasenverschiebung,
- * damit nicht alle Teilchen im Gleichschritt laufen.
- */
-function useLoop(durationMs: number, delayMs = 0): Animated.Value {
-  const value = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    let animation: Animated.CompositeAnimation | null = null;
-    value.setValue(0);
-    const timer = setTimeout(() => {
-      animation = Animated.loop(
-        Animated.timing(value, {
-          toValue: 1,
-          duration: durationMs,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      animation.start();
-    }, delayMs);
-    return () => {
-      clearTimeout(timer);
-      animation?.stop();
-    };
-  }, [durationMs, delayMs, value]);
-  return value;
-}
-
-/** Ein "Atmen": 0 → 1 → 0 über einen Durchlauf, für Pulsieren. */
-function breathe(loop: Animated.Value, from: number, to: number) {
-  return loop.interpolate({ inputRange: [0, 0.5, 1], outputRange: [from, to, from] });
-}
-
-/** Feste, ungleichmäßig verteilte Phasen (goldener Schnitt) - besser als `Math.random()`, das bei jedem Render neu würfeln und die Teilchen umherspringen lassen würde. */
-function phases(count: number): number[] {
-  return Array.from({ length: count }, (_, i) => (i * 0.618) % 1);
-}
-
-/** Absolut liegende Ebene, die den Avatar füllt und ihre Kinder auf dessen Mittelpunkt zentriert. */
-function Layer({ children }: { children: React.ReactNode }) {
-  return (
-    <View pointerEvents="none" style={styles.layer}>
-      {children}
-    </View>
-  );
-}
-
-/** Ein Kasten, der sich um den Mittelpunkt dreht, mit seinem Inhalt oben mittig. Der Radius ist `radius`. */
-function Orbit({ radius, loop, children }: { radius: number; loop: Animated.Value; children: React.ReactNode }) {
-  const rotate = loop.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.stacked,
-        { width: radius * 2, height: radius * 2, justifyContent: 'flex-start' },
-        { transform: [{ rotate }] },
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
 }
 
 export function FrameEffectLayer({ effectId, settings, colors }: FrameEffectLayerProps) {
@@ -140,7 +116,71 @@ export function FrameEffectLayer({ effectId, settings, colors }: FrameEffectLaye
       return <LightningEffect settings={settings} colors={colors} />;
     case 'aura':
       return <AuraEffect settings={settings} colors={colors} />;
+
+    // Kreisende Effekte (frame-effects/orbits.tsx)
+    case 'comet':
+      return <CometEffect settings={settings} colors={colors} />;
+    case 'double_rotor':
+      return <DoubleRotorEffect settings={settings} colors={colors} />;
+    case 'orbit_rings':
+      return <OrbitRingsEffect settings={settings} colors={colors} />;
+    case 'helix':
+      return <HelixEffect settings={settings} colors={colors} />;
+    case 'solar_wind':
+      return <SolarWindEffect settings={settings} colors={colors} />;
+    case 'gravity':
+      return <GravityEffect settings={settings} colors={colors} />;
+    case 'stardust':
+      return <StardustEffect settings={settings} colors={colors} />;
+    case 'gold_rain':
+      return <GoldRainEffect settings={settings} colors={colors} />;
+
+    // Ringe und Flächen (frame-effects/rings.tsx)
+    case 'radar':
+      return <RadarEffect settings={settings} colors={colors} />;
+    case 'implosion':
+      return <ImplosionEffect settings={settings} colors={colors} />;
+    case 'shockwave':
+      return <ShockwaveEffect settings={settings} colors={colors} />;
+    case 'prism':
+      return <PrismEffect settings={settings} colors={colors} />;
+    case 'broken_ring':
+      return <BrokenRingEffect settings={settings} colors={colors} />;
+    case 'neon':
+      return <NeonEffect settings={settings} colors={colors} />;
+    case 'marquee':
+      return <MarqueeEffect settings={settings} colors={colors} />;
+    case 'heartbeat':
+      return <HeartbeatEffect settings={settings} colors={colors} />;
+    case 'ember':
+      return <EmberEffect settings={settings} colors={colors} />;
+    case 'smoke':
+      return <SmokeEffect settings={settings} colors={colors} />;
+
+    // Feste Formen (frame-effects/shapes.tsx)
+    case 'shards':
+      return <ShardsEffect settings={settings} colors={colors} />;
+    case 'crystals':
+      return <CrystalsEffect settings={settings} colors={colors} />;
+    case 'rays':
+      return <RaysEffect settings={settings} colors={colors} />;
+    case 'electro':
+      return <ElectroEffect settings={settings} colors={colors} />;
+    case 'wave_points':
+      return <WavePointsEffect settings={settings} colors={colors} />;
+    case 'crown':
+      return <CrownEffect settings={settings} colors={colors} />;
   }
+
+  /**
+   * Unerreichbar, solange jede Kennung einen Fall hat - und genau das ist der Zweck:
+   * `never` bricht die Typprüfung, sobald jemand `FRAME_EFFECT_IDS` erweitert und den
+   * Fall hier vergisst. Ohne diese Zeile käme `undefined` zurück, und der Effekt fehlte
+   * einfach still.
+   */
+  const missing: never = effectId;
+  void missing;
+  return null;
 }
 
 type EffectProps = Omit<FrameEffectLayerProps, 'effectId'>;
@@ -152,15 +192,21 @@ function GlowEffect({ settings, colors }: EffectProps) {
 
   return (
     <Layer>
+      {/* `stacked` ist hier nicht nötig, solange es bei einem einzigen Element bleibt -
+          aber es gilt für jeden Effekt die gleiche Regel, und ein Test prüft sie. Käme
+          hier je ein zweites Element dazu, läge es sonst *unter* diesem statt darüber. */}
       <Animated.View
-        style={{
-          width: diameter,
-          height: diameter,
-          borderRadius: diameter / 2,
-          backgroundColor: colors[colors.length - 1],
-          opacity: Animated.multiply(breathe(loop, 0.25, 0.6), effectOpacity(settings.intensity)),
-          transform: [{ scale: breathe(loop, 0.94, 1.06) }],
-        }}
+        style={[
+          effectStyles.stacked,
+          {
+            width: diameter,
+            height: diameter,
+            borderRadius: diameter / 2,
+            backgroundColor: colors[colors.length - 1],
+            opacity: Animated.multiply(breathe(loop, 0.25, 0.6), effectOpacity(settings.intensity)),
+            transform: [{ scale: breathe(loop, 0.94, 1.06) }],
+          },
+        ]}
       />
     </Layer>
   );
@@ -175,14 +221,17 @@ function RotorEffect({ settings, colors }: EffectProps) {
   return (
     <Layer>
       <Animated.View
-        style={{
-          width: ring,
-          height: ring,
-          borderRadius: ring / 2,
-          overflow: 'hidden',
-          opacity: effectOpacity(settings.intensity),
-          transform: [{ rotate }],
-        }}
+        style={[
+          effectStyles.stacked,
+          {
+            width: ring,
+            height: ring,
+            borderRadius: ring / 2,
+            overflow: 'hidden',
+            opacity: effectOpacity(settings.intensity),
+            transform: [{ rotate }],
+          },
+        ]}
       >
         {/* Ein Verlauf von durchsichtig nach hell, der mitgedreht wird: Der helle Rand
             wandert damit um den Ring, ohne dass ein echter Kegelverlauf nötig wäre - den
@@ -311,8 +360,8 @@ function Flame({
     <Animated.View
       pointerEvents="none"
       style={[
-        styles.stacked,
-        // `justifyContent: 'flex-start'` ist hier NICHT kosmetisch: `styles.stacked`
+        effectStyles.stacked,
+        // `justifyContent: 'flex-start'` ist hier NICHT kosmetisch: `effectStyles.stacked`
         // zentriert seinen Inhalt, die Flamme säße damit mitten auf dem Avatar statt an
         // dessen Rand - unsichtbar hinter dem Ring. Genauso wie bei `Orbit` muss der
         // Inhalt oben am Kastenrand kleben, denn der Radius IST die halbe Kastenbreite.
@@ -418,7 +467,7 @@ function Bolt({
     <Animated.View
       pointerEvents="none"
       style={[
-        styles.stacked,
+        effectStyles.stacked,
         // Siehe `Flame`: Ohne `flex-start` läge der Blitz mitten auf dem Avatar.
         { width: radius * 2, height: radius * 2, alignItems: 'center', justifyContent: 'flex-start' },
         { transform: [{ rotate: `${angleDeg}deg` }] },
@@ -453,7 +502,7 @@ function AuraEffect({ settings, colors }: EffectProps) {
     <Layer>
       <Animated.View
         style={[
-          styles.stacked,
+          effectStyles.stacked,
           {
             opacity: Animated.multiply(breathe(loop, 0.45, 1), opacity),
             transform: [{ scale: breathe(loop, 0.9, 1.08) }],
@@ -515,7 +564,7 @@ function Riser({
     <Animated.View
       pointerEvents="none"
       style={[
-        styles.stacked,
+        effectStyles.stacked,
         {
           opacity: Animated.multiply(fade, opacity),
           transform: [{ translateX: offsetX }, { translateY }],
@@ -526,43 +575,3 @@ function Riser({
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  /**
-   * Füllt den Elternknoten (die Box des Avatars) und zentriert die Kinder darin.
-   *
-   * Bewusst mit allen vier Kanten auf 0 statt `StyleSheet.absoluteFillObject`: Letzteres
-   * kennen die Typen dieses Projekts nicht (`types: ["jest"]` in tsconfig.json).
-   */
-  layer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    /**
-     * Der Effekt gehört HINTER den Avatar - ohne das legt er sich darüber und dämpft
-     * Zahl und Foto.
-     *
-     * Warum es nicht reicht, ihn im JSX vor den Avatar zu schreiben: Auf dem Handy
-     * entscheidet die Reihenfolge der Geschwister, im Browser aber nicht - dort malt CSS
-     * jedes *positionierte* Element über seine statischen Geschwister, unabhängig von der
-     * Reihenfolge. In der Web-Vorschau lag die Aura deshalb quer über der Zahl. `zIndex`
-     * gilt auf beiden Plattformen und macht die Absicht außerdem ausdrücklich, statt sie
-     * einer Reihenfolge im JSX zu überlassen, die jeder Umbau versehentlich dreht.
-     */
-    zIndex: -1,
-  },
-  /**
-   * Mehrere Teilchen sollen übereinander in der Mitte liegen, nicht nebeneinander.
-   * Ohne das würde die Ebene sie als Spalte untereinander setzen und der Mittelpunkt
-   * jedes einzelnen läge woanders.
-   */
-  stacked: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

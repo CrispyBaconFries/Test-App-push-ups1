@@ -1,7 +1,11 @@
 import {
   DEFAULT_EFFECT_SETTINGS,
   DEFAULT_RING_WIDTH,
+  INTENSITY_RANGE,
+  MAX_MOVING_PARTS,
   RING_RANGE,
+  SPEED_RANGE,
+  sliderMidpoint,
   FRAME_EFFECTS,
   FRAME_EFFECT_IDS,
   SIZE_RANGE,
@@ -26,6 +30,46 @@ describe('Effekt-Katalog', () => {
 
   it('führt "Ohne" als ersten Eintrag - das ist der Vergleichsmaßstab', () => {
     expect(FRAME_EFFECTS[0].id).toBe('none');
+  });
+
+  it('vergibt jede Kennung nur einmal', () => {
+    expect(new Set(FRAME_EFFECT_IDS).size).toBe(FRAME_EFFECT_IDS.length);
+  });
+
+  it('gibt keinem Effekt denselben Namen oder dieselbe Beschreibung wie einem anderen', () => {
+    // Bei einunddreißig Effekten ist eine kopierte Zeile schnell passiert - und sie fällt
+    // nur auf, wenn man alle nebeneinander liest, was im Werkstatt-Bildschirm gerade
+    // nicht mehr geht.
+    expect(new Set(FRAME_EFFECTS.map((e) => e.label)).size).toBe(FRAME_EFFECTS.length);
+    expect(new Set(FRAME_EFFECTS.map((e) => e.description)).size).toBe(FRAME_EFFECTS.length);
+  });
+
+  it('hält jeden Effekt unter der Obergrenze an bewegten Elementen', () => {
+    // Jedes bewegte Element ist eine eigene Animation, und nebenher rechnet die
+    // Posenerkennung. Ohne diese Schranke wächst ein Effekt beim Feintuning still von
+    // acht auf dreißig Teilchen, und auffallen würde es erst auf dem Gerät.
+    for (const effect of FRAME_EFFECTS) {
+      expect(effect.movingParts).toBeLessThanOrEqual(MAX_MOVING_PARTS);
+      expect(effect.movingParts).toBeGreaterThanOrEqual(0);
+    }
+    expect(frameEffectById('none').movingParts).toBe(0);
+  });
+
+  it('startet jeden Regler in seiner Mitte', () => {
+    // chris' Vorgabe: alles vorab auf 50 %. Bei Größe und Ringdicke fängt der Bereich
+    // nicht bei null an - gemeint ist die Mitte des Reglers, nicht die Hälfte des
+    // Höchstwerts (die läge bei der Größe im linken Drittel und sähe aus wie ein Fehler).
+    expect(DEFAULT_EFFECT_SETTINGS.intensity).toBe(0.5);
+    expect(DEFAULT_EFFECT_SETTINGS.speed).toBe(0.5);
+    expect(DEFAULT_EFFECT_SETTINGS.size).toBe(sliderMidpoint(SIZE_RANGE));
+    expect(DEFAULT_RING_WIDTH).toBe(sliderMidpoint(RING_RANGE));
+  });
+
+  it('rechnet die Mitte eines Bereichs auf ganze Werte', () => {
+    expect(sliderMidpoint(INTENSITY_RANGE)).toBe(50);
+    expect(sliderMidpoint(SPEED_RANGE)).toBe(50);
+    expect(sliderMidpoint({ min: 36, max: 140 })).toBe(88);
+    expect(sliderMidpoint({ min: 1, max: 14 })).toBe(8);
   });
 
   it('startet mit Einstellungen innerhalb der Regler-Grenzen', () => {
