@@ -501,3 +501,73 @@ Block eine Zeile, dass er sie einhält:
 kein neues Paket · `useNativeDriver: true` · nur `transform`/`opacity` animiert · kein
 `Math.random()` · keine hartkodierte Farbe · alle Maße aus `settings.size` · höchstens 12
 bewegte Elemente · nichts schneller als ~4 Hz.
+
+---
+
+# Nachfass-Befehl (Runde 3): Struktur-Entscheidungen und „jetzt Code"
+
+Zu benutzen, wenn die KI die Struktur klären will, statt zu liefern. Alles ab der
+Trennlinie kopieren.
+
+---
+
+Deine Rückfragen sind beantwortet — hier sind die Entscheidungen, alle vier. Du musst nichts
+mehr abwägen, nur noch umsetzen.
+
+**1. Dateistruktur: ja, aber mit einer gemeinsamen Werkzeug-Datei.**
+
+```
+src/components/frame-effects/
+  kit.tsx                  <- useLoop, breathe, phases, Layer, Orbit, styles (alles exportiert)
+  CometEffect.tsx
+  DoubleRotorEffect.tsx
+  ... (24 Dateien, eine je Effekt)
+```
+
+`kit.tsx` ist nicht optional. Die Helfer liegen heute privat in `FrameEffectLayer.tsx`;
+ohne gemeinsame Datei würde jede der 24 Dateien sie kopieren, und spätestens beim ersten
+`styles.layer` mit fehlendem `zIndex: -1` liegt der Effekt über dem Avatar statt dahinter.
+Das ist hier schon einmal passiert.
+
+Jede Effekt-Datei: **benannter Export** (`export function CometEffect(...)`), Importe
+vollständig, keine eigene Kopie eines Helfers.
+
+**2. Die sechs bestehenden Effekte (`glow`, `rotor`, `sparks`, `flames`, `lightning`,
+`aura`) fasst du nicht an.** Sie bleiben, wo sie sind. Sie laufen, sie sind abgenommen, und
+ein Umzug gehört nicht in dieselbe Änderung wie 24 neue. Den Umzug machen wir danach
+separat.
+
+**3. `BrokenRingEffect`: kein `borderLeftColor: 'transparent'`.** Dein eigener Einwand ist
+richtig. Nimm stattdessen ein SVG `<Circle>` mit **statischem** `strokeDasharray` — die
+Lücke ist fest in den Strichmustern, es wird nichts daran animiert. Die Lücke wandert,
+indem sich das ganze SVG per `transform: [{ rotate }]` dreht. Damit bleibt die Form statisch
+und die Bewegung auf dem Native-Treiber, wie verlangt.
+
+**4. `View` mit `borderRadius` ist für Kreise und Ringe ausdrücklich erwünscht**, nicht nur
+geduldet. Es ist billiger als ein SVG-Mount, und bei bis zu 20 Rahmen gleichzeitig in der
+Rangliste zählt das. Die Regel lautet:
+
+- **Einfacher Kreis, Ring oder Punkt** → `View` mit `borderRadius`.
+- **Alles andere** (Flammenzunge, Blitz, Splitter, Strahlenform, Verlauf) → statisches SVG.
+
+Beides ist statisch; animiert wird in beiden Fällen nur die umgebende `Animated.View`.
+
+## Und jetzt das Wichtigste
+
+Du schreibst, die vorherigen Nachrichten enthielten die ausgearbeiteten Komponenten.
+**Dann gib genau die aus — unverändert, als Entwurf, mit allen Mängeln, die du selbst
+genannt hast.**
+
+Schreibe sie nicht neu und poliere sie nicht. Fehlende Importe, unsaubere Ringe und
+uneinheitliche Phasen korrigieren wir hier in Minuten; jede weitere Runde bei dir ist
+dagegen eine neue Gelegenheit, dass sich Details gegenüber der abgenommenen Spezifikation
+verschieben.
+
+Aufteilen auf mehrere Nachrichten ist in Ordnung. Zwei Bedingungen:
+
+- **Jede Datei vollständig.** Kein `// ... wie oben`, kein „analog zu CometEffect". Lieber
+  sechs Dateien pro Nachricht als 24 angerissene.
+- **Am Ende jeder Nachricht eine Zeile**, welche Dateien darin waren und welche noch fehlen.
+
+Reihenfolge, damit ich früh einbauen kann: zuerst `kit.tsx`, dann die Effekte in der
+Reihenfolge der Liste.
