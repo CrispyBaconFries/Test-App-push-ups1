@@ -17,6 +17,12 @@
  *
  * Alle drei lassen sich aus `google-services.json` und `app.json` ablesen, ohne irgendetwas
  * zu starten. Aufruf:  npm run firebase:check
+ *
+ * Punkt 2 kann das Skript auch selbst erledigen:  npm run firebase:fix
+ * Dann trägt es den Web-Client-Schlüssel aus google-services.json in app.json ein, statt
+ * ihn nur anzuzeigen. Der Grund ist Erfahrung: Dieser eine Wert ist 72 Zeichen lang, wird
+ * von Hand in eine JSON-Datei kopiert, und ein verlorenes Anführungszeichen oder Komma
+ * macht daraus einen Fehler, der beim Bauen ganz woanders auftaucht.
  */
 
 const fs = require('fs');
@@ -29,6 +35,24 @@ const APP_JSON = path.join(ROOT, 'app.json');
 
 const OAUTH_CLIENT_TYPE_ANDROID = 1;
 const OAUTH_CLIENT_TYPE_WEB = 3;
+
+/** Mit `--fix` trägt das Skript den Web-Client-Schlüssel selbst ein, statt ihn nur zu zeigen. */
+const FIX = process.argv.includes('--fix');
+
+/**
+ * Schreibt den Schlüssel in app.json, ohne die Datei neu zu formatieren.
+ *
+ * Bewusst als Textersetzung und nicht über `JSON.stringify`: Letzteres würde die ganze
+ * Datei umbrechen und einrücken, und ein Diff über 90 Zeilen für eine geänderte Zeile
+ * macht jede spätere Durchsicht unnötig schwer.
+ */
+function writeWebClientIdToAppJson(clientId) {
+  const before = fs.readFileSync(APP_JSON, 'utf8');
+  const pattern = /("googleSignInWebClientId"\s*:\s*)"[^"]*"/;
+  if (!pattern.test(before)) return false;
+  fs.writeFileSync(APP_JSON, before.replace(pattern, `$1"${clientId}"`), 'utf8');
+  return true;
+}
 
 const problems = [];
 const notes = [];
@@ -103,16 +127,25 @@ if (!webClient) {
     'dann google-services.json NEU herunterladen (die alte Datei enthält den Eintrag nicht).'
   );
 } else if (configuredWebClientId !== webClient.client_id) {
-  fail(
-    'app.json → expo.extra.googleSignInWebClientId stimmt nicht',
-    'Diesen Wert dort eintragen (kompletter String, mit Anführungszeichen):',
-    '',
-    '    "googleSignInWebClientId": "' + webClient.client_id + '"',
-    '',
-    configuredWebClientId.startsWith('REPLACE_WITH')
-      ? 'Aktuell steht dort noch der Platzhalter aus dem Repository.'
-      : `Aktuell steht dort: ${configuredWebClientId}`
-  );
+  if (FIX && writeWebClientIdToAppJson(webClient.client_id)) {
+    console.log('Web-Client-Schlüssel:     in app.json eingetragen');
+    console.log(`                          ${webClient.client_id}`);
+  } else {
+    fail(
+      'app.json → expo.extra.googleSignInWebClientId stimmt nicht',
+      'Das trägt das Skript für dich ein:',
+      '',
+      '    npm run firebase:fix',
+      '',
+      'Oder von Hand in app.json, ganz unten unter "extra":',
+      '',
+      '    "googleSignInWebClientId": "' + webClient.client_id + '"',
+      '',
+      configuredWebClientId.startsWith('REPLACE_WITH')
+        ? 'Aktuell steht dort noch der Platzhalter aus dem Repository.'
+        : `Aktuell steht dort: ${configuredWebClientId}`
+    );
+  }
 } else {
   console.log('Web-Client-Schlüssel:     stimmt mit app.json überein');
 }
